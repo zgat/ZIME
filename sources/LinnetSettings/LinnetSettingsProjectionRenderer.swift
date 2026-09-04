@@ -37,6 +37,7 @@ enum LinnetSettingsProjectionRenderer {
 
   /// Renders user deviations plus the Core-owned input policy projection.
   static func renderProjections(document: LinnetSettingsDocument) -> [String: String] {
+    let document = document.normalized()
     var projections: [String: String] = [:]
     if let squirrel = renderSquirrelCustom(document.appearance) {
       projections[squirrelCustomFile] = squirrel
@@ -234,7 +235,7 @@ private extension LinnetSettingsProjectionRenderer {
     // A Core update deliberately preserves the installed language pack, whose
     // historical schema defaults can differ from this document. Publish the
     // complete order so the selected profile never falls back to pack age.
-    var orderedProfiles = LinnetSettingsContract.ChineseProfile.allCases
+    var orderedProfiles = LinnetSettingsContract.ChineseProfile.selectableCases
     if let selectedIndex = orderedProfiles.firstIndex(of: chineseProfile) {
       orderedProfiles.swapAt(0, selectedIndex)
     }

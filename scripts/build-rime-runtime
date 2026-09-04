@@ -528,6 +528,47 @@ verify_clean_checkout() {
   [[ -z "${dirty}" ]] || fail "source checkout is dirty"
 }
 
+# A verified codeload fallback may represent a locked commit through Git's
+# replacement mechanism when github.com smart HTTP is temporarily unavailable.
+# The fallback is accepted only for a dependency whose immutable root tree is
+# recorded in upstreams.lock.json; ordinary clean builds still fetch the real
+# commit object and never create replacement refs.
+verified_replacement_commit() {
+  local label="$1"
+  local directory="$2"
+  local commit="$3"
+  local dependency="" expected_tree="" replacement="" actual_tree=""
+  case "${label}" in
+    librime-deps/*) dependency="${label#librime-deps/}" ;;
+    plugins/lua-thirdparty)
+      expected_tree="$(lock_value \
+        sources.librime.bundled_plugins.lua.thirdparty.tree)"
+      ;;
+    plugins/*)
+      dependency="${label#plugins/}"
+      expected_tree="$(lock_value \
+        "sources.librime.bundled_plugins.${dependency}.tree")"
+      ;;
+    *) return 1 ;;
+  esac
+  if [[ -z "${expected_tree}" ]]; then
+    expected_tree="$(ruby -rjson -e '
+      lock = JSON.parse(File.binread(ARGV.fetch(0)).force_encoding(Encoding::UTF_8))
+      dependency = lock.dig(
+        "sources", "librime", "static_dependencies", ARGV.fetch(1)
+      )
+      tree = dependency.is_a?(Hash) ? dependency["tree"] : nil
+      puts tree if tree.is_a?(String)
+    ' "${lock_file}" "${dependency}")"
+  fi
+  [[ "${expected_tree}" =~ ^[0-9a-f]{40}$ ]] || return 1
+  replacement="$(git -C "${directory}" rev-parse --verify \
+    "refs/replace/${commit}^{commit}" 2>/dev/null)" || return 1
+  actual_tree="$(git -C "${directory}" rev-parse \
+    "${replacement}^{tree}" 2>/dev/null)" || return 1
+  [[ "${actual_tree}" == "${expected_tree}" ]]
+}
+
 materialize_git() {
   local label="$1"
   local repository="$2"
@@ -546,11 +587,15 @@ materialize_git() {
   configured_url="$(capture git -C "${directory}" remote get-url origin)"
   [[ "${configured_url}" == "${repository}" ]] || fail "cached source URL differs from lock"
 
-  if ! git -C "${directory}" cat-file -e "${commit}^{commit}" 2>/dev/null; then
+  if ! git -C "${directory}" cat-file -e "${commit}^{commit}" 2>/dev/null &&
+      ! verified_replacement_commit "${label}" "${directory}" "${commit}"; then
     [[ "${offline}" -eq 0 ]] || fail "offline source cache is missing the locked commit"
     run git -C "${directory}" fetch --no-tags --depth=1 origin "${commit}"
   fi
-  git -C "${directory}" cat-file -e "${commit}^{commit}" || fail "locked source commit is unavailable"
+  if ! git -C "${directory}" cat-file -e "${commit}^{commit}" 2>/dev/null; then
+    verified_replacement_commit "${label}" "${directory}" "${commit}" ||
+      fail "locked source commit is unavailable"
+  fi
   local dirty
   dirty="$(capture git -C "${directory}" status --porcelain --untracked-files=all)"
   [[ -z "${dirty}" ]] || fail "cached source checkout is dirty"
@@ -840,13 +885,24 @@ case "${work_root}" in
   /private/tmp/*) work_root_alias="/tmp/${work_root#/private/tmp/}" ;;
   /tmp/*) work_root_alias="/private/tmp/${work_root#/tmp/}" ;;
 esac
+compiler_flag_path() {
+  local value="$1"
+  value="${value//\\/\\\\}"
+  value="${value// /\\ }"
+  printf '%s' "${value}"
+}
+sdk_flag="$(compiler_flag_path "${sdk}")"
+repo_root_flag="$(compiler_flag_path "${repo_root}")"
+repo_root_alias_flag="$(compiler_flag_path "${repo_root_alias}")"
+work_root_flag="$(compiler_flag_path "${work_root}")"
+work_root_alias_flag="$(compiler_flag_path "${work_root_alias}")"
 map_flags="-ffile-prefix-map=/tmp=Linnet/Temp -fmacro-prefix-map=/tmp=Linnet/Temp -fdebug-prefix-map=/tmp=Linnet/Temp"
 map_flags+=" -ffile-prefix-map=/private/tmp=Linnet/Temp -fmacro-prefix-map=/private/tmp=Linnet/Temp -fdebug-prefix-map=/private/tmp=Linnet/Temp"
-map_flags+=" -ffile-prefix-map=${sdk}=Linnet/SDK -fmacro-prefix-map=${sdk}=Linnet/SDK -fdebug-prefix-map=${sdk}=Linnet/SDK"
-map_flags+=" -ffile-prefix-map=${repo_root}=Linnet/Workspace -fmacro-prefix-map=${repo_root}=Linnet/Workspace -fdebug-prefix-map=${repo_root}=Linnet/Workspace"
-map_flags+=" -ffile-prefix-map=${repo_root_alias}=Linnet/Workspace -fmacro-prefix-map=${repo_root_alias}=Linnet/Workspace -fdebug-prefix-map=${repo_root_alias}=Linnet/Workspace"
-map_flags+=" -ffile-prefix-map=${work_root}=Linnet/Source -fmacro-prefix-map=${work_root}=Linnet/Source -fdebug-prefix-map=${work_root}=Linnet/Source"
-map_flags+=" -ffile-prefix-map=${work_root_alias}=Linnet/Source -fmacro-prefix-map=${work_root_alias}=Linnet/Source -fdebug-prefix-map=${work_root_alias}=Linnet/Source"
+map_flags+=" -ffile-prefix-map=${sdk_flag}=Linnet/SDK -fmacro-prefix-map=${sdk_flag}=Linnet/SDK -fdebug-prefix-map=${sdk_flag}=Linnet/SDK"
+map_flags+=" -ffile-prefix-map=${repo_root_flag}=Linnet/Workspace -fmacro-prefix-map=${repo_root_flag}=Linnet/Workspace -fdebug-prefix-map=${repo_root_flag}=Linnet/Workspace"
+map_flags+=" -ffile-prefix-map=${repo_root_alias_flag}=Linnet/Workspace -fmacro-prefix-map=${repo_root_alias_flag}=Linnet/Workspace -fdebug-prefix-map=${repo_root_alias_flag}=Linnet/Workspace"
+map_flags+=" -ffile-prefix-map=${work_root_flag}=Linnet/Source -fmacro-prefix-map=${work_root_flag}=Linnet/Source -fdebug-prefix-map=${work_root_flag}=Linnet/Source"
+map_flags+=" -ffile-prefix-map=${work_root_alias_flag}=Linnet/Source -fmacro-prefix-map=${work_root_alias_flag}=Linnet/Source -fdebug-prefix-map=${work_root_alias_flag}=Linnet/Source"
 map_flags+=" -fdebug-compilation-dir=."
 
 deps_stage="${work_root}/deps-stage"

@@ -40,13 +40,13 @@ struct LinnetSettingsProjectionRendererTests {
   }
 
   private static func testThemeFamilyAndAppearanceMapping() {
-    guard LinnetSettingsDocument.currentSchemaVersion == 11,
+    guard LinnetSettingsDocument.currentSchemaVersion == 12,
       LinnetSettingsDocument.ThemeFamily.allCases.map(\.rawValue) == [
         "paper_ledger", "moon_jade", "sidecar_slate", "clay_tiles", "mist_jade",
         "native_glass", "ink_cinnabar",
       ]
     else {
-      fail("the settings codec must publish exactly the seven ordered theme families in schema v11")
+      fail("the settings codec must publish exactly the seven ordered theme families in schema v12")
     }
     let families: [(LinnetSettingsDocument.ThemeFamily, String)] = [
       (.paperLedger, "linnet_paper"),
@@ -296,13 +296,14 @@ struct LinnetSettingsProjectionRendererTests {
     require(
       LinnetSettingsContract.ChineseProfile.allCases.map(\.schemaID)
         == expectedProfiles.map(\.1),
-      "the typed Chinese profile order diverged from the eight shipped prisms"
+      "the migration codec lost a retired Linnet profile"
     )
     require(
-      LinnetSettingsDocument.Input.default.chineseProfile == .fullPinyin,
-      "a fresh Settings document did not default to the majority full-pinyin profile"
+      LinnetSettingsContract.ChineseProfile.selectableCases == [.fullPinyin] &&
+        LinnetSettingsDocument.Input.default.chineseProfile == .fullPinyin,
+      "ZIME did not expose full pinyin as its only Chinese profile"
     )
-    for (profile, prism) in expectedProfiles {
+    for (profile, _) in expectedProfiles {
       var document = LinnetSettingsDocument.default
       document.input.chineseProfile = profile
       do {
@@ -313,29 +314,23 @@ struct LinnetSettingsProjectionRendererTests {
       } catch {
         fail("the selected Chinese profile codec failed: \(error)")
       }
+      let normalized = document.normalized()
+      require(
+        normalized.input.chineseProfile == .fullPinyin,
+        "a retired Linnet profile was not migrated to ZIME full pinyin")
       let english = LinnetSettingsProjectionRenderer.renderProjections(document: document)[
         LinnetSettingsProjectionRenderer.englishCustomFile]
       let defaultCustom = LinnetSettingsProjectionRenderer.renderProjections(document: document)[
         LinnetSettingsProjectionRenderer.defaultCustomFile]
-      guard let selectedIndex = expectedProfiles.firstIndex(where: { $0.0 == profile }) else {
-        fail("the selected Chinese profile was absent from the shipped schema list")
-      }
-      var orderedSchemas = expectedProfiles.map(\.1)
-      orderedSchemas.swapAt(0, selectedIndex)
-      orderedSchemas.append(LinnetSettingsContract.englishSchemaID)
-      let expectedDefault = orderedSchemas.enumerated().reduce(
-        coreInteractionProjection
-      ) { projection, entry in
-        projection + "  \"schema_list/@\(entry.offset)/schema\": \"\(entry.element)\"\n"
-      }
       require(
-        english?.contains("\"linnet_pinyin/prism\": \"\(prism)\"") == true &&
-          english?.contains("\"linnet_mode_switch/chinese_schema\": \"\(prism)\"") == true,
-        "the selected Chinese profile did not own Smart English lookup and Shift return"
+        english?.contains("\"linnet_pinyin/prism\": \"linnet_zh_pinyin\"") == true &&
+          english?.contains(
+            "\"linnet_mode_switch/chinese_schema\": \"linnet_zh_pinyin\"") == true,
+        "ZIME Smart English did not return to full pinyin"
       )
       require(
-        defaultCustom == expectedDefault,
-        "the selected Chinese profile did not explicitly own the complete schema order"
+        defaultCustom == coreInteractionProjection + defaultSchemaOrderProjection,
+        "a retired profile escaped into ZIME's two-schema order"
       )
     }
 
@@ -1075,14 +1070,7 @@ struct LinnetSettingsProjectionRendererTests {
 
   private static let defaultSchemaOrderProjection = """
       "schema_list/@0/schema": "linnet_zh_pinyin"
-      "schema_list/@1/schema": "linnet_zh"
-      "schema_list/@2/schema": "linnet_zh_flypy"
-      "schema_list/@3/schema": "linnet_zh_mspy"
-      "schema_list/@4/schema": "linnet_zh_sogou"
-      "schema_list/@5/schema": "linnet_zh_abc"
-      "schema_list/@6/schema": "linnet_zh_ziguang"
-      "schema_list/@7/schema": "linnet_zh_jiajia"
-      "schema_list/@8/schema": "linnet_en"
+      "schema_list/@1/schema": "linnet_en"
 
     """
 

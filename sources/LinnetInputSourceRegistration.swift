@@ -5,7 +5,7 @@
 
 import Carbon
 
-/// The single read-only owner for Linnet's HIToolbox registration observation.
+/// The single read-only owner for ZIME's HIToolbox registration observation.
 /// HIToolbox publishes neither an authoritative bundle URL nor a durable user-
 /// authorization result, so enabled/selected properties remain observations
 /// and every accepted result deliberately makes no path claim.
@@ -54,25 +54,35 @@ enum LinnetInputSourceRegistration {
     let inputSource: TISInputSource?
   }
 
-  static func classify(_ sources: [Source], identifier: String) -> State {
-    let related = sources.filter {
-      $0.identifier == identifier || $0.bundleIdentifier == identifier
+  static func classify(
+    _ sources: [Source],
+    identifier: String,
+    bundleIdentifier expectedBundleIdentifier: String? = nil,
+    type expectedType: String = kTISTypeKeyboardInputMethodWithoutModes as String
+  ) -> State {
+    let related = if expectedBundleIdentifier == nil {
+      sources.filter {
+        $0.identifier == identifier || $0.bundleIdentifier == identifier
+      }
+    } else {
+      sources.filter { $0.identifier == identifier }
     }
     guard let source = related.first else { return .missing }
+    let bundleIdentifier = expectedBundleIdentifier ?? identifier
     let exactMatches = related.filter {
-      $0.identifier == identifier && $0.bundleIdentifier == identifier
+      $0.identifier == identifier && $0.bundleIdentifier == bundleIdentifier
     }
     if related.count > 1 {
       return exactMatches.count == related.count
         ? .duplicate(count: related.count) : .conflictingIdentity
     }
     guard source.identifier == identifier else { return .conflictingIdentity }
-    guard let bundleIdentifier = source.bundleIdentifier else {
+    guard let observedBundleIdentifier = source.bundleIdentifier else {
       return .unknownBundleIdentifier
     }
-    guard bundleIdentifier == identifier else { return .conflictingIdentity }
+    guard observedBundleIdentifier == bundleIdentifier else { return .conflictingIdentity }
     guard source.category == kTISCategoryKeyboardInputSource as String,
-      source.type == kTISTypeKeyboardInputMethodWithoutModes as String
+      source.type == expectedType
     else { return .conflictingKind }
     guard let isEnableCapable = source.isEnableCapable,
       let isSelectCapable = source.isSelectCapable,
@@ -84,11 +94,22 @@ enum LinnetInputSourceRegistration {
     return isSelected ? .selectedObservation : .enabledObservation
   }
 
-  static func state(identifier: String) -> State {
-    inspect(identifier: identifier).state
+  static func state(
+    identifier: String,
+    bundleIdentifier: String? = nil,
+    type: String = kTISTypeKeyboardInputMethodWithoutModes as String
+  ) -> State {
+    inspect(
+      identifier: identifier,
+      bundleIdentifier: bundleIdentifier,
+      type: type).state
   }
 
-  static func inspect(identifier: String) -> Inspection {
+  static func inspect(
+    identifier: String,
+    bundleIdentifier: String? = nil,
+    type: String = kTISTypeKeyboardInputMethodWithoutModes as String
+  ) -> Inspection {
     let sourceList = TISCreateInputSourceList(nil, true).takeRetainedValue()
       as! [TISInputSource]
     let sources = sourceList.map { source in
@@ -102,12 +123,17 @@ enum LinnetInputSourceRegistration {
         isEnabled: boolProperty(source, key: kTISPropertyInputSourceIsEnabled),
         isSelected: boolProperty(source, key: kTISPropertyInputSourceIsSelected))
     }
-    let state = classify(sources, identifier: identifier)
+    let state = classify(
+      sources,
+      identifier: identifier,
+      bundleIdentifier: bundleIdentifier,
+      type: type)
     let inputSource: TISInputSource?
     switch state {
     case .enablementRequired, .enabledObservation, .selectedObservation:
       inputSource = zip(sourceList, sources).first {
-        $0.1.identifier == identifier && $0.1.bundleIdentifier == identifier
+        $0.1.identifier == identifier &&
+          $0.1.bundleIdentifier == (bundleIdentifier ?? identifier)
       }?.0
     default:
       inputSource = nil

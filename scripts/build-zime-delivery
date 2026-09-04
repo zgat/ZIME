@@ -1,0 +1,168 @@
+#!/bin/zsh
+
+set -euo pipefail
+
+project_root="${0:A:h:h}"
+source_app="${1:-}"
+output_dir="${2:-}"
+
+fail_delivery() {
+  print -u2 "build-zime-delivery: $1"
+  exit 1
+}
+
+[[ "$#" -eq 2 ]] || fail_delivery "usage: APP OUTPUT_DIRECTORY"
+[[ "${source_app}" == /* && -d "${source_app}" && ! -L "${source_app}" ]] ||
+  fail_delivery "APP must be an absolute, non-symlink directory"
+[[ "${source_app:t}" == "ZIME.app" ]] || fail_delivery "unexpected App name"
+
+/bin/mkdir -p "${output_dir}"
+output_dir="${output_dir:A}"
+[[ -d "${output_dir}" && ! -L "${output_dir}" ]] ||
+  fail_delivery "OUTPUT_DIRECTORY must be a non-symlink directory"
+
+info="${source_app}/Contents/Info.plist"
+[[ -f "${info}" && ! -L "${info}" ]] || fail_delivery "App Info.plist is missing"
+bundle_id="$(/usr/bin/plutil -extract CFBundleIdentifier raw -o - "${info}")"
+version="$(/usr/bin/plutil -extract CFBundleShortVersionString raw -o - "${info}")"
+build="$(/usr/bin/plutil -extract CFBundleVersion raw -o - "${info}")"
+[[ "${bundle_id}" == "com.zime.inputmethod.ZIME" ]] ||
+  fail_delivery "unexpected bundle identifier: ${bundle_id}"
+[[ "${version}" =~ '^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z]+)*$' ]] ||
+  fail_delivery "invalid version"
+[[ "${build}" =~ '^(0|[1-9][0-9]*)$' ]] || fail_delivery "invalid build"
+[[ "$(/usr/bin/lipo -archs "${source_app}/Contents/MacOS/ZIME")" == "arm64" ]] ||
+  fail_delivery "host executable is not thin arm64"
+pack_tool="${project_root}/build/linnet-pack"
+[[ -x "${pack_tool}" && ! -L "${pack_tool}" ]] ||
+  fail_delivery "the verified local language-pack tool is missing"
+
+prefix="ZIME-${version}-arm64"
+zip_output="${output_dir}/${prefix}.zip"
+pkg_output="${output_dir}/${prefix}.pkg"
+for output in "${zip_output}" "${pkg_output}"; do
+  [[ ! -e "${output}" && ! -L "${output}" ]] ||
+    fail_delivery "refusing to replace existing output: ${output:t}"
+done
+
+work_root="$(/usr/bin/mktemp -d "${output_dir}/.zime-delivery.XXXXXX")"
+cleanup() {
+  if [[ "${work_root}" == "${output_dir}/.zime-delivery."* &&
+        -d "${work_root}" && ! -L "${work_root}" ]]; then
+    /bin/chmod -R u+w "${work_root}" 2>/dev/null || true
+    /bin/rm -rf -- "${work_root}"
+  fi
+}
+trap cleanup EXIT INT TERM HUP
+
+bundle_root="${work_root}/${prefix}"
+signed_app="${bundle_root}/ZIME.app"
+/bin/mkdir -p "${bundle_root}"
+/usr/bin/ditto --noqtn "${source_app}" "${signed_app}"
+
+# Sign inner code first, then seal each bundle. The preview has no Developer ID,
+# but still carries a complete, verifiable local code-signing graph.
+while IFS= read -r code_path; do
+  /usr/bin/codesign --force --sign - --timestamp=none "${code_path}"
+done < <(/usr/bin/find "${signed_app}" -type f \( -name '*.dylib' -o -name 'Settings' \) -print)
+embedded_settings="${signed_app}/Contents/Applications/Settings.app"
+/usr/bin/codesign --force --sign - --timestamp=none --options runtime \
+  --entitlements "${project_root}/resources/Squirrel.entitlements" \
+  "${embedded_settings}"
+/usr/bin/codesign --force --sign - --timestamp=none --options runtime \
+  --entitlements "${project_root}/resources/Squirrel.entitlements" \
+  "${signed_app}"
+/usr/bin/codesign --verify --deep --strict "${signed_app}"
+
+# Assemble the exact four-pack offline data layout consumed by the runtime.
+# The hashes are calculated from this checkout, so the reverse bilingual index
+# and the full-pinyin-only projection are bound into the installed manifests.
+pack_sources="${work_root}/pack-sources"
+/bin/mkdir -p "${pack_sources}"
+"${project_root}/package/stage_language_pack_sources" "${pack_sources}" >/dev/null
+data_root="${bundle_root}/ZIME-Data"
+/bin/mkdir -m 700 "${data_root}"
+/bin/mkdir -p "${data_root}/Data/Packs"
+build_pack() {
+  local kind="$1" abi="$2" source_root="${pack_sources}/$1"
+  local content_sha
+  content_sha="$("${pack_tool}" inspect-source --kind "${kind}" --source "${source_root}")"
+  [[ "${content_sha}" =~ '^[0-9a-f]{64}$' ]] ||
+    fail_delivery "could not fingerprint ${kind} data"
+  LINNET_RELEASE_TOOL="${pack_tool}" \
+    "${project_root}/package/build_data_pack" \
+      "${kind}" "${version}" 1 "${abi}" "${source_root}" \
+      "${data_root}/Data/Packs" "${version}" "${content_sha}"
+}
+chinese_pack="$(build_pack chinese 2)"
+english_pack="$(build_pack english 1)"
+lts_pack="$(build_pack lts 2)"
+extended_pack="$(build_pack extended 2)"
+LINNET_RELEASE_TOOL="${pack_tool}" LINNET_CORE_VERSION="${version}" \
+  "${project_root}/package/build_activation_profile" complete "${data_root}" \
+    "${chinese_pack}" "${english_pack}" "${lts_pack}" "${extended_pack}"
+for pack in "${chinese_pack}" "${english_pack}" "${lts_pack}" "${extended_pack}"; do
+  "${pack_tool}" inspect-installed --root "${pack}" \
+    --core-version "${version}" >/dev/null
+done
+[[ -f "${data_root}/Runtime/Active/activation.json" ]] ||
+  fail_delivery "offline data activation profile is missing"
+
+/bin/cp "${project_root}/scripts/install-zime" \
+  "${project_root}/scripts/uninstall-zime" "${bundle_root}/"
+/bin/cp "${project_root}/docs/ZIME-INSTALL.md" "${bundle_root}/安装说明.md"
+/bin/cp "${project_root}/LICENSE.txt" "${bundle_root}/LICENSE.txt"
+/bin/chmod 755 "${bundle_root}/install-zime" "${bundle_root}/uninstall-zime"
+
+zip_candidate="${work_root}/${prefix}.zip"
+/usr/bin/ditto -c -k --sequesterRsrc --keepParent "${bundle_root}" "${zip_candidate}"
+/usr/bin/ditto -x -k "${zip_candidate}" "${work_root}/zip-expanded"
+/usr/bin/codesign --verify --deep --strict \
+  "${work_root}/zip-expanded/${prefix}/ZIME.app"
+
+payload_root="${work_root}/payload"
+/bin/mkdir -p "${payload_root}/Library/Input Methods" \
+  "${payload_root}/Library/Application Support"
+/usr/bin/ditto --noqtn "${signed_app}" \
+  "${payload_root}/Library/Input Methods/ZIME.app"
+/usr/bin/ditto --noqtn "${data_root}" \
+  "${payload_root}/Library/Application Support/ZIME"
+component_pkg="${work_root}/ZIME-component.pkg"
+/usr/bin/pkgbuild --root "${payload_root}" \
+  --identifier "com.zime.inputmethod.ZIME.pkg" --version "${version}" \
+  --install-location / "${component_pkg}"
+
+distribution="${work_root}/Distribution.xml"
+DIST_PATH="${distribution}" DIST_VERSION="${version}" /usr/bin/ruby -e '
+  path = ENV.fetch("DIST_PATH")
+  version = ENV.fetch("DIST_VERSION")
+  xml = <<~XML
+    <?xml version="1.0" encoding="utf-8"?>
+    <installer-gui-script minSpecVersion="2">
+      <title>ZIME #{version}</title>
+      <options customize="never" require-scripts="false" hostArchitectures="arm64"/>
+      <domains enable_anywhere="false" enable_currentUserHome="true" enable_localSystem="false"/>
+      <choices-outline><line choice="zime"/></choices-outline>
+      <choice id="zime" visible="false">
+        <pkg-ref id="com.zime.inputmethod.ZIME.pkg"/>
+      </choice>
+      <pkg-ref id="com.zime.inputmethod.ZIME.pkg" version="#{version}" onConclusion="none">ZIME-component.pkg</pkg-ref>
+    </installer-gui-script>
+  XML
+  File.binwrite(path, xml)
+'
+
+pkg_candidate="${work_root}/${prefix}.pkg"
+/usr/bin/productbuild --distribution "${distribution}" \
+  --package-path "${work_root}" "${pkg_candidate}"
+expanded_pkg="${work_root}/pkg-expanded"
+/usr/sbin/pkgutil --expand-full "${pkg_candidate}" "${expanded_pkg}"
+expanded_app="$(/usr/bin/find "${expanded_pkg}" -type d -path '*/Payload/Library/Input Methods/ZIME.app' -print -quit)"
+[[ -n "${expanded_app}" ]] || fail_delivery "expanded package does not contain ZIME.app"
+/usr/bin/codesign --verify --deep --strict "${expanded_app}"
+expanded_data="$(/usr/bin/find "${expanded_pkg}" -type f -path '*/Payload/Library/Application Support/ZIME/Runtime/Active/activation.json' -print -quit)"
+[[ -n "${expanded_data}" ]] || fail_delivery "expanded package does not contain offline data"
+
+/bin/mv "${zip_candidate}" "${zip_output}"
+/bin/mv "${pkg_candidate}" "${pkg_output}"
+print "build-zime-delivery: PASS (${zip_output:t}, ${pkg_output:t})"

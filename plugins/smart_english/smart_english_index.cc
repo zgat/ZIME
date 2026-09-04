@@ -322,6 +322,16 @@ bool SmartEnglishIndex::LookupMetadata(const std::string& displayed_word,
   return true;
 }
 
+std::vector<SmartEnglishWord> SmartEnglishIndex::LookupEnglishTranslations(
+    const std::string& chinese) const {
+  std::vector<SmartEnglishWord> result;
+  return IsMetadataKey(chinese) &&
+                 LookupWords("m/en/" + chinese, 3,
+                             WordShape::kPrintableEnglish, &result)
+             ? result
+             : std::vector<SmartEnglishWord>();
+}
+
 std::map<std::string, std::size_t> SmartEnglishIndex::LookupStaticOrdinals(const std::string& validated_key) const {
   std::vector<SmartEnglishWord> words;
   if (validated_key.rfind("n/", 0) != 0 || !LookupWords(validated_key, kMaxStaticWords, WordShape::kContextToken, &words)) {

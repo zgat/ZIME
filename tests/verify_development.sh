@@ -28,7 +28,7 @@ case "${profile}" in
 esac
 
 if [[ "${run_app}" -eq 1 ]]; then
-  host_app="${repo_root}/build/Local/Build/Products/Release/Linnet.app"
+  host_app="${repo_root}/build/Local/Build/Products/Release/ZIME.app"
   standalone_settings="${repo_root}/build/Local/Build/Products/Release/Settings.app"
   embedded_settings="${host_app}/Contents/Applications/Settings.app"
   for app in "${host_app}" "${standalone_settings}" "${embedded_settings}"; do
@@ -45,14 +45,14 @@ if [[ "${run_app}" -eq 1 ]]; then
 
   [[ "$(plutil -extract CFBundleIdentifier raw -o - \
     "${host_app}/Contents/Info.plist")" == \
-    io.github.ares-x.inputmethod.Linnet.local-build ]] || {
+      com.zime.inputmethod.ZIME.local-build ]] || {
     echo "verify_development: local Host regained the production identity" >&2
     exit 1
   }
   for settings_app in "${standalone_settings}" "${embedded_settings}"; do
     [[ "$(plutil -extract CFBundleIdentifier raw -o - \
       "${settings_app}/Contents/Info.plist")" == \
-      io.github.ares-x.inputmethod.Linnet.local-build.settings ]] || {
+      com.zime.inputmethod.ZIME.local-build.settings ]] || {
       echo "verify_development: local Settings regained the production identity" >&2
       exit 1
     }
@@ -61,7 +61,7 @@ if [[ "${run_app}" -eq 1 ]]; then
 # A local unsigned composite has no clean candidate revision to bind. The
 # successful composite build owns one completion marker after Xcode, resource
 # sanitization and local-identity verification all finish.
-  host_executable="${host_app}/Contents/MacOS/Linnet"
+  host_executable="${host_app}/Contents/MacOS/ZIME"
   settings_executables=(
     "${standalone_settings}/Contents/MacOS/Settings"
     "${embedded_settings}/Contents/MacOS/Settings"

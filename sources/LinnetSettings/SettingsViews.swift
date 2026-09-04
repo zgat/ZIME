@@ -215,17 +215,9 @@ struct InputTabView: View {
   private var schemeSection: some View {
     GroupBox("Chinese scheme") {
       VStack(alignment: .leading, spacing: 10) {
-        Picker(
-          "Chinese scheme",
-          selection: $model.configuration.documentDraft.input.chineseProfile
-        ) {
-          ForEach(LinnetSettingsContract.ChineseProfile.allCases, id: \.self) { profile in
-            Text(chineseProfileName(profile)).tag(profile)
-          }
-        }
-        .pickerStyle(.menu)
+        LabeledContent("Chinese scheme", value: "Full Pinyin")
         Text(
-          "The selected scheme is used for Chinese input and prefixed pinyin-to-English lookup in Chinese mode."
+          "ZIME 1.x uses full pinyin for Chinese input and pinyin-to-English lookup."
         )
         .font(.callout)
         .foregroundStyle(.secondary)
@@ -324,10 +316,8 @@ struct InputTabView: View {
     GroupBox("Chinese options") {
       VStack(alignment: .leading, spacing: 10) {
         Toggle("Suggest emoji candidates", isOn: $model.configuration.documentDraft.input.emojiEnabled)
-        Toggle(
-          "Output traditional Chinese by default",
-          isOn: $model.configuration.documentDraft.input.traditionalChinese
-        )
+        Text("Choose ZIME Simplified Chinese or ZIME Traditional Chinese from the macOS input menu.")
+          .font(.callout)
         Toggle(
           "Use English punctuation by default",
           isOn: $model.configuration.documentDraft.input.asciiPunctuationDefault
@@ -360,7 +350,7 @@ struct InputTabView: View {
       Text("Candidate suggestions").font(.headline)
       Toggle("Show IPA pronunciation", isOn: $model.configuration.documentDraft.english.showIPA)
       Toggle(
-        "Show Chinese definitions",
+        "Show bilingual candidate translations",
         isOn: $model.configuration.documentDraft.english.showTranslation
       )
       Toggle(
@@ -368,7 +358,7 @@ struct InputTabView: View {
         isOn: $model.configuration.documentDraft.english.predictionEnabled
       )
       Text(
-        "IPA, Chinese definitions, and context suggestions can be hidden. English correction and fuzzy matching are always available. Changes take effect after Apply Changes."
+        "Chinese candidates show English glosses; English candidates show Chinese definitions. IPA and context suggestions can be hidden independently. Changes take effect after Apply Changes."
       )
       .font(.caption)
       .foregroundStyle(.secondary)
@@ -395,6 +385,24 @@ struct InputTabView: View {
         Text("Navigate candidates").tag(LinnetSettingsDocument.TabBehavior.navigate)
         Text("Pass to application").tag(LinnetSettingsDocument.TabBehavior.pass)
       }
+      Picker(
+        "Translation side",
+        selection: $model.configuration.documentDraft.english.translationToggleKey
+      ) {
+        Text("Tab").tag(LinnetSettingsDocument.TranslationToggleKey.tab)
+        Text("Option-Return").tag(
+          LinnetSettingsDocument.TranslationToggleKey.optionReturn)
+      }
+      Picker(
+        "Commit translation",
+        selection: $model.configuration.documentDraft.english.translationCommitKey
+      ) {
+        Text("Return").tag(LinnetSettingsDocument.TranslationCommitKey.enter)
+        Text("Space").tag(LinnetSettingsDocument.TranslationCommitKey.space)
+      }
+      Text("Number keys 1–9 always commit the corresponding translation row.")
+        .font(.caption)
+        .foregroundStyle(.secondary)
       Text(
         "Turning off learning stops reading and updating English learning data. Existing data returns when learning is enabled again; static context suggestions and spacing remain available."
       )
@@ -550,21 +558,19 @@ struct DataTabView: View {
 
   var body: some View {
     LinnetSettingsPage(
-      "Data & Updates",
-      summary: "Review updates, sync or move personal data, and manage recovery.",
-      systemImage: "arrow.triangle.2.circlepath"
+      "Local Data",
+      summary: "Manage local learning data, backups, transfer, and diagnostics.",
+      systemImage: "internaldrive"
     ) {
       VStack(alignment: .leading, spacing: 16) {
         versionSection
-        coreUpdateSection
-        languageDataSection
-        grammarModelSection
-        GroupBox {
-          DisclosureGroup("iCloud Drive sync") {
-            cloudSyncSection
-              .padding(.top, 8)
-          }
-          .accessibilityIdentifier("settings.data.cloudDisclosure")
+        GroupBox("Offline translation") {
+          Text(
+            "Candidate definitions, reverse lookups, corrections, prediction, and learning stay on this Mac. ZIME 1.x has no cloud translation provider."
+          )
+          .font(.callout)
+          .foregroundStyle(.secondary)
+          .padding(8)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         GroupBox {

@@ -1,0 +1,26 @@
+#!/bin/zsh
+set -euo pipefail
+
+app="${HOME}/Library/Input Methods/ZIME.app"
+data="${HOME}/Library/Application Support/ZIME"
+
+if [[ "${app}" != /*/Library/Input\ Methods/ZIME.app ||
+      "${data}" != /*/Library/Application\ Support/ZIME ]]; then
+  print -u2 "uninstall-zime: refusing unsafe path"
+  exit 1
+fi
+
+/usr/bin/pkill -x ZIME 2>/dev/null || true
+if [[ -e "${app}" || -L "${app}" ]]; then
+  /bin/rm -rf -- "${app}"
+fi
+
+if [[ "${1:-}" == "--purge-data" ]]; then
+  if [[ -e "${data}" || -L "${data}" ]]; then
+    /bin/rm -rf -- "${data}"
+  fi
+  print "ZIME and its local user data were removed."
+else
+  print "ZIME was removed. Local learning data was preserved at ${data}."
+  print "Run this script with --purge-data to remove it too."
+fi

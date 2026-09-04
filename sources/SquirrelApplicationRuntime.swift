@@ -137,6 +137,7 @@ extension SquirrelApplicationDelegate {
     reopenRimeInput()
     isRimeRunning = true
     activeSettingsRevision = settingsSnapshot.revision
+    activeSettingsDocument = settingsSnapshot.document
     startStaleSessionCleaner()
     return true
   }
@@ -513,6 +514,7 @@ extension SquirrelApplicationDelegate {
         throw LinnetSettingsDocumentStore.Failure.malformedDocument
       }
       activeSettingsRevision = published.revision
+      activeSettingsDocument = published.document
       let activatedHealth = runtimeHealth()
       guard activatedHealth.state == .running else {
         throw LinnetSettingsDocumentStore.Failure.malformedDocument
@@ -529,6 +531,7 @@ extension SquirrelApplicationDelegate {
         rollbackSettingsPublication(candidate: candidate, live: live, scope: scope)
       else {
         activeSettingsRevision = nil
+        activeSettingsDocument = nil
         isRimeInputSuspended = true
         panel?.hide()
         reply(
@@ -676,6 +679,7 @@ extension SquirrelApplicationDelegate {
       )
       guard activatePublishedSettings(scope) else { return false }
       activeSettingsRevision = restored.revision
+      activeSettingsDocument = restored.document
       return runtimeHealth().state == .running
     } catch {
       return false

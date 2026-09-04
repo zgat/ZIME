@@ -103,6 +103,7 @@ final class SquirrelInputController {
     let indexOnPage: Int
     let absoluteIndex: Int
     let selectionLabel: String?
+    var emphasizesPrimaryText = false
   }
 
   struct CandidateSnapshot {

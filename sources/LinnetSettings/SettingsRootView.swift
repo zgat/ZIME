@@ -218,7 +218,7 @@ struct SettingsRootView: View {
         pendingLegacyImport: $pendingLegacyImport
       )
       .tabItem {
-        Label("Data & Updates", systemImage: "arrow.triangle.2.circlepath")
+        Label("Local Data", systemImage: "internaldrive")
       }
     }
   }

@@ -91,6 +91,43 @@ private struct LinnetIndexRow {
   let weight: Int
 }
 
+/// Extracts bounded, exact Chinese glosses for the reverse bilingual index.
+/// This indexes dictionary senses, not arbitrary substrings, so a sentence is
+/// never presented as if it had been machine translated.
+private func linnetChineseGlosses(_ definition: String) -> [String] {
+  let ignored = Set([
+    "名词", "动词", "形容词", "副词", "代词", "介词", "连词", "感叹词",
+    "过去式", "过去分词", "现在分词", "复数", "复数形式", "比较级", "最高级",
+  ])
+  let separators = CharacterSet(charactersIn: "；;，,。.!！？?：:\n\r\t()（）[]【】<>")
+  var result: [String] = []
+  var seen = Set<String>()
+  for clause in definition.components(separatedBy: separators) {
+    var current = ""
+    func publish() {
+      let value = current.trimmingCharacters(in: .whitespacesAndNewlines)
+      current = ""
+      guard !value.isEmpty, value.count <= 16, !ignored.contains(value),
+        seen.insert(value).inserted
+      else { return }
+      result.append(value)
+    }
+    for scalar in clause.unicodeScalars {
+      let value = scalar.value
+      let isHan = (0x3400...0x9FFF).contains(value) ||
+        (0xF900...0xFAFF).contains(value) ||
+        (0x20000...0x2FA1F).contains(value)
+      if isHan {
+        current.unicodeScalars.append(scalar)
+      } else {
+        publish()
+      }
+    }
+    publish()
+  }
+  return result
+}
+
 private struct LinnetDictionaryCounts {
   let entries: Int
   let texts: Int
@@ -358,6 +395,24 @@ enum LinnetEnglishDataGenerator {
     try writeSorted(rows, to: writer)
     counts.namespaces["m/zh"] = rows.count
 
+    var reverseRows: [String: [LinnetIndexRow]] = [:]
+    for row in rows where row.key.hasPrefix("m/zh/") {
+      let word = String(row.key.dropFirst("m/zh/".count))
+      for gloss in linnetChineseGlosses(row.value) {
+        reverseRows[gloss, default: []].append(
+          .init(key: "m/en/\(gloss)", value: word, weight: row.weight))
+      }
+    }
+    rows = reverseRows.values.flatMap { candidates in
+      var seen = Set<String>()
+      return candidates.sorted {
+        if $0.weight != $1.weight { return $0.weight > $1.weight }
+        return linnetByteLess($0.value, $1.value)
+      }.filter { seen.insert($0.value).inserted }.prefix(3)
+    }
+    try writeSorted(rows, to: writer)
+    counts.namespaces["m/en"] = rows.count
+
     rows = snapshot.ngrams.map {
       .init(key: "n/\($0.context)", value: $0.nextWord, weight: $0.frequency)
     }
@@ -572,8 +627,8 @@ enum LinnetEnglishDataGenerator {
     }
     let rime = snapshot.rimeIceCounts
     let manifest: [String: Any] = [
-      "format": 5,
-      "generator": ["name": "LinnetEnglishDataGenerator", "version": 2],
+      "format": 6,
+      "generator": ["name": "LinnetEnglishDataGenerator", "version": 3],
       "sources": [
         "hallelujah": [
           "repository": snapshot.lock.hallelujahRepository,

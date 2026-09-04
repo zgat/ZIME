@@ -33,13 +33,21 @@ final class SquirrelInstaller {
   /// An immediate HIToolbox property remains only an observation; it is never
   /// promoted to durable authorization evidence.
   func requestFirstInstallAuthorization() throws {
-    let identifier = SquirrelApp.bundleIdentifier
-    var inspection = LinnetInputSourceRegistration.inspect(identifier: identifier)
+    let bundleIdentifier = SquirrelApp.bundleIdentifier
+    let identifier = SquirrelApp.primaryInputSourceIdentifier
+    let sourceType = kTISTypeKeyboardInputMode as String
+    var inspection = LinnetInputSourceRegistration.inspect(
+      identifier: identifier,
+      bundleIdentifier: bundleIdentifier,
+      type: sourceType)
     switch inspection.state {
     case .missing:
       let status = TISRegisterInputSource(SquirrelApp.appDir as CFURL)
       guard status == noErr else { throw Failure.registrationFailed(status) }
-      inspection = LinnetInputSourceRegistration.inspect(identifier: identifier)
+      inspection = LinnetInputSourceRegistration.inspect(
+        identifier: identifier,
+        bundleIdentifier: bundleIdentifier,
+        type: sourceType)
     case .enablementRequired, .enabledObservation, .selectedObservation:
       break
     case .duplicate, .conflictingIdentity, .conflictingKind,

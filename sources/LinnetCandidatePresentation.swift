@@ -8,10 +8,32 @@
 import AppKit
 import Foundation
 
+/// Optional remote translation boundary. ZIME 1.x installs the null provider
+/// and performs no translation network request; a future provider must be an
+/// explicit, separately consented implementation of this interface.
+protocol ZIMECloudTranslationProvider: Sendable {
+  func translations(for text: String, sourceLanguage: String) async -> [String]
+}
+
+struct ZIMENullCloudTranslationProvider: ZIMECloudTranslationProvider {
+  func translations(for _: String, sourceLanguage _: String) async -> [String] { [] }
+}
+
 enum LinnetCandidatePresentation {
   struct CandidateComment: Equatable {
     let displayText: String
     let belongsToSmartEnglish: Bool
+    let translations: [String]
+
+    init(
+      displayText: String,
+      belongsToSmartEnglish: Bool,
+      translations: [String] = []
+    ) {
+      self.displayText = displayText
+      self.belongsToSmartEnglish = belongsToSmartEnglish
+      self.translations = translations
+    }
   }
 
   private struct FormatReplacement {
@@ -33,6 +55,8 @@ enum LinnetCandidatePresentation {
   static let maximumExpandedPageCount = 3
   static let maximumExpandedCandidateCount = 27
   static let smartEnglishDetailPrefix = "\u{001D}"
+  static let reverseEnglishDetailPrefix = "\u{001E}"
+  static let translationAlternativeSeparator = "\u{001F}"
 
   // One compact typographic skeleton serves every bundled theme. Color,
   // material, corner treatment, and selection shape remain theme-owned.
@@ -49,11 +73,52 @@ enum LinnetCandidatePresentation {
   /// The presentation boundary removes its one-byte marker before any text is
   /// drawn or announced; ordinary Chinese spelling comments remain unmarked.
   static func candidateComment(_ rawComment: String) -> CandidateComment {
-    guard rawComment.hasPrefix(smartEnglishDetailPrefix) else {
-      return CandidateComment(displayText: rawComment, belongsToSmartEnglish: false)
+    if rawComment.hasPrefix(reverseEnglishDetailPrefix) {
+      let alternatives = String(rawComment.dropFirst())
+        .components(separatedBy: translationAlternativeSeparator)
+        .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        .filter { !$0.isEmpty }
+      return CandidateComment(
+        displayText: alternatives.prefix(2).joined(separator: " / "),
+        belongsToSmartEnglish: false,
+        translations: Array(alternatives.prefix(3)))
     }
+    guard rawComment.hasPrefix(smartEnglishDetailPrefix) else {
+      return CandidateComment(
+        displayText: rawComment, belongsToSmartEnglish: false, translations: [])
+    }
+    let displayText = String(rawComment.dropFirst())
     return CandidateComment(
-      displayText: String(rawComment.dropFirst()), belongsToSmartEnglish: true)
+      displayText: displayText,
+      belongsToSmartEnglish: true,
+      translations: chineseTranslationAlternatives(in: displayText))
+  }
+
+  private static func chineseTranslationAlternatives(in detail: String) -> [String] {
+    let translatedDetail = detail.components(separatedBy: " · ").last ?? detail
+    let parts = translatedDetail.components(
+      separatedBy: CharacterSet(charactersIn: "；;"))
+    var result: [String] = []
+    var seen = Set<String>()
+    for rawPart in parts {
+      var part = rawPart.trimmingCharacters(in: .whitespacesAndNewlines)
+      if let boundary = part.range(
+        of: #"^(name|n|vt|vi|v|adj|adv|abbr|int|interj|prep|pref|conj|pron|suf|vbl|num|aux|art|det)[.]\s*"#,
+        options: [.regularExpression, .caseInsensitive]) {
+        part.removeSubrange(boundary)
+      }
+      let containsHan = part.unicodeScalars.contains { scalar in
+        (0x3400...0x9FFF).contains(scalar.value) ||
+          (0xF900...0xFAFF).contains(scalar.value) ||
+          (0x20000...0x2FA1F).contains(scalar.value)
+      }
+      guard containsHan, !part.isEmpty, part.count <= maximumDetailCharacterCount,
+        seen.insert(part).inserted
+      else { continue }
+      result.append(part)
+      if result.count == 3 { break }
+    }
+    return result
   }
 
   struct InputModeIdentity: Equatable {

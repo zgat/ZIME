@@ -1,0 +1,114 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+fail_snapshot() {
+  echo "hydrate-locked-git-tree-fallback: $1" >&2
+  exit 1
+}
+
+[[ "$#" -eq 4 ]] || fail_snapshot "usage: REPOSITORY COMMIT TREE CACHE"
+repository="$1"
+commit="$2"
+expected_tree="$3"
+cache="$4"
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+cache_root="${repo_root}/build/upstreams/git"
+
+[[ "${repository}" =~ ^https://github\.com/([^/]+/[^/]+)\.git$ ]] ||
+  fail_snapshot "repository must be one GitHub HTTPS Git URL"
+repository_slug="${BASH_REMATCH[1]}"
+[[ "${commit}" =~ ^[0-9a-f]{40}$ && "${expected_tree}" =~ ^[0-9a-f]{40}$ ]] ||
+  fail_snapshot "commit and tree must be SHA-1 object names"
+[[ "${cache}" == "${cache_root}/"* && "${cache}" != *..* ]] ||
+  fail_snapshot "cache must remain under the locked build cache"
+
+work="$(mktemp -d /private/tmp/zime-git-tree.XXXXXX)"
+cleanup_snapshot() {
+  local status=$?
+  trap - EXIT INT TERM HUP
+  case "${work}" in
+    /private/tmp/zime-git-tree.??????)
+      chmod -R u+w "${work}" 2>/dev/null || true
+      find "${work}" -depth -delete 2>/dev/null || status=1
+      ;;
+    *) status=1 ;;
+  esac
+  exit "${status}"
+}
+trap cleanup_snapshot EXIT INT TERM HUP
+
+commit_json="${work}/commit.json"
+tree_json="${work}/tree.json"
+archive="${work}/source.tar.gz"
+source="${work}/source"
+mkdir "${source}"
+curl --fail --silent --show-error --proto '=https' --max-time 120 \
+  --output "${commit_json}" \
+  "https://api.github.com/repos/${repository_slug}/git/commits/${commit}"
+ruby -rjson -e '
+  document = JSON.parse(File.binread(ARGV.fetch(0)))
+  abort unless document.fetch("sha") == ARGV.fetch(1) &&
+    document.dig("tree", "sha") == ARGV.fetch(2)
+' "${commit_json}" "${commit}" "${expected_tree}"
+curl --fail --silent --show-error --proto '=https' --max-time 120 \
+  --output "${tree_json}" \
+  "https://api.github.com/repos/${repository_slug}/git/trees/${expected_tree}?recursive=1"
+curl --fail --silent --show-error --proto '=https' --max-time 300 \
+  --output "${archive}" \
+  "https://codeload.github.com/${repository_slug}/tar.gz/${commit}"
+tar -xzf "${archive}" --strip-components=1 -C "${source}"
+git -C "${source}" init --quiet
+git -C "${source}" add -A
+
+# GitHub archives omit some ignored zero-byte files. Restore only paths whose
+# blob identity is the canonical empty blob, then verify the complete root tree.
+ruby -rjson -rfileutils -ropen3 -e '
+  source, tree_path = ARGV
+  tree = JSON.parse(File.binread(tree_path))
+  abort if tree["truncated"]
+  expected = tree.fetch("tree").select { |entry| entry["type"] == "blob" }
+  index, status = Open3.capture2(
+    "git", "-C", source, "ls-files", "--stage"
+  )
+  abort unless status.success?
+  present = index.lines.to_h do |line|
+    _mode, sha, _stage, path = line.chomp.split(/\s+/, 4)
+    [path, sha]
+  end
+  expected.each do |entry|
+    next if present.key?(entry.fetch("path"))
+    abort unless entry.fetch("sha") == "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391"
+    target = File.join(source, entry.fetch("path"))
+    FileUtils.mkdir_p(File.dirname(target))
+    File.binwrite(target, "")
+  end
+' "${source}" "${tree_json}"
+git -C "${source}" add -f -A
+actual_tree="$(git -C "${source}" write-tree)"
+[[ "${actual_tree}" == "${expected_tree}" ]] ||
+  fail_snapshot "codeload snapshot root tree differs from GitHub Git data"
+
+synthetic_commit="$(printf '%s\n' 'ZIME verified GitHub codeload fallback' | \
+  env GIT_AUTHOR_NAME=ZIME GIT_AUTHOR_EMAIL=build@zime.local \
+    GIT_AUTHOR_DATE='1704067200 +0000' GIT_COMMITTER_NAME=ZIME \
+    GIT_COMMITTER_EMAIL=build@zime.local GIT_COMMITTER_DATE='1704067200 +0000' \
+    git -C "${source}" commit-tree "${expected_tree}")"
+[[ "${synthetic_commit}" =~ ^[0-9a-f]{40}$ ]] ||
+  fail_snapshot "could not create local replacement commit"
+
+if [[ ! -d "${cache}/.git" ]]; then
+  mkdir -p "${cache}"
+  git -C "${cache}" init --quiet
+  git -C "${cache}" remote add origin "${repository}"
+fi
+[[ "$(git -C "${cache}" remote get-url origin)" == "${repository}" ]] ||
+  fail_snapshot "cached source URL differs from lock"
+cp -R "${source}/.git/objects/." "${cache}/.git/objects/"
+git -C "${cache}" update-ref "refs/replace/${commit}" "${synthetic_commit}"
+git -C "${cache}" checkout --quiet --detach --force "${commit}"
+[[ "$(git -C "${cache}" rev-parse HEAD)" == "${commit}" &&
+   "$(git -C "${cache}" write-tree)" == "${expected_tree}" &&
+   -z "$(git -C "${cache}" status --porcelain --untracked-files=all)" ]] ||
+  fail_snapshot "published fallback cache failed verification"
+echo "Locked Git tree fallback: PASS (${repository_slug}@${commit}, tree ${expected_tree})"

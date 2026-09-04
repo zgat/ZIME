@@ -21,6 +21,11 @@ final class SquirrelInputController: IMKInputController {
   var sessionLease: LinnetRimeSessionLease?
   var session: RimeSessionId { sessionLease?.identifier ?? 0 }
   private var inputModeIdentity: LinnetCandidatePresentation.InputModeIdentity?
+  private var systemInputModeIdentifier: String?
+  var bilingualTranslationMode = false
+  var bilingualSourceSnapshot: CandidateSnapshot?
+  var bilingualHighlightedIndex = -1
+  var pendingCommitOverride: String?
   private var inlinePreedit = false
   private var inlineCandidate = false
   // for chord-typing
@@ -51,6 +56,7 @@ final class SquirrelInputController: IMKInputController {
     }
 
     guard ensureReadySession(for: senderClient) else { return false }
+    synchronizeSystemInputMode()
 
     if let app = senderClient.bundleIdentifier(), currentApp != app {
       currentApp = app
@@ -81,6 +87,11 @@ final class SquirrelInputController: IMKInputController {
       return false
 
     case .keyDown:
+      if let bilingualHandled = handleBilingualKeyDown(
+        event,
+        modifiers: modifiers) {
+        return bilingualHandled
+      }
       let keyCode = event.keyCode
       var keyChars = event.charactersIgnoringModifiers
       let capitalModifiers = modifiers.isSubset(of: [.shift, .capsLock])
@@ -150,6 +161,7 @@ final class SquirrelInputController: IMKInputController {
       return
     }
     guard ensureReadySession(for: activatingClient) else { return }
+    synchronizeSystemInputMode()
     let configuredLayout = NSApp.squirrelAppDelegate.config?.getString("keyboard_layout")
     if let keyboardLayout = LinnetInputActivationPolicy.keyboardLayoutName(
       configured: configuredLayout) {
@@ -162,6 +174,24 @@ final class SquirrelInputController: IMKInputController {
     NSApp.squirrelAppDelegate.inputSourceDidActivate(session: session)
   }
 
+  /// The two macOS input modes share one Rime profile and learning store. The
+  /// selected mode owns only the Simplified/Traditional output projection.
+  private func synchronizeSystemInputMode() {
+    guard sessionIsCurrent(),
+      let identifier = LinnetInputSourceRegistration.currentInputSourceID(),
+      identifier != systemInputModeIdentifier
+    else { return }
+    switch identifier {
+    case SquirrelApp.primaryInputSourceIdentifier:
+      rimeAPI.set_option(session, "traditionalization", false)
+    case SquirrelApp.traditionalInputSourceIdentifier:
+      rimeAPI.set_option(session, "traditionalization", true)
+    default:
+      return
+    }
+    systemInputModeIdentifier = identifier
+  }
+
   override init!(server: IMKServer!, delegate: Any!, client: Any!) {
     self.activeClient = client as? IMKTextInput
     super.init(server: server, delegate: delegate, client: client)
@@ -171,6 +201,11 @@ final class SquirrelInputController: IMKInputController {
   override func deactivateServer(_ sender: Any!) {
     guard let deactivatingClient = sender as? IMKTextInput else { return }
     inputModeIdentity = nil
+    systemInputModeIdentifier = nil
+    bilingualTranslationMode = false
+    bilingualSourceSnapshot = nil
+    bilingualHighlightedIndex = -1
+    pendingCommitOverride = nil
     clearChord()
     // Retire the old client before calling back into it. A synchronous native
     // activation triggered by the commit then becomes the sole new owner.
@@ -354,7 +389,12 @@ extension SquirrelInputController {
     var commitText = RimeCommit.rimeStructInit()
     if rimeAPI.get_commit(session, &commitText) {
       if let text = commitText.text {
-        commit(string: String(cString: text), to: targetClient)
+        let committed = pendingCommitOverride ?? String(cString: text)
+        pendingCommitOverride = nil
+        bilingualTranslationMode = false
+        bilingualSourceSnapshot = nil
+        bilingualHighlightedIndex = -1
+        commit(string: committed, to: targetClient)
       }
       _ = rimeAPI.free_commit(&commitText)
     }
@@ -499,7 +539,7 @@ extension SquirrelInputController {
       // swiftlint:enable identifier_name
       let expansionAnchorPage =
         NSApp.squirrelAppDelegate.panel?.candidateExpansionAnchorPage
-      guard let candidateSnapshot = LinnetRimeCandidateSnapshotBuilder.build(
+      guard let sourceCandidateSnapshot = LinnetRimeCandidateSnapshotBuilder.build(
         context: ctx,
         labels: labels,
         expansionAnchorPage: expansionAnchorPage,
@@ -510,6 +550,10 @@ extension SquirrelInputController {
         hidePalettes()
         return
       }
+      bilingualSourceSnapshot = sourceCandidateSnapshot
+      let candidateSnapshot = bilingualTranslationMode
+        ? projectTranslationCandidates(from: sourceCandidateSnapshot)
+        : sourceCandidateSnapshot
       if preedit.isEmpty,
         candidateSnapshot.items.isEmpty,
         !presentsModeTransition {
@@ -531,7 +575,141 @@ extension SquirrelInputController {
     }
   }
 
-  private func commit(string: String, to targetClient: IMKTextInput?) {
+  /// Returns a decision only when the bilingual surface owns the key. Source
+  /// candidates remain Rime-owned; translation mode is a transient projection.
+  private func handleBilingualKeyDown(
+    _ event: NSEvent,
+    modifiers: NSEvent.ModifierFlags
+  ) -> Bool? {
+    let shortcutModifiers = modifiers.intersection([.command, .control, .option, .shift])
+    let toggleKey = NSApp.squirrelAppDelegate.activeSettingsDocument?
+      .english.translationToggleKey ?? .tab
+    let togglesTranslation = switch toggleKey {
+    case .tab:
+      event.keyCode == UInt16(kVK_Tab) && shortcutModifiers.isEmpty
+    case .optionReturn:
+      (event.keyCode == UInt16(kVK_Return) ||
+        event.keyCode == UInt16(kVK_ANSI_KeypadEnter)) &&
+        shortcutModifiers == [.option]
+    }
+    if togglesTranslation {
+      if bilingualTranslationMode {
+        bilingualTranslationMode = false
+        bilingualHighlightedIndex = -1
+        rimeUpdate()
+        return true
+      }
+      guard hasPendingRimeInput, let source = bilingualSourceSnapshot else {
+        return nil
+      }
+      guard source.items.contains(where: {
+        !LinnetCandidatePresentation.candidateComment($0.comment).translations.isEmpty
+      }) else {
+        NSApp.squirrelAppDelegate.panel?.updateStatus(
+          long: "暂无本地译文", short: "无译文", controller: self)
+        return true
+      }
+      bilingualTranslationMode = true
+      bilingualHighlightedIndex = -1
+      rimeUpdate()
+      return true
+    }
+
+    guard bilingualTranslationMode else { return nil }
+    let presented = NSApp.squirrelAppDelegate.panel?.candidateSnapshot
+    if event.keyCode == UInt16(kVK_Escape) {
+      bilingualTranslationMode = false
+      bilingualHighlightedIndex = -1
+      rimeUpdate()
+      return true
+    }
+    let commitKey = NSApp.squirrelAppDelegate.activeSettingsDocument?
+      .english.translationCommitKey ?? .enter
+    let commitsTranslation = switch commitKey {
+    case .enter:
+      (event.keyCode == UInt16(kVK_Return) ||
+        event.keyCode == UInt16(kVK_ANSI_KeypadEnter)) && shortcutModifiers.isEmpty
+    case .space:
+      event.keyCode == UInt16(kVK_Space) && shortcutModifiers.isEmpty
+    }
+    if commitsTranslation {
+      guard let presented,
+        presented.items.indices.contains(bilingualHighlightedIndex)
+      else { return true }
+      return selectCandidate(
+        absoluteIndex: presented.items[bilingualHighlightedIndex].absoluteIndex)
+    }
+    if shortcutModifiers.isEmpty,
+      let digit = event.charactersIgnoringModifiers?.first?.wholeNumberValue,
+      (1...9).contains(digit),
+      let presented,
+      presented.items.indices.contains(digit - 1) {
+      return selectCandidate(absoluteIndex: presented.items[digit - 1].absoluteIndex)
+    }
+    if [UInt16(kVK_LeftArrow), UInt16(kVK_UpArrow)].contains(event.keyCode) {
+      guard let presented, !presented.items.isEmpty else { return true }
+      bilingualHighlightedIndex = max(0, bilingualHighlightedIndex - 1)
+      rimeUpdate()
+      return true
+    }
+    if [UInt16(kVK_RightArrow), UInt16(kVK_DownArrow)].contains(event.keyCode) {
+      guard let presented, !presented.items.isEmpty else { return true }
+      bilingualHighlightedIndex = min(
+        presented.items.count - 1, bilingualHighlightedIndex + 1)
+      rimeUpdate()
+      return true
+    }
+
+    // Any other key resumes ordinary Rime composition from the unchanged
+    // source state before the key is processed.
+    bilingualTranslationMode = false
+    bilingualHighlightedIndex = -1
+    return nil
+  }
+
+  private func projectTranslationCandidates(
+    from source: CandidateSnapshot
+  ) -> CandidateSnapshot {
+    var items: [CandidateItem] = []
+    items.reserveCapacity(min(9, source.items.count * 2))
+    for sourceItem in source.items {
+      let translations = LinnetCandidatePresentation
+        .candidateComment(sourceItem.comment).translations
+      for (alternativeIndex, translation) in translations.enumerated() {
+        guard items.count < 9 else { break }
+        items.append(.init(
+          absoluteIndex: 1_000_000 + sourceItem.absoluteIndex * 4 + alternativeIndex,
+          page: 0,
+          indexOnPage: items.count,
+          text: translation,
+          comment: sourceItem.text,
+          selectionLabel: String(items.count + 1),
+          sourceAbsoluteIndex: sourceItem.absoluteIndex,
+          commitOverride: translation,
+          emphasizesPrimaryText: true))
+      }
+      if items.count == 9 { break }
+    }
+    if bilingualHighlightedIndex < 0 {
+      let highlightedSource = source.items.indices.contains(source.highlightedItemIndex)
+        ? source.items[source.highlightedItemIndex].absoluteIndex : nil
+      bilingualHighlightedIndex = items.firstIndex {
+        $0.sourceAbsoluteIndex == highlightedSource
+      } ?? 0
+    }
+    bilingualHighlightedIndex = min(
+      max(0, bilingualHighlightedIndex), max(0, items.count - 1))
+    return .init(
+      items: items,
+      currentPage: 0,
+      pageSize: items.count,
+      highlightedItemIndex: bilingualHighlightedIndex,
+      isLastPage: true,
+      canExpand: false,
+      isExpanded: false)
+  }
+
+  func commit(string: String, to targetClient: IMKTextInput?) {
     guard let targetClient else { return }
     let forceMarkedText =
       sessionIsCurrent() &&

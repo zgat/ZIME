@@ -2,8 +2,9 @@ import Carbon
 import Foundation
 
 enum SquirrelApp {
-  static let bundleIdentifier = "io.github.ares-x.inputmethod.Linnet"
-  static let appDir = URL(fileURLWithPath: "/tmp/Linnet.app", isDirectory: true)
+  static let bundleIdentifier = "com.zime.inputmethod.ZIME"
+  static let primaryInputSourceIdentifier = "com.zime.inputmethod.ZIME.Hans"
+  static let appDir = URL(fileURLWithPath: "/tmp/ZIME.app", isDirectory: true)
 }
 
 @main
@@ -30,11 +31,11 @@ struct LinnetInputSourceLifecycleTests {
 
   static func main() {
     let identifier = SquirrelApp.bundleIdentifier
-    let home = URL(fileURLWithPath: "/Users/linnet-fixture", isDirectory: true)
+    let home = URL(fileURLWithPath: "/Users/zime-fixture", isDirectory: true)
     let installed = home.appending(
-      path: "Library/Input Methods/Linnet.app", directoryHint: .isDirectory)
+      path: "Library/Input Methods/ZIME.app", directoryHint: .isDirectory)
     let cachedBuild = home.appending(
-      path: "Library/Caches/build/Debug/Linnet.app", directoryHint: .isDirectory)
+      path: "Library/Caches/build/Debug/ZIME.app", directoryHint: .isDirectory)
     guard SquirrelInstaller.hostMayStartRuntime(
       bundleURL: installed, homeDirectory: home)
     else { fatalError("the canonical installed Host was rejected") }
@@ -42,6 +43,21 @@ struct LinnetInputSourceLifecycleTests {
       bundleURL: cachedBuild, homeDirectory: home)
     else { fatalError("a cached development Host could access the production runtime") }
     let matchingSource = source(identifier: identifier, bundleIdentifier: identifier)
+    let modeSource = LinnetInputSourceRegistration.Source(
+      identifier: SquirrelApp.primaryInputSourceIdentifier,
+      bundleIdentifier: identifier,
+      category: kTISCategoryKeyboardInputSource as String,
+      type: kTISTypeKeyboardInputMode as String,
+      isEnableCapable: true,
+      isSelectCapable: true,
+      isEnabled: true,
+      isSelected: false)
+    guard LinnetInputSourceRegistration.classify(
+      [modeSource],
+      identifier: SquirrelApp.primaryInputSourceIdentifier,
+      bundleIdentifier: identifier,
+      type: kTISTypeKeyboardInputMode as String) == .enabledObservation
+    else { fatalError("the primary ZIME mode was not accepted") }
     guard LinnetInputSourceRegistration.classify([], identifier: identifier) == .missing else {
       fatalError("zero matching sources did not classify as missing")
     }

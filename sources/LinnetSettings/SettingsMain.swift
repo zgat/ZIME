@@ -1,7 +1,7 @@
 //
 //  SettingsMain.swift
 //  Native, offline settings surface embedded in the input-method bundle.
-//  The window has four tabs: Appearance, Input, Dictionary, and Data & Updates.
+//  The window has four tabs: Appearance, Input, Dictionary, and Local Data.
 //  Smart English belongs to the Input tab.
 //  Theme, typeface, and size are published immediately. Candidate count,
 //  layouts, input, English, and personal-data changes remain explicit Apply
@@ -129,7 +129,8 @@ final class SettingsModel: ObservableObject {
     configuration = initialConfiguration
     personalValidation = .valid(initialConfiguration.personalDraft)
     legacyImportState = .unavailable
-    cloudSyncEnabled = LinnetSettingsContract.cloudSyncEnabled(startingAt: bundle)
+    // ZIME 1.x is local-only even if an inherited preference is present.
+    cloudSyncEnabled = false
     schedulePersonalValidation()
     updateObservation = updateChecker.objectWillChange.sink { [weak self] _ in
       self?.objectWillChange.send()

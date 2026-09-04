@@ -22,6 +22,11 @@ enum LinnetSettingsContract {
     case ziguang
     case jiajia
 
+    /// ZIME 1.x deliberately exposes one Chinese keyboard: full pinyin.
+    /// Retired Linnet cases remain decodable so an existing local document can
+    /// migrate without losing personal data.
+    static let selectableCases: [Self] = [.fullPinyin]
+
     var schemaID: String {
       switch self {
       case .natural: "linnet_zh"
@@ -498,7 +503,8 @@ enum LinnetInputSourceSelection: Equatable, Sendable {
     guard let currentIdentifier, !currentIdentifier.isEmpty else {
       return .unknown
     }
-    return currentIdentifier == linnetIdentifier ? .linnet : .other
+    return currentIdentifier == linnetIdentifier ||
+      currentIdentifier.hasPrefix(linnetIdentifier + ".") ? .linnet : .other
   }
 }
 

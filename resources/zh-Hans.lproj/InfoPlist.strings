@@ -1,2 +1,4 @@
-"CFBundleDisplayName" = "Linnet";
-"CFBundleName" = "Linnet";
+"CFBundleDisplayName" = "ZIME";
+"CFBundleName" = "ZIME";
+"com.zime.inputmethod.ZIME.Hans" = "ZIME 简体中文";
+"com.zime.inputmethod.ZIME.Hant" = "ZIME 繁体中文";

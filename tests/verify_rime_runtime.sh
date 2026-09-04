@@ -10,7 +10,8 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 cd "${repo_root}"
 
 runtime_probe="${1:-}"
-if [[ "${1:-}" == --mixed-input-probe ||
+if [[ "${1:-}" == --zime-bilingual-probe ||
+      "${1:-}" == --mixed-input-probe ||
       "${1:-}" == --mixed-latency-probe ||
       "${1:-}" == --warm-session-probe ||
       "${1:-}" == --cold-client-probe ||
@@ -19,7 +20,7 @@ if [[ "${1:-}" == --mixed-input-probe ||
       "${1:-}" == --live-sync-probe ]]; then
   :
 elif [[ $# -ne 0 ]]; then
-  echo "usage: $0 [--mixed-input-probe|--mixed-latency-probe|--warm-session-probe|--cold-client-probe|--profile-key-matrix-probe|--fast-config-reload-probe|--live-sync-probe]" >&2
+  echo "usage: $0 [--zime-bilingual-probe|--mixed-input-probe|--mixed-latency-probe|--warm-session-probe|--cold-client-probe|--profile-key-matrix-probe|--fast-config-reload-probe|--live-sync-probe]" >&2
   exit 64
 fi
 
@@ -69,8 +70,8 @@ ruby -e '
   stale = "    zz_code_token: \"^(?:(?:/|~).*|(?:www[.]|https?:|ftp[.:]|mailto:|file:).*)$\"\n"
   current_shift = "    Shift_L: commit_code\n    Shift_R: commit_code\n"
   stale_shift = "    Shift_L: commit_text\n    Shift_R: commit_text\n"
-  current_schemas = "  - schema: linnet_zh_pinyin\n  - schema: linnet_zh\n"
-  stale_schemas = "  - schema: linnet_zh\n  - schema: linnet_zh_pinyin\n"
+  current_schemas = "  - schema: linnet_zh_pinyin\n  - schema: linnet_en\n"
+  stale_schemas = "  - schema: linnet_en\n  - schema: linnet_zh_pinyin\n"
   abort "Core compile placeholder is missing" unless source.scan(placeholder).length == 1
   abort "current Shift policy is missing" unless source.scan(current_shift).length == 1
   abort "current schema order is missing" unless source.scan(current_schemas).length == 1

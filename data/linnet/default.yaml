@@ -8,13 +8,6 @@ config_version: "2026.08.25"
 
 schema_list:
   - schema: linnet_zh_pinyin
-  - schema: linnet_zh
-  - schema: linnet_zh_flypy
-  - schema: linnet_zh_mspy
-  - schema: linnet_zh_sogou
-  - schema: linnet_zh_abc
-  - schema: linnet_zh_ziguang
-  - schema: linnet_zh_jiajia
   - schema: linnet_en
 
 # ── Menu ────────────────────────────────────────────────────────────────────

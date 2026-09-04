@@ -60,17 +60,20 @@ struct SettingsContractTests {
 
   private static func testCoreActivationGate() {
     guard LinnetInputSourceSelection.classify(
-      currentIdentifier: "io.github.ares-x.inputmethod.Linnet",
-      linnetIdentifier: "io.github.ares-x.inputmethod.Linnet") == .linnet,
+      currentIdentifier: "com.zime.inputmethod.ZIME",
+      linnetIdentifier: "com.zime.inputmethod.ZIME") == .linnet,
+      LinnetInputSourceSelection.classify(
+        currentIdentifier: "com.zime.inputmethod.ZIME.Hant",
+        linnetIdentifier: "com.zime.inputmethod.ZIME") == .linnet,
       LinnetInputSourceSelection.classify(
         currentIdentifier: "unrelated.example",
-        linnetIdentifier: "io.github.ares-x.inputmethod.Linnet") == .other,
+        linnetIdentifier: "com.zime.inputmethod.ZIME") == .other,
       LinnetInputSourceSelection.classify(
         currentIdentifier: nil,
-        linnetIdentifier: "io.github.ares-x.inputmethod.Linnet") == .unknown,
+        linnetIdentifier: "com.zime.inputmethod.ZIME") == .unknown,
       LinnetInputSourceSelection.classify(
         currentIdentifier: "",
-        linnetIdentifier: "io.github.ares-x.inputmethod.Linnet") == .unknown
+        linnetIdentifier: "com.zime.inputmethod.ZIME") == .unknown
     else {
       fail("optional HIToolbox evidence no longer preserves an unknown state")
     }

@@ -37,6 +37,8 @@ class SmartEnglishIndex {
   bool LookupMetadata(const std::string& displayed_word,
                       const std::string& source_word,
                       SmartEnglishMetadata* result) const;
+  std::vector<SmartEnglishWord> LookupEnglishTranslations(
+      const std::string& chinese) const;
   std::map<std::string, std::size_t> LookupStaticOrdinals(const std::string& validated_key) const;
 
  private:

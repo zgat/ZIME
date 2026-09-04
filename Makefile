@@ -248,7 +248,8 @@ endef
 
 define build-linnet-app
 	@set -e; set -o pipefail; \
-	app_path="$(LOCAL_DERIVED_DATA_PATH)/Build/Products/$(1)/Linnet.app"; \
+	product_name="$$(sed -n 's/^LINNET_PRODUCT_NAME = //p' config/LinnetProduct.xcconfig)"; \
+	app_path="$(LOCAL_DERIVED_DATA_PATH)/Build/Products/$(1)/$${product_name}.app"; \
 	settings_app_path="$(LOCAL_DERIVED_DATA_PATH)/Build/Products/$(1)/Settings.app"; \
 	embedded_settings_app_path="$${app_path}/Contents/Applications/Settings.app"; \
 	build_stamp="$(LOCAL_DERIVED_DATA_PATH)/Build/Products/$(1)/.linnet-build-complete"; \

@@ -67,10 +67,8 @@ constexpr char kCandidateExpansionRequestProperty[] =
     "linnet/candidate_expansion_request_v1";
 constexpr char kForcedRawCandidateType[] = "linnet_forced_raw";
 constexpr char kDefaultPinyinReversePrefix[] = "|";
-constexpr std::array<const char*, 9> kProductSchemaIDs = {
-    "linnet_zh_pinyin",  "linnet_zh",         "linnet_zh_flypy",
-    "linnet_zh_mspy",    "linnet_zh_sogou",   "linnet_zh_abc",
-    "linnet_zh_ziguang", "linnet_zh_jiajia",  "linnet_en",
+constexpr std::array<const char*, 2> kProductSchemaIDs = {
+    "linnet_zh_pinyin", "linnet_en",
 };
 constexpr std::array<const char*, 7> kDoublePinyinSchemaIDs = {
     "linnet_zh",       "linnet_zh_flypy",  "linnet_zh_mspy",
@@ -1744,6 +1742,31 @@ RimeSessionId CreateSchemaSession(RimeApi_stdbool* api,
   return session;
 }
 
+void ExpectZIMEBilingualCandidateContract(RimeApi_stdbool* api) {
+  const std::string english_definition_marker(1, '\x1d');
+  const std::string reverse_definition_marker(1, '\x1e');
+
+  const RimeSessionId chinese =
+      CreateSchemaSession(api, "linnet_zh_pinyin");
+  ExpectCommentContains(api, chinese, "nihao", "你好",
+                        reverse_definition_marker, "hello");
+  ExpectCandidate(api, chinese, "zhongguo", "中国");
+  // Full pinyin owns both initial-only abbreviations and conservative
+  // adjacent-letter typo spellings.
+  ExpectCandidate(api, chinese, "nh", "你好");
+  ExpectCandidate(api, chinese, "nihoa", "你好");
+  api->destroy_session(chinese);
+
+  const RimeSessionId english = CreateSchemaSession(api, "linnet_en");
+  ExpectCommentContains(api, english, "work", "work",
+                        english_definition_marker, "工作");
+  ExpectCommentContains(api, english, "asap", "asap",
+                        english_definition_marker, "越快越好");
+  ExpectNormalizedCandidate(api, english, "cluod", "cloud");
+  ExpectNormalizedCandidate(api, english, "earlyaccess", "early access");
+  api->destroy_session(english);
+}
+
 std::string AbbreviatedModeLabel(RimeApi_stdbool* api,
                                  RimeSessionId session,
                                  bool ascii_mode) {
@@ -2211,7 +2234,7 @@ void ExpectSchemaList(RimeApi_stdbool* api) {
   std::sort(expected.begin(), expected.end());
   valid = valid && actual == expected;
   if (!valid) {
-    Fail("product schema list is not the exact Linnet profile set");
+    Fail("product schema list is not the exact ZIME full-pinyin set");
   }
 }
 
@@ -6869,6 +6892,8 @@ int main(int argc, char** argv) {
       std::strcmp(argv[3], "--prediction-punctuation-probe") == 0;
   const bool mixed_input_probe =
       argc == 4 && std::strcmp(argv[3], "--mixed-input-probe") == 0;
+  const bool zime_bilingual_probe =
+      argc == 4 && std::strcmp(argv[3], "--zime-bilingual-probe") == 0;
   const bool mixed_learning_on_probe =
       argc == 4 &&
       std::strcmp(argv[3], "--mixed-learning-on-probe") == 0;
@@ -6887,7 +6912,7 @@ int main(int argc, char** argv) {
       !lifecycle_raw_exit_probe &&
       !page_size_probe && !english_profile_probe &&
       !fast_config_reload_probe && !prediction_punctuation_probe &&
-      !mixed_input_probe &&
+      !mixed_input_probe && !zime_bilingual_probe &&
       !mixed_learning_on_probe &&
       !mixed_learning_off_probe &&
       !mixed_latency_probe && !warm_session_probe && !cold_client_probe && !live_sync_probe) {
@@ -6898,7 +6923,7 @@ int main(int argc, char** argv) {
          "--page-size-probe EXPECTED|"
          "--english-profile-probe PROFILE CHINESE_SCHEMA CODE PREFIX|"
          "--fast-config-reload-probe|--prediction-punctuation-probe|"
-         "--mixed-input-probe|"
+         "--mixed-input-probe|--zime-bilingual-probe|"
          "--mixed-learning-on-probe|"
          "--mixed-learning-off-probe|"
          "--mixed-latency-probe|--warm-session-probe|--cold-client-probe]");
@@ -6958,6 +6983,13 @@ int main(int argc, char** argv) {
     expected_fresh_schema = "linnet_zh_jiajia";
   }
   ExpectFreshDefaultSchema(api, expected_fresh_schema);
+
+  if (zime_bilingual_probe) {
+    ExpectZIMEBilingualCandidateContract(api);
+    api->finalize();
+    std::cout << "rime_smoke_test: ZIME bilingual candidate contract: PASS\n";
+    return 0;
+  }
 
   if (fast_config_reload_probe) {
     // Production startup has already loaded the deployer module through its

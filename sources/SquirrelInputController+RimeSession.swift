@@ -18,6 +18,9 @@ extension SquirrelInputController {
     let text: String
     let comment: String
     let selectionLabel: String?
+    var sourceAbsoluteIndex: Int? = nil
+    var commitOverride: String? = nil
+    var emphasizesPrimaryText = false
   }
 
   struct CandidateSnapshot: Equatable {
@@ -36,9 +39,30 @@ extension SquirrelInputController {
       sessionIsCurrent(),
       absoluteIndex >= 0
     else { return false }
-    let success = rimeAPI.select_candidate(session, absoluteIndex)
+    let presentedItem = NSApp.squirrelAppDelegate.panel?.candidateSnapshot?.items
+      .first { $0.absoluteIndex == absoluteIndex }
+    let sourceAbsoluteIndex = presentedItem?.sourceAbsoluteIndex ?? absoluteIndex
+    let commitOverride = presentedItem?.commitOverride
+    if commitOverride != nil {
+      pendingCommitOverride = commitOverride
+      bilingualTranslationMode = false
+    }
+    let success = rimeAPI.select_candidate(session, sourceAbsoluteIndex)
     if success {
       rimeUpdate()
+      // A partial Rime selection may not publish a commit. Translation rows
+      // represent complete local dictionary senses, so finish that selection
+      // directly while still letting Rime observe the chosen source candidate.
+      if let pendingCommitOverride {
+        self.pendingCommitOverride = nil
+        rimeAPI.clear_composition(session)
+        commit(string: pendingCommitOverride, to: activeClient)
+        bilingualSourceSnapshot = nil
+        bilingualHighlightedIndex = -1
+        NSApp.squirrelAppDelegate.panel?.hide(controller: self)
+      }
+    } else if commitOverride != nil {
+      pendingCommitOverride = nil
     }
     return success
   }

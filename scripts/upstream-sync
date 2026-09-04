@@ -243,6 +243,7 @@ def load_lock
       require_string(dependency, "license_path") == path
     require_string(dependency, "license_sha256", SHA256)
   end
+  require_string(static_dependencies.fetch("yaml-cpp"), "tree", SHA1)
   fail_lock("marisa distribution must select its BSD branch") unless
     require_string(static_dependencies.fetch("marisa-trie"), "license_concluded") ==
       "BSD-2-Clause"
@@ -292,6 +293,7 @@ def load_lock
     fail_lock("plugin ref must be a review branch for #{name}") unless
       plugin_ref.start_with?("refs/heads/")
     require_string(plugin, "commit", SHA1)
+    require_string(plugin, "tree", SHA1)
     fail_lock("unexpected source directory for #{name}") unless
       require_string(plugin, "source_dir") == expected_plugin_dirs.fetch(name)
   end
@@ -337,6 +339,7 @@ def load_lock
     lua_thirdparty.fetch("repository") == plugins.fetch("lua").fetch("repository")
   require_string(lua_thirdparty, "ref")
   require_string(lua_thirdparty, "commit", SHA1)
+  require_string(lua_thirdparty, "tree", SHA1)
   fail_lock("unexpected Lua third-party source directory") unless
     require_string(lua_thirdparty, "source_dir") == "thirdparty"
   fail_lock("unexpected embedded Lua version") unless

@@ -123,6 +123,19 @@ an<Candidate> ProjectSmartEnglishCandidate(
                     : translation.empty() ? ipa : ipa + " · " + translation;
     }
   }
+  const auto chinese_phrase = As<Phrase>(genuine);
+  if (!raw && options.show_translation && chinese_phrase &&
+      chinese_phrase->language() &&
+      chinese_phrase->language()->name() == "linnet_zh") {
+    const auto translations = index.LookupEnglishTranslations(genuine->text());
+    if (!translations.empty()) {
+      comment.assign(1, kReverseDefinitionCommentPrefix);
+      for (std::size_t ordinal = 0; ordinal < translations.size(); ++ordinal) {
+        if (ordinal > 0) comment.push_back(kDefinitionAlternativeSeparator);
+        comment += translations[ordinal].text;
+      }
+    }
+  }
   if (IsSmartEnglishCandidateOrigin(candidate) &&
       (options.show_ipa || options.show_translation) &&
       (comment.empty() || comment.front() != kDefinitionCommentPrefix)) {

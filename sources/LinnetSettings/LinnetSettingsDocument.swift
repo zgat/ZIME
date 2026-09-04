@@ -8,11 +8,11 @@
 
 import Foundation
 
-/// Canonical settings document (schema v11). Every default below matches the
+/// Canonical settings document (schema v12). Every default below matches the
 /// bundled distribution defaults, so a fresh install renders an identical
 /// configuration without emitting any projection file.
 struct LinnetSettingsDocument: Codable, Equatable, Sendable {
-  static let currentSchemaVersion = 11
+  static let currentSchemaVersion = 12
 
   var schemaVersion: Int
   var appearance: Appearance
@@ -111,6 +111,16 @@ extension LinnetSettingsDocument {
     case pass
     case navigate
     case smartComplete = "smart_complete"
+  }
+
+  enum TranslationToggleKey: String, Codable, CaseIterable, Sendable {
+    case tab
+    case optionReturn = "option_return"
+  }
+
+  enum TranslationCommitKey: String, Codable, CaseIterable, Sendable {
+    case enter
+    case space
   }
 
   /// One product-level choice owns the two Rime learning switches. Keeping
@@ -381,6 +391,8 @@ extension LinnetSettingsDocument {
     var predictionEnabled: Bool
     var learnFromSelections: Bool
     var spaceAddsTrailingSpace: Bool
+    var translationToggleKey: TranslationToggleKey
+    var translationCommitKey: TranslationCommitKey
 
     static let `default` = English(
       sentenceCapitalization: false,
@@ -389,7 +401,9 @@ extension LinnetSettingsDocument {
       showTranslation: true,
       predictionEnabled: true,
       learnFromSelections: true,
-      spaceAddsTrailingSpace: true
+      spaceAddsTrailingSpace: true,
+      translationToggleKey: .tab,
+      translationCommitKey: .enter
     )
 
     init(
@@ -399,7 +413,9 @@ extension LinnetSettingsDocument {
       showTranslation: Bool = true,
       predictionEnabled: Bool = true,
       learnFromSelections: Bool = true,
-      spaceAddsTrailingSpace: Bool = true
+      spaceAddsTrailingSpace: Bool = true,
+      translationToggleKey: TranslationToggleKey = .tab,
+      translationCommitKey: TranslationCommitKey = .enter
     ) {
       self.sentenceCapitalization = sentenceCapitalization
       self.tabBehavior = tabBehavior
@@ -408,6 +424,8 @@ extension LinnetSettingsDocument {
       self.predictionEnabled = predictionEnabled
       self.learnFromSelections = learnFromSelections
       self.spaceAddsTrailingSpace = spaceAddsTrailingSpace
+      self.translationToggleKey = translationToggleKey
+      self.translationCommitKey = translationCommitKey
     }
 
     init(from decoder: Decoder) throws {
@@ -425,6 +443,12 @@ extension LinnetSettingsDocument {
         try container.decodeIfPresent(Bool.self, forKey: .learnFromSelections) ?? true
       spaceAddsTrailingSpace =
         try container.decodeIfPresent(Bool.self, forKey: .spaceAddsTrailingSpace) ?? true
+      translationToggleKey =
+        try container.decodeIfPresent(TranslationToggleKey.self, forKey: .translationToggleKey)
+        ?? .tab
+      translationCommitKey =
+        try container.decodeIfPresent(TranslationCommitKey.self, forKey: .translationCommitKey)
+        ?? .enter
     }
   }
 
@@ -463,6 +487,7 @@ extension LinnetSettingsDocument {
   func normalized() -> LinnetSettingsDocument {
     var result = self
     result.schemaVersion = Self.currentSchemaVersion
+    result.input.chineseProfile = .fullPinyin
     result.appearance.fontPoint = Self.Appearance.clampFontPoint(appearance.fontPoint)
     if !Self.Appearance.pageSizeOptions.contains(result.appearance.pageSize) {
       result.appearance.pageSize = Self.Appearance.defaultPageSize

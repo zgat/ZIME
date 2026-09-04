@@ -35,14 +35,17 @@ enum LinnetRimeCandidateSnapshotBuilder {
     compactItems.reserveCapacity(currentCount)
     for indexOnPage in 0..<currentCount {
       let candidate = context.menu.candidates[indexOnPage]
+      let rawComment = candidate.comment.map { String(cString: $0) } ?? ""
       compactItems.append(.init(
         absoluteIndex: currentPageStart + indexOnPage,
         page: currentPage,
         indexOnPage: indexOnPage,
         text: candidate.text.map { String(cString: $0) } ?? "",
-        comment: candidate.comment.map { String(cString: $0) } ?? "",
+        comment: rawComment,
         selectionLabel: LinnetCandidatePresentation.candidateSelectionLabel(
-          at: indexOnPage, labels: labels)
+          at: indexOnPage, labels: labels),
+        emphasizesPrimaryText:
+          !LinnetCandidatePresentation.candidateComment(rawComment).translations.isEmpty
       ))
     }
     let compact = SquirrelInputController.CandidateSnapshot(
@@ -75,15 +78,18 @@ enum LinnetRimeCandidateSnapshotBuilder {
       guard expandedBounds.contains(absoluteIndex) else { break }
       let page = absoluteIndex / pageSize
       let indexOnPage = absoluteIndex % pageSize
+      let rawComment = iterator.candidate.comment.map { String(cString: $0) } ?? ""
       expandedItems.append(.init(
         absoluteIndex: absoluteIndex,
         page: page,
         indexOnPage: indexOnPage,
         text: iterator.candidate.text.map { String(cString: $0) } ?? "",
-        comment: iterator.candidate.comment.map { String(cString: $0) } ?? "",
+        comment: rawComment,
         selectionLabel: page == currentPage
           ? LinnetCandidatePresentation.candidateSelectionLabel(
-            at: indexOnPage, labels: labels) : nil
+            at: indexOnPage, labels: labels) : nil,
+        emphasizesPrimaryText:
+          !LinnetCandidatePresentation.candidateComment(rawComment).translations.isEmpty
       ))
     }
     let highlightedAbsolute = currentPageStart + highlightedOnPage

@@ -50,6 +50,7 @@ final class SquirrelApplicationDelegate: NSObject, NSApplicationDelegate {
   var statusItem: NSStatusItem?
   var currentModeLabel = "中"
   var activeSettingsRevision: String?
+  var activeSettingsDocument: LinnetSettingsDocument?
   var activeDataTransaction: ActiveDataTransaction?
   var transactionMonitor: DispatchSourceTimer?
   var staleSessionCleaner: Timer?
@@ -77,15 +78,8 @@ final class SquirrelApplicationDelegate: NSObject, NSApplicationDelegate {
   var runtimeDataSnapshot: LinnetDataRegistry.RuntimeSnapshot?
   lazy var rimeSyncController = LinnetRimeSyncController(
     loadConfiguration: {
-      let syncDirectory: URL?
-      if LinnetSettingsContract.cloudSyncEnabled() {
-        syncDirectory = try LinnetCloudSyncLocation.productLocation()
-          .prepareLearningDirectory()
-      } else {
-        syncDirectory = nil
-      }
       return .init(
-        syncDirectory: syncDirectory,
+        syncDirectory: nil,
         lastAttempt: LinnetSettingsContract.cloudSyncLastAttempt())
     },
     recordAttempt: { LinnetSettingsContract.setCloudSyncLastAttempt($0) },

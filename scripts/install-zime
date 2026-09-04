@@ -1,0 +1,124 @@
+#!/bin/zsh
+
+set -euo pipefail
+
+script_dir="${0:A:h}"
+source_app="${1:-${script_dir}/ZIME.app}"
+source_data="${script_dir}/ZIME-Data"
+install_root="${HOME}/Library/Input Methods"
+installed_app="${install_root}/ZIME.app"
+support_parent="${HOME}/Library/Application Support"
+installed_data="${support_parent}/ZIME"
+
+fail_install() {
+  print -u2 "install-zime: $1"
+  exit 1
+}
+
+[[ "${source_app}" == /* ]] || source_app="${PWD}/${source_app}"
+[[ -d "${source_app}" && ! -L "${source_app}" ]] ||
+  fail_install "ZIME.app is missing or unsafe: ${source_app}"
+[[ -f "${source_app}/Contents/Info.plist" &&
+   -x "${source_app}/Contents/MacOS/ZIME" ]] ||
+  fail_install "ZIME.app is incomplete"
+
+bundle_id="$(/usr/bin/plutil -extract CFBundleIdentifier raw -o - \
+  "${source_app}/Contents/Info.plist")"
+[[ "${bundle_id}" == "com.zime.inputmethod.ZIME" ]] ||
+  fail_install "unexpected bundle identifier: ${bundle_id}"
+[[ "$(/usr/bin/lipo -archs "${source_app}/Contents/MacOS/ZIME")" == "arm64" ]] ||
+  fail_install "this build is not the required Apple-silicon arm64 build"
+/usr/bin/codesign --verify --deep --strict "${source_app}" 2>/dev/null ||
+  fail_install "the App code signature is invalid"
+[[ -d "${source_data}/Data/Packs" && ! -L "${source_data}/Data" &&
+   -d "${source_data}/Runtime/Active" && ! -L "${source_data}/Runtime" &&
+   -f "${source_data}/Runtime/Active/activation.json" ]] ||
+  fail_install "the complete offline ZIME-Data payload is missing"
+
+/bin/mkdir -p "${install_root}"
+[[ -d "${install_root}" && ! -L "${install_root}" ]] ||
+  fail_install "the per-user Input Methods directory is unsafe"
+
+stage_root="$(/usr/bin/mktemp -d "${install_root}/.zime-install.XXXXXX")"
+backup_app="${install_root}/.ZIME.app.previous.$$"
+/bin/mkdir -p "${support_parent}"
+[[ -d "${support_parent}" && ! -L "${support_parent}" ]] ||
+  fail_install "the Application Support directory is unsafe"
+if [[ ! -e "${installed_data}" && ! -L "${installed_data}" ]]; then
+  /bin/mkdir -m 700 "${installed_data}"
+fi
+[[ -d "${installed_data}" && ! -L "${installed_data}" ]] ||
+  fail_install "the ZIME Application Support root is unsafe"
+data_stage_root="$(/usr/bin/mktemp -d "${installed_data}/.data-install.XXXXXX")"
+backup_data="${installed_data}/.Data.previous.$$"
+backup_runtime="${installed_data}/.Runtime.previous.$$"
+cleanup() {
+  if [[ "${stage_root}" == "${install_root}/.zime-install."* &&
+        -d "${stage_root}" && ! -L "${stage_root}" ]]; then
+    /bin/rm -rf -- "${stage_root}"
+  fi
+  if [[ "${data_stage_root}" == "${installed_data}/.data-install."* &&
+        -d "${data_stage_root}" && ! -L "${data_stage_root}" ]]; then
+    /bin/rm -rf -- "${data_stage_root}"
+  fi
+}
+trap cleanup EXIT INT TERM HUP
+
+/usr/bin/ditto "${source_app}" "${stage_root}/ZIME.app"
+/usr/bin/codesign --verify --deep --strict "${stage_root}/ZIME.app"
+/usr/bin/ditto "${source_data}/Data" "${data_stage_root}/Data"
+/usr/bin/ditto "${source_data}/Runtime" "${data_stage_root}/Runtime"
+
+/usr/bin/pkill -x ZIME 2>/dev/null || true
+for name in Data Runtime; do
+  current="${installed_data}/${name}"
+  backup="${installed_data}/.${name}.previous.$$"
+  if [[ -e "${current}" || -L "${current}" ]]; then
+    [[ -d "${current}" && ! -L "${current}" ]] ||
+      fail_install "the existing ${name} data is unsafe"
+    /bin/mv "${current}" "${backup}"
+  fi
+done
+if ! /bin/mv "${data_stage_root}/Data" "${installed_data}/Data" ||
+   ! /bin/mv "${data_stage_root}/Runtime" "${installed_data}/Runtime"; then
+  [[ -e "${installed_data}/Data" ]] && /bin/rm -rf -- "${installed_data}/Data"
+  [[ -e "${installed_data}/Runtime" ]] && /bin/rm -rf -- "${installed_data}/Runtime"
+  [[ -d "${backup_data}" && ! -L "${backup_data}" ]] &&
+    /bin/mv "${backup_data}" "${installed_data}/Data"
+  [[ -d "${backup_runtime}" && ! -L "${backup_runtime}" ]] &&
+    /bin/mv "${backup_runtime}" "${installed_data}/Runtime"
+  fail_install "could not publish the offline language data"
+fi
+[[ -d "${backup_data}" && ! -L "${backup_data}" ]] && /bin/rm -rf -- "${backup_data}"
+[[ -d "${backup_runtime}" && ! -L "${backup_runtime}" ]] &&
+  /bin/rm -rf -- "${backup_runtime}"
+
+if [[ -e "${installed_app}" || -L "${installed_app}" ]]; then
+  [[ -d "${installed_app}" && ! -L "${installed_app}" ]] ||
+    fail_install "the existing ZIME.app is not a regular App directory"
+  [[ ! -e "${backup_app}" && ! -L "${backup_app}" ]] ||
+    fail_install "temporary backup path already exists"
+  /bin/mv "${installed_app}" "${backup_app}"
+fi
+
+if ! /bin/mv "${stage_root}/ZIME.app" "${installed_app}"; then
+  if [[ -d "${backup_app}" && ! -L "${backup_app}" &&
+        ! -e "${installed_app}" ]]; then
+    /bin/mv "${backup_app}" "${installed_app}"
+  fi
+  fail_install "could not publish ZIME.app"
+fi
+
+if [[ -d "${backup_app}" && ! -L "${backup_app}" ]]; then
+  /bin/rm -rf -- "${backup_app}"
+fi
+
+if ! "${installed_app}/Contents/MacOS/ZIME" \
+    --request-first-install-authorization; then
+  print -u2 "ZIME was installed, but macOS did not complete input-source authorization."
+  print -u2 "Log out and back in, then add ZIME in System Settings > Keyboard > Input Sources."
+  exit 1
+fi
+
+print "ZIME was installed for the current user."
+print "Add ZIME 简体中文 or ZIME 繁體中文 in System Settings > Keyboard > Input Sources."

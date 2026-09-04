@@ -142,7 +142,8 @@
         "yaml-cpp": {
           "declared_license": "MIT",
           "license_path": "LICENSE",
-          "license_sha256": "aa6fcc27be034e41e21dd832f9175bfe694a48491d9e14ff0fa278e19ad14f1b"
+          "license_sha256": "aa6fcc27be034e41e21dd832f9175bfe694a48491d9e14ff0fa278e19ad14f1b",
+          "tree": "f88e3584e8a8c454dc9224c5c842ae338e13abdf"
         }
       },
       "embedded_components": {
@@ -158,6 +159,7 @@
           "repository": "https://github.com/hchunhui/librime-lua.git",
           "ref": "refs/heads/master",
           "commit": "68f9c364a2d25a04c7d4794981d7c796b05ab627",
+          "tree": "371b85de2f2bf993abeab8cb49294a11035e2b9b",
           "source_dir": "lua",
           "declared_license": "BSD-3-Clause",
           "license_path": "LICENSE",
@@ -196,6 +198,7 @@
             "repository": "https://github.com/hchunhui/librime-lua.git",
             "ref": "refs/heads/thirdparty",
             "commit": "fa40fadd8af1e5b1fbd55703ccbd54476956d74c",
+            "tree": "9b7384dce1515294fee814e818d550cf120d5373",
             "source_dir": "thirdparty",
             "version": "5.4.8",
             "declared_license": "MIT",
@@ -207,6 +210,7 @@
           "repository": "https://github.com/lotem/librime-octagram.git",
           "ref": "refs/heads/master",
           "commit": "dfcc15115788c828d9dd7b4bff68067d3ce2ffb8",
+          "tree": "034f1500ac962e430f2c21377ef5410b4c7e64fe",
           "source_dir": "octagram",
           "declared_license": "GPL-3.0-only",
           "license_path": "LICENSE",
@@ -216,6 +220,7 @@
           "repository": "https://github.com/rime/librime-predict.git",
           "ref": "refs/heads/master",
           "commit": "920bd41ebf6f9bf6855d14fbe80212e54e749791",
+          "tree": "06057feb7690190c9475ac240571f58186e0bf0f",
           "source_dir": "predict",
           "declared_license": "BSD-3-Clause",
           "license_path": "LICENSE",

@@ -353,7 +353,7 @@ extension SquirrelApplicationDelegate {
   }
 
   var requiredSchemas: [String] {
-    LinnetSettingsContract.ChineseProfile.allCases.map(\.schemaID)
+    LinnetSettingsContract.ChineseProfile.selectableCases.map(\.schemaID)
       + [LinnetSettingsContract.englishSchemaID]
   }
   func degradedHealth(

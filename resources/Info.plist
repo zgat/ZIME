@@ -2,6 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>TISInputSourceID</key>
+	<string>com.zime.inputmethod.ZIME</string>
 	<key>TISIntendedLanguage</key>
 	<string>zh-Hans</string>
 	<key>TICapsLockLanguageSwitchCapable</key>
@@ -12,6 +14,73 @@
 	</array>
 	<key>tsInputMethodIconFileKey</key>
 	<string>linnet.pdf</string>
+	<key>ComponentInputModeDict</key>
+	<dict>
+		<key>tsInputModeListKey</key>
+		<dict>
+			<key>com.zime.inputmethod.ZIME.Hans</key>
+			<dict>
+				<key>TISInputSourceID</key>
+				<string>com.zime.inputmethod.ZIME.Hans</string>
+				<key>TISIntendedLanguage</key>
+				<string>zh-Hans</string>
+				<key>tsInputModeAlternateMenuIconFileKey</key>
+				<string>linnet.pdf</string>
+				<key>tsInputModeCharacterRepertoireKey</key>
+				<array>
+					<string>Hans</string>
+					<string>Hant</string>
+				</array>
+				<key>tsInputModeDefaultStateKey</key>
+				<true/>
+				<key>tsInputModeIsVisibleKey</key>
+				<true/>
+				<key>tsInputModeKeyEquivalentModifiersKey</key>
+				<integer>4608</integer>
+				<key>tsInputModeMenuIconFileKey</key>
+				<string>linnet.pdf</string>
+				<key>tsInputModePaletteIconFileKey</key>
+				<string>linnet.pdf</string>
+				<key>tsInputModePrimaryInScriptKey</key>
+				<true/>
+				<key>tsInputModeScriptKey</key>
+				<string>smUnicodeScript</string>
+			</dict>
+			<key>com.zime.inputmethod.ZIME.Hant</key>
+			<dict>
+				<key>TISInputSourceID</key>
+				<string>com.zime.inputmethod.ZIME.Hant</string>
+				<key>TISIntendedLanguage</key>
+				<string>zh-Hant</string>
+				<key>tsInputModeAlternateMenuIconFileKey</key>
+				<string>linnet.pdf</string>
+				<key>tsInputModeCharacterRepertoireKey</key>
+				<array>
+					<string>Hant</string>
+					<string>Hans</string>
+				</array>
+				<key>tsInputModeDefaultStateKey</key>
+				<false/>
+				<key>tsInputModeIsVisibleKey</key>
+				<true/>
+				<key>tsInputModeKeyEquivalentModifiersKey</key>
+				<integer>4608</integer>
+				<key>tsInputModeMenuIconFileKey</key>
+				<string>linnet.pdf</string>
+				<key>tsInputModePaletteIconFileKey</key>
+				<string>linnet.pdf</string>
+				<key>tsInputModePrimaryInScriptKey</key>
+				<true/>
+				<key>tsInputModeScriptKey</key>
+				<string>smUnicodeScript</string>
+			</dict>
+		</dict>
+		<key>tsVisibleInputModeOrderedArrayKey</key>
+		<array>
+			<string>com.zime.inputmethod.ZIME.Hans</string>
+			<string>com.zime.inputmethod.ZIME.Hant</string>
+		</array>
+	</dict>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>English</string>
 	<key>CFBundleExecutable</key>

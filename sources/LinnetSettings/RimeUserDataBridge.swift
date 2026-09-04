@@ -201,10 +201,10 @@ struct RimeUserDataBridge {
     guard "octagram".withCString({ rime.find_module($0) != nil }) else {
       throw Failure.moduleUnavailable("octagram")
     }
-    // Smoke every shipped schema in a stable order. The document-selected
+    // Smoke every selectable schema in a stable order. The document-selected
     // profile is owned by default.custom.yaml's schema-list projection; probing
     // it last would mutate user.yaml and create a competing selection owner.
-    let schemas = LinnetSettingsContract.ChineseProfile.allCases.map(\.schemaID)
+    let schemas = LinnetSettingsContract.ChineseProfile.selectableCases.map(\.schemaID)
       + [Self.englishSchema]
     for schema in schemas {
       try smoke(schema: schema, substitutionProbe: substitutionProbe)

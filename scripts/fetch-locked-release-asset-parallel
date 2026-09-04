@@ -1,0 +1,122 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+fail_asset() {
+  echo "fetch-locked-release-asset-parallel: $1" >&2
+  exit 1
+}
+
+[[ "$#" -eq 3 ]] || fail_asset "usage: LOCK SOURCE OUTPUT"
+lock_file="$1"
+source_path="$2"
+output="$3"
+parts="${LINNET_ASSET_DOWNLOAD_PARTS:-16}"
+
+[[ -f "${lock_file}" && ! -L "${lock_file}" ]] || fail_asset "lock is missing or unsafe"
+[[ "${source_path}" =~ ^[a-z0-9_]+(\.[a-z0-9_]+)*$ ]] ||
+  fail_asset "source path is invalid"
+[[ "${parts}" =~ ^[0-9]+$ && "${parts}" -ge 2 && "${parts}" -le 64 ]] ||
+  fail_asset "LINNET_ASSET_DOWNLOAD_PARTS must be between 2 and 64"
+[[ "${output}" == /* && ! -e "${output}" && ! -L "${output}" ]] ||
+  fail_asset "output must be one new absolute path"
+output_parent="$(cd "$(dirname "${output}")" && pwd -P)"
+[[ "${output}" == "${output_parent}/$(basename "${output}")" ]] ||
+  fail_asset "output is not canonical"
+
+lock_value() {
+  plutil -extract "sources.${source_path}.$1" raw -o - "${lock_file}" 2>/dev/null ||
+    fail_asset "missing lock value: $1"
+}
+
+repository="$(lock_value repository)"
+release="$(lock_value release)"
+asset="$(lock_value asset)"
+asset_download_url="$(lock_value asset_download_url)"
+expected_bytes="$(lock_value bytes)"
+expected_sha256="$(lock_value sha256)"
+[[ "${repository}" =~ ^https://github\.com/([^/]+/[^/]+)\.git$ ]] ||
+  fail_asset "repository is not one GitHub HTTPS Git URL"
+repository_slug="${BASH_REMATCH[1]}"
+expected_download_url="https://github.com/${repository_slug}/releases/download/${release}/${asset}"
+[[ "${asset_download_url}" == "${expected_download_url}" ]] ||
+  fail_asset "asset download URL differs from repository, release, and name"
+[[ "${expected_bytes}" =~ ^[1-9][0-9]*$ ]] || fail_asset "asset byte count is invalid"
+[[ "${expected_sha256}" =~ ^[0-9a-f]{64}$ ]] || fail_asset "asset digest is invalid"
+
+work="$(mktemp -d "${output_parent}/.$(basename "${output}").parallel.XXXXXX")"
+headers="${work}/headers"
+download="${work}/download"
+pids=()
+cleanup_asset() {
+  local status=$?
+  trap - EXIT INT TERM HUP
+  if ((${#pids[@]})); then
+    kill "${pids[@]}" 2>/dev/null || true
+    wait "${pids[@]}" 2>/dev/null || true
+  fi
+  case "${work}" in
+    "${output_parent}/.$(basename "${output}").parallel."??????)
+      chmod -R u+w "${work}" 2>/dev/null || true
+      find "${work}" -depth -delete 2>/dev/null || status=1
+      ;;
+    *) status=1 ;;
+  esac
+  exit "${status}"
+}
+trap cleanup_asset EXIT INT TERM HUP
+
+status="$(curl --silent --show-error --proto '=https' --connect-timeout 30 --max-time 60 \
+  -H 'User-Agent: ZIME-locked-release-asset' \
+  --dump-header "${headers}" --output /dev/null --write-out '%{http_code}' \
+  "${asset_download_url}")" || fail_asset "GitHub asset request failed"
+[[ "${status}" =~ ^(301|302|303|307|308)$ ]] ||
+  fail_asset "GitHub asset did not return one storage redirect"
+location="$(awk '
+  tolower(substr($0, 1, 9)) == "location:" {
+    sub(/^[^:]*:[[:space:]]*/, "")
+    sub(/\r$/, "")
+    print
+  }
+' "${headers}")"
+[[ "$(printf '%s\n' "${location}" | wc -l | tr -d '[:space:]')" == 1 ]] ||
+  fail_asset "asset response has an invalid redirect count"
+case "${location}" in
+  https://release-assets.githubusercontent.com/*) ;;
+  *) fail_asset "asset redirected outside GitHub storage" ;;
+esac
+
+chunk_size="$(((expected_bytes + parts - 1) / parts))"
+for ((index = 0; index < parts; index += 1)); do
+  start="$((index * chunk_size))"
+  ((start < expected_bytes)) || break
+  end="$((start + chunk_size - 1))"
+  ((end < expected_bytes)) || end="$((expected_bytes - 1))"
+  part="${work}/part.$(printf '%03d' "${index}")"
+  expected_part_bytes="$((end - start + 1))"
+  (
+    curl --fail --silent --show-error --proto '=https' --connect-timeout 30 --max-time 900 \
+      -H 'User-Agent: ZIME-locked-release-asset' --range "${start}-${end}" \
+      --output "${part}" "${location}"
+    [[ "$(stat -f %z "${part}")" == "${expected_part_bytes}" ]]
+  ) &
+  pids+=("$!")
+done
+for pid in "${pids[@]}"; do
+  wait "${pid}" || fail_asset "one ranged asset request failed"
+done
+pids=()
+
+: >"${download}"
+for ((index = 0; index < parts; index += 1)); do
+  part="${work}/part.$(printf '%03d' "${index}")"
+  [[ -f "${part}" ]] || break
+  /bin/cat "${part}" >>"${download}"
+done
+[[ "$(stat -f %z "${download}")" == "${expected_bytes}" ]] ||
+  fail_asset "asset byte count differs from the lock"
+actual_sha256="$(shasum -a 256 "${download}" | awk '{print $1}')"
+[[ "${actual_sha256}" == "${expected_sha256}" ]] ||
+  fail_asset "asset digest differs from the lock"
+mv "${download}" "${output}"
+echo "Locked parallel release asset: PASS (${expected_bytes} bytes, ${actual_sha256})"

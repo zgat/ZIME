@@ -353,16 +353,9 @@ expected_precompiled_artifacts() {
         linnet_en.prism.bin \
         linnet_en.reverse.bin \
         linnet_en.table.bin \
-        linnet_zh.prism.bin \
         linnet_zh.reverse.bin \
         linnet_zh.table.bin \
-        linnet_zh_abc.prism.bin \
-        linnet_zh_flypy.prism.bin \
-        linnet_zh_jiajia.prism.bin \
-        linnet_zh_mspy.prism.bin \
         linnet_zh_pinyin.prism.bin \
-        linnet_zh_sogou.prism.bin \
-        linnet_zh_ziguang.prism.bin \
         radical_pinyin.prism.bin \
         radical_pinyin.reverse.bin \
         radical_pinyin.table.bin | LC_ALL=C sort
@@ -384,7 +377,7 @@ verify_precompiled_artifacts() {
 
 compute_precompiled_fingerprint() {
     {
-        printf '%s\n' 'linnet-precompiled-fingerprint-v4-stock-corrector-disabled'
+        printf '%s\n' 'zime-precompiled-fingerprint-v5-full-pinyin-only'
         while IFS= read -r -d '' input; do
             printf '%s\t%s\n' "${input}" "$(content_sha256 "${input}")"
         done < <(find data/plum -mindepth 1 -type f \

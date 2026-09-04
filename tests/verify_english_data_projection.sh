@@ -40,8 +40,8 @@ ruby -rjson -rdigest -e '
   manifest = JSON.parse(File.read(manifest_path))
   lock = JSON.parse(File.read(File.join(root, "upstreams.lock.json"))).fetch("sources")
   abort "native generator identity changed" unless
-    manifest.fetch("format") == 5 &&
-      manifest.fetch("generator") == {"name" => "LinnetEnglishDataGenerator", "version" => 2}
+      manifest.fetch("format") == 6 &&
+      manifest.fetch("generator") == {"name" => "LinnetEnglishDataGenerator", "version" => 3}
   %w[hallelujah rime_ice].each do |name|
     source = manifest.fetch("sources").fetch(name)
     expected = lock.fetch(name)
@@ -83,7 +83,7 @@ ruby -rjson -rdigest -e '
   counts = manifest.fetch("projection_counts")
   abort "mixed entity count changed" unless counts.fetch("mixed_entities") == 429
   namespaces = counts.fetch("namespace_rows")
-  abort "smart namespace set changed" unless namespaces.keys.sort == %w[f m/ipa m/skip m/zh n p].sort
+  abort "smart namespace set changed" unless namespaces.keys.sort == %w[f m/en m/ipa m/skip m/zh n p].sort
   abort "smart row total is inconsistent" unless namespaces.values.sum == counts.fetch("smart_index_rows")
   abort "English projection lost its production vocabulary" unless
     counts.fetch("dictionary_entries") >= 140_000 &&
@@ -238,6 +238,23 @@ transformers	n. Transformer 模型；变压器
 watched	v. 注视；看守；观看（watch的过去式和过去分词）
 websocket	n. WebSocket 协议
 LINNET_GLOSSES
+
+ruby -e '
+  grouped = Hash.new { |values, key| values[key] = [] }
+  File.foreach(ARGV.fetch(0)) do |line|
+    next unless line.start_with?("m/en/")
+    key, word, weight = line.chomp.split("\t", 3)
+    abort "invalid reverse row" unless key && word && weight&.match?(/\A[1-9][0-9]*\z/)
+    grouped[key] << word
+  end
+  abort "reverse bilingual index is empty" if grouped.empty?
+  abort "reverse bilingual index exceeds three alternatives" if
+    grouped.any? { |_key, words| words.length > 3 || words.uniq.length != words.length }
+  %w[m/en/你好 m/en/工作 m/en/云].each do |key|
+    abort "missing representative reverse gloss: #{key}" unless grouped.key?(key)
+  end
+  puts "Reverse English gloss contracts: PASS (#{grouped.length} Chinese senses)"
+' "${cache}/linnet.smart-index.tsv"
 
 # Product names stay untranslated in both exact-case forms. WebSocket is a
 # protocol and is intentionally covered by the translated glossary above.

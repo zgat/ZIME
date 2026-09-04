@@ -98,8 +98,24 @@ struct LinnetCandidatePresentationTests {
     )
     require(
       LinnetCandidatePresentation.candidateComment("\u{001D}n. 工作")
-        == .init(displayText: "n. 工作", belongsToSmartEnglish: true),
+        == .init(
+          displayText: "n. 工作", belongsToSmartEnglish: true,
+          translations: ["工作"]),
       "the Smart English detail marker was not removed at the presentation boundary"
+    )
+    require(
+      LinnetCandidatePresentation.candidateComment(
+        "\u{001E}work\u{001F}job\u{001F}labour\u{001F}overflow")
+        == .init(
+          displayText: "work / job", belongsToSmartEnglish: false,
+          translations: ["work", "job", "labour"]),
+      "the reverse bilingual marker did not preserve bounded English alternatives"
+    )
+    require(
+      LinnetCandidatePresentation.candidateComment(
+        "\u{001D}/wɜːk/ · n. 工作；职业；v. 运行").translations
+        == ["工作", "职业", "运行"],
+      "English definitions did not expose bounded Chinese commit alternatives"
     )
 
     require(

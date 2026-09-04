@@ -40,6 +40,8 @@ struct SquirrelApp {
 
   static var productSlug: String { productName.lowercased() }
   static var rimeAppName: String { "rime.\(productSlug)" }
+  static var primaryInputSourceIdentifier: String { "\(bundleIdentifier).Hans" }
+  static var traditionalInputSourceIdentifier: String { "\(bundleIdentifier).Hant" }
   static let dataRegistry: LinnetDataRegistry = {
     do {
       return try LinnetDataRegistry(productName: productName, coreVersion: productVersion)
@@ -54,13 +56,13 @@ struct SquirrelApp {
   /// Invalid product metadata cannot be repaired at runtime, but it also must
   /// never become a macOS crash report. Exit normally with one diagnostic.
   static func configurationFailure(_ message: String) -> Never {
-    FileHandle.standardError.write(Data("Linnet startup failure: \(message)\n".utf8))
+    FileHandle.standardError.write(Data("ZIME startup failure: \(message)\n".utf8))
     exit(EXIT_FAILURE)
   }
   static func main() {
     let main = Bundle.main
     guard SquirrelInstaller.hostMayStartRuntime(bundleURL: main.bundleURL) else {
-      configurationFailure("The Linnet executable must run from its installed user path")
+      configurationFailure("The ZIME executable must run from its installed user path")
     }
     let handled = autoreleasepool {
       let installer = SquirrelInstaller()
