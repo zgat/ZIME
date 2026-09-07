@@ -1,4 +1,4 @@
-# ZIME 0.1.10
+# ZIME 0.1.11
 
 ZIME is a macOS 13+ Apple-silicon input method with one shared local engine and
 two system-visible modes:
@@ -23,6 +23,15 @@ grid rendering, iterator, preview and key-trigger code have been removed.
 Schema 15 accepts the old browsing field only for migration and omits it when
 saving. Horizontal/vertical layout, page size and ordinary paging remain.
 English input shows Chinese senses; Chinese input shows English definitions.
+English definitions prefer an exact-case entry, then use a dictionary-wide
+case-folded alias index generated automatically from the reviewed metadata
+headwords. This includes arbitrary mixed-case heads such as `DoH`, `AppImage`
+and `GraphQL`, not just uppercase acronyms. For example, `ime`, `Ime`, `IME`
+and `iMe` all find the existing `IME` definition. Recognized alphabetic raw
+candidates and English acronyms from the Chinese dictionary retain definition
+metadata too. Lookup aliases do not change candidate spelling, commit text or
+learning keys. Explicit case-sensitive exclusions remain authoritative, so
+`US` does not inherit the unrelated pronoun definition of `us`.
 
 During candidate composition, minus pages up and equal/plus pages down.
 At the first/last page these keys are consumed without a commit or state change.

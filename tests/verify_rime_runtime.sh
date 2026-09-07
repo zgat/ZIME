@@ -11,6 +11,7 @@ cd "${repo_root}"
 
 runtime_probe="${1:-}"
 if [[ "${1:-}" == --zime-bilingual-probe ||
+      "${1:-}" == --zime-case-probe ||
       "${1:-}" == --zime-shortcuts-probe ||
       "${1:-}" == --zime-paging-probe ||
       "${1:-}" == --mixed-input-probe ||
@@ -22,7 +23,7 @@ if [[ "${1:-}" == --zime-bilingual-probe ||
       "${1:-}" == --live-sync-probe ]]; then
   :
 elif [[ $# -ne 0 ]]; then
-  echo "usage: $0 [--zime-bilingual-probe|--zime-shortcuts-probe|--zime-paging-probe|--mixed-input-probe|--mixed-latency-probe|--warm-session-probe|--cold-client-probe|--profile-key-matrix-probe|--fast-config-reload-probe|--live-sync-probe]" >&2
+  echo "usage: $0 [--zime-bilingual-probe|--zime-case-probe|--zime-shortcuts-probe|--zime-paging-probe|--mixed-input-probe|--mixed-latency-probe|--warm-session-probe|--cold-client-probe|--profile-key-matrix-probe|--fast-config-reload-probe|--live-sync-probe]" >&2
   exit 64
 fi
 
@@ -145,6 +146,9 @@ end_phase "compile Settings projection fixture"
 begin_phase "deploy native schemas"
 make --no-print-directory smart-english-plugin
 make --no-print-directory verify-rime-binaries
+if [[ "${runtime_probe}" == --zime-case-probe ]]; then
+  /usr/bin/ruby tests/verify_zime_case_aliases.rb
+fi
 RIME_LOG_DIR="${logs}" \
 DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
   bin/rime_deployer --build "${user}" "${shared}" "${user}/build" >/dev/null

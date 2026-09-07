@@ -17,6 +17,10 @@ struct ZIMETranslationTests {
     }
     require(lexicon.translations(for: "ZIME测试未收录的虚构长词").isEmpty, "unknown words must not fabricate definitions")
     require(!lexicon.translations(for: "handsome").isEmpty, "English reverse headword")
+    for spelling in ["handsome", "Handsome", "HANDSOME", "hAnDsOmE", " Handsome "] {
+      require(lexicon.translations(for: spelling) == lexicon.translations(for: "handsome"),
+        "local English case variants or cache lookup lost the definition: \(spelling)")
+    }
     require(ZIMELocalLexicon(url: nil).translations(for: "帅").isEmpty, "missing data fails safely")
     // The same glyphs must follow the selected source, not a script heuristic.
     for _ in 0..<3 {

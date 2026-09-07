@@ -22,6 +22,7 @@ RIME_UPSTREAM_PLUGINS = lib/rime-plugins/librime-lua.dylib \
 	lib/rime-plugins/librime-predict.dylib
 RIME_TOOLS = bin/rime_deployer bin/rime_dict_manager
 SMART_ENGLISH_PLUGIN = lib/rime-plugins/librime-smart-english.dylib
+SMART_ENGLISH_CASE_ALIASES = build/zime-english-case-aliases.inc
 SMART_ENGLISH_SOURCES = plugins/smart_english/smart_english.cc \
 	plugins/smart_english/smart_english_filter.cc \
 	plugins/smart_english/smart_english_index.cc
@@ -192,7 +193,10 @@ $(INPUT_SOURCE_REGISTRATION_INSPECTOR): $(INPUT_SOURCE_REGISTRATION_INSPECTOR_SO
 		$(INPUT_SOURCE_REGISTRATION_INSPECTOR_SOURCES) \
 		-o $(INPUT_SOURCE_REGISTRATION_INSPECTOR)
 
-$(SMART_ENGLISH_PLUGIN): $(SMART_ENGLISH_SOURCES) $(SMART_ENGLISH_HEADERS) \
+$(SMART_ENGLISH_CASE_ALIASES): scripts/build-zime-case-aliases.rb data/linnet/linnet_en_zh_decisions_final.tsv
+	/usr/bin/ruby scripts/build-zime-case-aliases.rb data/linnet/linnet_en_zh_decisions_final.tsv $@
+
+$(SMART_ENGLISH_PLUGIN): $(SMART_ENGLISH_SOURCES) $(SMART_ENGLISH_HEADERS) $(SMART_ENGLISH_CASE_ALIASES) \
 		$(SMART_ENGLISH_SDK_HEADERS) \
 		$(RIME_LIB_DIR)/$(RIME_LIBRARY_FILE_NAME) \
 		$(RIME_LIB_DIR)/rime-plugins/librime-predict.dylib

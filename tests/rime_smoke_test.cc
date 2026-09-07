@@ -10,6 +10,7 @@
 #include <optional>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <tuple>
 #include <utility>
@@ -36,6 +37,8 @@
 #include "../plugins/smart_english/smart_english_index.h"
 
 namespace {
+
+#include "../build/zime-english-case-aliases.inc"
 
 using Nanoseconds = std::chrono::nanoseconds;
 using LatencySample = Nanoseconds::rep;
@@ -2067,6 +2070,89 @@ void ExpectZIMEModeLearningDisabled(RimeApi_stdbool* api, bool chinese_disabled)
   }
   api->destroy_session(chinese);
   std::cout << "ZIME mode-local learning switch: " << disabled_schema << " disabled: PASS\n";
+}
+
+void SetSchemaBool(RimeApi_stdbool* api, const char* schema_id,
+                   const char* key, bool value);
+
+void ExpectZIMECaseInsensitiveDefinitions(RimeApi_stdbool* api) {
+  for (const char* schema : {"linnet_zh_pinyin", "linnet_en"}) {
+    for (const auto& [input, definition] : std::vector<std::pair<std::string, std::string>>{
+        {"ime", "输入法编辑器"}, {"Ime", "输入法编辑器"}, {"IME", "输入法编辑器"},
+        {"iMe", "输入法编辑器"}, {"iME", "输入法编辑器"},
+        {"hello", "你好"}, {"Hello", "你好"}, {"HELLO", "你好"}, {"hElLo", "你好"},
+        {"cloud", "云"}, {"Cloud", "云"}, {"CLOUD", "云"}, {"cLoUd", "云"},
+        {"api", "接口"}, {"Api", "接口"}, {"API", "接口"}, {"aPi", "接口"},
+        {"dEvOpS", "开发运维"}, {"gRaPhQl", "图查询"}, {"aPpImAgE", "便携应用"},
+        {"dOh", "卫生部"}, {"DoH", "域名"}, {"jAvAsCrIpT", "脚本"}, {"cPu", "中央"}, {"gPu", "图形"}}) {
+      const auto session = CreateSchemaSession(api, schema);
+      Enter(api, session, input);
+      const auto rows = Candidates(api, session);
+      // Chinese already supplies the canonical uppercase dictionary headword;
+      // independent English supplies the original lowercase raw spelling.
+      const std::string expected = input == "ime" && std::string(schema) == "linnet_zh_pinyin" ? "IME" : input;
+      const auto row = std::find_if(rows.begin(), rows.end(), [&](const auto& item) { return item.text == expected; });
+      if (row == rows.end() || row->comment.empty() || row->comment.front() != '\x1d' ||
+          row->comment.find(definition) == std::string::npos) {
+        for (size_t i = 0; i < std::min<size_t>(5, rows.size()); ++i)
+          std::cerr << "case fixture row: " << rows[i].text << " / " << rows[i].comment << '\n';
+        Fail(std::string(schema) + " missing marked case-insensitive definition for " + input);
+      }
+      ExpectNoCommit(api, session, "case-insensitive annotation must not insert text");
+      if (!api->select_candidate(session, std::distance(rows.begin(), row)) || TakeCommit(api, session) != expected) {
+        Fail("metadata lookup changed original candidate casing or commit text: " + input);
+      }
+      api->destroy_session(session);
+    }
+  }
+  const auto session = CreateSchemaSession(api, "linnet_en");
+  const auto live = rime::Service::instance().GetSession(session);
+  const rime::Ticket ticket(live->schema(), "linnet_english_translator");
+  const auto engine = rime::PredictEngineComponent::Shared()->GetInstance(ticket);
+  const linnet::SmartEnglishIndex index(engine);
+  linnet::SmartEnglishMetadata metadata;
+  size_t verified_aliases = 0;
+  for (const auto& [folded, canonical] : kMetadataCaseAliases) {
+    rime::vector<rime::predict::RawEntry> definition;
+    if (!engine->LookupCopy("m/zh/" + std::string(canonical), &definition)) continue;
+    std::string upper(folded), mixed(folded);
+    for (size_t i = 0; i < upper.size(); ++i) {
+      if (upper[i] >= 'a' && upper[i] <= 'z') upper[i] -= 'a' - 'A';
+      if (i % 2 == 0 && mixed[i] >= 'a' && mixed[i] <= 'z') mixed[i] -= 'a' - 'A';
+    }
+    for (const auto& spelling : {std::string(folded), std::string(canonical), upper, mixed}) {
+      rime::vector<rime::predict::RawEntry> excluded;
+      if (engine->LookupCopy("m/skip/" + spelling, &excluded)) continue;
+      if (!index.LookupMetadata(spelling, spelling, &metadata) || metadata.chinese_definition.empty())
+        Fail("dictionary-wide case alias failed: " + spelling + " -> " + std::string(canonical));
+      ++verified_aliases;
+    }
+  }
+  if (verified_aliases < 2000) Fail("dictionary-wide case variants were not exercised");
+  std::cout << "ZIME dictionary-wide metadata case variants: " << verified_aliases << " PASS\n";
+  if (!index.LookupMetadata("API", "api", &metadata) || metadata.chinese_definition != "应用程序接口")
+    Fail("exact-case acronym definition did not outrank ordinary lowercase fallback");
+  if (!index.LookupMetadata("DoH", "doh", &metadata) || metadata.chinese_definition != "基于HTTPS的域名系统" ||
+      !index.LookupMetadata("doh", "DoH", &metadata) || metadata.chinese_definition.find("卫生部") == std::string::npos)
+    Fail("case-insensitive fallback merged distinct exact-case senses");
+  for (const char* spelling : {"ime", "Ime", "IME", "iMe", "iME"}) {
+    if (!index.LookupMetadata(spelling, spelling, &metadata) || metadata.chinese_definition != "输入法编辑器")
+      Fail("acronym metadata aliases are not case-insensitive");
+  }
+  for (const auto& [displayed, source] : {std::make_pair("US", "us"),
+      std::make_pair("SURFACE", "Surface"), std::make_pair("zzQqXxUnlisted", "zzQqXxUnlisted")}) {
+    if (index.LookupMetadata(displayed, source, &metadata) || !metadata.chinese_definition.empty())
+      Fail("case fallback bypassed exact exclusions or reused stale metadata");
+  }
+  ExpectCommentEmpty(api, session, "Surface", "Surface");
+  ExpectCommentEmpty(api, session, "US", "US");
+  SetSchemaBool(api, "linnet_en", "linnet_english_interaction/show_translation", false);
+  SetSchemaBool(api, "linnet_en", "linnet_english_interaction/show_ipa", false);
+  const auto hidden = CreateSchemaSession(api, "linnet_en");
+  ExpectCommentEmpty(api, hidden, "iMe", "iMe");
+  api->destroy_session(hidden);
+  api->destroy_session(session);
+  std::cout << "ZIME case-insensitive definitions: IME aliases, word casing, Chinese-origin acronyms, exact-case priority, visibility and unchanged commits: PASS\n";
 }
 
 void ExpectZIMERecordedShortcutBridge(RimeApi_stdbool* api) {
@@ -7305,6 +7391,8 @@ int main(int argc, char** argv) {
       argc == 4 && std::strcmp(argv[3], "--zime-paging-probe") == 0;
   const bool zime_shortcuts_probe =
       argc == 4 && std::strcmp(argv[3], "--zime-shortcuts-probe") == 0;
+  const bool zime_case_probe =
+      argc == 4 && std::strcmp(argv[3], "--zime-case-probe") == 0;
   const bool zime_ranking_reopen_probe =
       argc == 4 && std::strcmp(argv[3], "--zime-ranking-reopen-probe") == 0;
   const bool zime_english_ranking_reopen_probe =
@@ -7332,7 +7420,7 @@ int main(int argc, char** argv) {
       !page_size_probe && !english_profile_probe &&
       !fast_config_reload_probe && !prediction_punctuation_probe &&
       !mixed_input_probe && !zime_bilingual_probe && !zime_paging_probe && !zime_ranking_reopen_probe &&
-      !zime_shortcuts_probe &&
+      !zime_shortcuts_probe && !zime_case_probe &&
       !zime_english_ranking_reopen_probe && !zime_english_learning_off_probe && !zime_chinese_learning_off_probe &&
       !mixed_learning_on_probe &&
       !mixed_learning_off_probe &&
@@ -7345,7 +7433,7 @@ int main(int argc, char** argv) {
          "--english-profile-probe PROFILE CHINESE_SCHEMA CODE PREFIX|"
          "--fast-config-reload-probe|--prediction-punctuation-probe|"
          "--mixed-input-probe|--zime-bilingual-probe|--zime-paging-probe|--zime-ranking-reopen-probe|"
-         "--zime-shortcuts-probe|"
+         "--zime-shortcuts-probe|--zime-case-probe|"
          "--zime-english-ranking-reopen-probe|--zime-english-learning-off-probe|"
          "--zime-chinese-learning-off-probe|"
          "--mixed-learning-on-probe|"
@@ -7420,6 +7508,11 @@ int main(int argc, char** argv) {
     return 0;
   }
 
+  if (zime_case_probe) {
+    ExpectZIMECaseInsensitiveDefinitions(api);
+    api->finalize();
+    return 0;
+  }
   if (zime_shortcuts_probe) {
     ExpectZIMERecordedShortcutBridge(api);
     api->finalize();

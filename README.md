@@ -101,6 +101,8 @@ scripts/build-zime-delivery /absolute/path/to/ZIME.app /absolute/output/director
 
 0.1.10 将候选快捷键改为按键录入：Tab 切换原文／译文，Enter 确认当前候选，Option-Tab 智能补全待输入内容。三项独立配置并检查冲突，移除旧的仅译文上屏和 Tab 行为下拉设置。见 [验证记录](docs/ZIME-0.1.10-VALIDATION.md)。
 
+0.1.11 为整个英文释义词表自动生成大小写查询索引，覆盖普通词、缩写和 `GraphQL / AppImage / DoH` 等混合大小写词头；例如 `ime / Ime / IME / iMe` 均显示“输入法编辑器”。原样输入候选和中文词库中的英文缩写也能显示释义，不改变候选原有大小写或上屏内容。见 [验证记录](docs/ZIME-0.1.11-VALIDATION.md)。
+
 ## 上游与许可证
 
 ZIME 基于 [Linnet](https://github.com/Ares-X/Linnet) 的

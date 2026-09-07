@@ -6,6 +6,7 @@
 #include <rime/predict/predict_engine.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <set>
@@ -14,6 +15,13 @@
 
 namespace linnet {
 namespace {
+
+#include "../../build/zime-english-case-aliases.inc"
+
+std::string FoldMetadataCase(std::string word) {
+  for (char& byte : word) if (byte >= 'A' && byte <= 'Z') byte += 'a' - 'A';
+  return word;
+}
 
 constexpr std::size_t kMaxLookupWords = 64, kMaxStaticWords = 1024;
 constexpr std::size_t kPhonexDistanceThreshold = 6;
@@ -313,13 +321,43 @@ bool SmartEnglishIndex::LookupMetadata(const std::string& displayed_word,
                                        const std::string& source_word,
                                        SmartEnglishMetadata* result) const {
   if (!result || !IsMetadataKey(displayed_word) || !IsMetadataKey(source_word)) return false;
+  *result = {};
   std::string skip_marker;
-  if (LookupSingleton("m/skip/" + displayed_word, &skip_marker)) return false;
-  SmartEnglishMetadata metadata;
-  if (!LookupSingleton("m/zh/" + source_word, &metadata.chinese_definition)) return false;
-  LookupSingleton("m/ipa/" + source_word, &metadata.ipa);
-  *result = std::move(metadata);
-  return true;
+  // Exact-case exclusions remain authoritative: US must not inherit us, or a
+  // projected product name inherit an unrelated ordinary-word definition.
+  if (LookupSingleton("m/skip/" + displayed_word, &skip_marker) ||
+      LookupSingleton("m/skip/" + source_word, &skip_marker)) return false;
+  std::vector<std::string> keys;
+  const auto append = [&](const std::string& key) {
+    if (std::find(keys.begin(), keys.end(), key) == keys.end()) keys.push_back(key);
+  };
+  append(displayed_word);
+  append(source_word);
+  // Lowercase ordinary words take precedence over case-colliding proper
+  // heads. Restore every other canonical spelling from the dictionary-wide
+  // generated alias index, including arbitrary mixed case (DoH, AppImage,
+  // GraphQL), not guesses at uppercase/title-case or individual word fixes.
+  // Only lookup keys change. Definitions still come from the active engine;
+  // absent aliases in an older pack fail safely without any pack migration.
+  for (const auto& word : {source_word, displayed_word}) {
+    const auto folded = FoldMetadataCase(word);
+    append(folded);
+    auto alias = std::lower_bound(kMetadataCaseAliases.begin(), kMetadataCaseAliases.end(), folded,
+        [](const auto& entry, const std::string& key) { return entry.first < key; });
+    while (alias != kMetadataCaseAliases.end() && alias->first == folded) {
+      append(std::string(alias->second));
+      ++alias;
+    }
+  }
+  for (const auto& key : keys) {
+    if (LookupSingleton("m/skip/" + key, &skip_marker)) continue;
+    SmartEnglishMetadata metadata;
+    if (!LookupSingleton("m/zh/" + key, &metadata.chinese_definition)) continue;
+    LookupSingleton("m/ipa/" + key, &metadata.ipa);
+    *result = std::move(metadata);
+    return true;
+  }
+  return false;
 }
 
 std::vector<SmartEnglishWord> SmartEnglishIndex::LookupEnglishTranslations(

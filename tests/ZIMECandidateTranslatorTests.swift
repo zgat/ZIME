@@ -47,6 +47,20 @@ struct ZIMECandidateTranslatorTests {
     precondition(local.items.allSatisfy { $0.commitOverride == nil && !$0.comment.isEmpty })
     precondition(LinnetCandidatePresentation.candidateComment(local.items[0].comment).translations.first?.contains("handsome") == true)
     precondition(local.items[3].comment == "暂无本地译文")
+    // Native metadata now also marks lowercase/mixed-case raw acronym rows
+    // and acronyms from the Chinese phrase dictionary. The Host must retain
+    // that definition even though the CC-CEDICT reverse index lacks ime.
+    let acronymSpellings = ["ime", "Ime", "IME", "iMe", "iME"]
+    let acronyms = SquirrelInputController.CandidateSnapshot(items: acronymSpellings.enumerated().map { i, text in
+      .init(absoluteIndex: i, page: 0, indexOnPage: i, text: text,
+        comment: "\u{001D}输入法编辑器", selectionLabel: String(i + 1))
+    }, currentPage: 0, pageSize: 5, highlightedItemIndex: 0, isLastPage: true)
+    let annotatedAcronyms = translator.annotate(acronyms, showTranslation: true) {}
+    precondition(annotatedAcronyms.items.map(\.text) == acronymSpellings)
+    precondition(annotatedAcronyms.items.map(\.absoluteIndex) == [0, 1, 2, 3, 4])
+    precondition(annotatedAcronyms.items.allSatisfy {
+      $0.commitOverride == nil && LinnetCandidatePresentation.candidateComment($0.comment).translations == ["输入法编辑器"]
+    }, "case-insensitive native definitions were lost or changed commit text at the Host boundary")
     let regionalSnapshot = SquirrelInputController.CandidateSnapshot(items: ["你", "土豆", "德士"].enumerated().map { i, text in
       // Simulate an engine gloss which must not bypass the regional lookup.
       .init(absoluteIndex: i, page: 0, indexOnPage: i, text: text,

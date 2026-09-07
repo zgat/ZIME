@@ -121,10 +121,17 @@ an<Candidate> ProjectSmartEnglishCandidate(
       text.insert(text.begin(), ' ');
     }
   }
-  if (!raw && !IsCustomPhrase(genuine)) {
+  bool has_english_metadata = false;
+  // Mixed-case words / lowercase acronym spellings can be native raw rows.
+  // Annotate recognized alphabetic words without changing their raw identity,
+  // text, order or commit path. Code tokens and unknown spelling stay raw.
+  const bool raw_english_word = raw && text.size() <= 64 &&
+      !LowerAsciiWord(text).empty();
+  if ((!raw || raw_english_word) && !IsCustomPhrase(genuine)) {
     SmartEnglishMetadata metadata;
     if (index.LookupMetadata(MetadataKey(text), MetadataKey(genuine->text()),
                              &metadata)) {
+      has_english_metadata = true;
       const string ipa = options.show_ipa ? metadata.ipa : string();
       const string translation =
           options.show_translation ? metadata.chinese_definition : string();
@@ -146,7 +153,11 @@ an<Candidate> ProjectSmartEnglishCandidate(
       }
     }
   }
-  if (IsSmartEnglishCandidateOrigin(candidate) &&
+  // English acronyms may also originate in the Chinese phrase dictionary.
+  // Mark their actual metadata so the Host does not discard it as a spelling
+  // hint (e.g. Chinese-mode ime -> IME).
+  if ((IsSmartEnglishCandidateOrigin(candidate) ||
+       (has_english_metadata && !NormalizeCandidate(MetadataKey(text), true).empty())) &&
       (options.show_ipa || options.show_translation) &&
       (comment.empty() || comment.front() != kDefinitionCommentPrefix)) {
     comment.insert(comment.begin(), kDefinitionCommentPrefix);
