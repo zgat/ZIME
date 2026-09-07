@@ -243,9 +243,10 @@ linnet_custom_words:
 
 linnet_english_words:
   dictionary: linnet_en
+  user_dict: linnet_en
   enable_completion: false
   enable_sentence: false
-  enable_user_dict: false
+  enable_user_dict: true
   initial_quality: 1.1
   comment_format:
     - xform/.*//

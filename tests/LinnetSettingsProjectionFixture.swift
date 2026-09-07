@@ -37,6 +37,10 @@ struct LinnetSettingsProjectionFixture {
       document.input.pinyinReverseTrigger = .verticalBar
       document.english.learnFromSelections = false
       directory = URL(filePath: arguments[2], directoryHint: .isDirectory)
+    case "zime-english-learning-off":
+      guard arguments.count == 3 else { fail() }
+      document.english.learnFromSelections = false
+      directory = URL(filePath: arguments[2], directoryHint: .isDirectory)
     case "english-suggestions-off":
       guard arguments.count == 3 else { fail() }
       document.input.chineseProfile = .jiajia
@@ -84,7 +88,7 @@ struct LinnetSettingsProjectionFixture {
 
   private static func fail() -> Never {
     FileHandle.standardError.write(Data(
-      "usage: projection-fixture default USER_DIR | profile PROFILE TRIGGER USER_DIR | page-size SIZE USER_DIR | english-learning-off USER_DIR | english-suggestions-off USER_DIR | input-options USER_DIR | input-switches USER_DIR | chinese-learning POLICY USER_DIR\n".utf8
+      "usage: projection-fixture default USER_DIR | profile PROFILE TRIGGER USER_DIR | page-size SIZE USER_DIR | english-learning-off USER_DIR | zime-english-learning-off USER_DIR | english-suggestions-off USER_DIR | input-options USER_DIR | input-switches USER_DIR | chinese-learning POLICY USER_DIR\n".utf8
     ))
     exit(EXIT_FAILURE)
   }

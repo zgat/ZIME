@@ -675,6 +675,7 @@ struct LinnetSettingsProjectionRendererTests {
       let projections = LinnetSettingsProjectionRenderer.renderProjections(
         document: document)
       guard let english = projections[LinnetSettingsProjectionRenderer.englishCustomFile],
+        english.contains("\"translator/user_dict\": \"linnet_en\""),
         english.contains("\"translator/enable_user_dict\": false"),
         english.contains("\"linnet_english_interaction/learning_enabled\": false")
       else {
@@ -682,6 +683,8 @@ struct LinnetSettingsProjectionRendererTests {
       }
       for file in LinnetSettingsProjectionRenderer.chineseCustomFiles {
         guard let contents = projections[file],
+          contents.contains("\"linnet_english_words/user_dict\": \"linnet_en\""),
+          contents.contains("\"linnet_english_words/enable_user_dict\": false"),
           contents.contains("\"linnet_english_interaction/learning_enabled\": false"),
           !contents.contains("translator/enable_user_dict")
         else {
@@ -699,6 +702,18 @@ struct LinnetSettingsProjectionRendererTests {
       let document = try JSONDecoder().decode(
         LinnetSettingsDocument.self, from: legacy)
       let projections = LinnetSettingsProjectionRenderer.renderProjections(document: document)
+      for file in LinnetSettingsProjectionRenderer.chineseCustomFiles {
+        guard let contents = projections[file],
+          contents.contains("\"linnet_english_words/user_dict\": \"linnet_en\""),
+          contents.contains("\"linnet_english_words/enable_user_dict\": true"),
+          contents.contains("\"linnet_english_interaction/learning_enabled\": true"),
+          !contents.contains("translator/enable_user_dict")
+        else { fail("a Core-only update must explicitly enable shared English learning in \(file)") }
+      }
+      guard let englishProjection = projections[LinnetSettingsProjectionRenderer.englishCustomFile],
+        englishProjection.contains("\"translator/user_dict\": \"linnet_en\""),
+        englishProjection.contains("\"translator/enable_user_dict\": true")
+      else { fail("English mode did not explicitly enable the same native user dictionary") }
       guard Set(projections.keys)
         == Set(
           LinnetSettingsProjectionRenderer.chineseCustomFiles

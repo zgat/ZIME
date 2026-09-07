@@ -61,6 +61,16 @@ for schema in data/linnet/*.schema.yaml; do
   cp "${schema}" "${shared}/$(basename "${schema}")"
 done
 cp data/linnet/default.yaml "${shared}/default.yaml"
+# An installed pre-0.1.8 language pack disables English learning in Chinese
+# mode. Only the new Core projection may repair that retained pack.
+ruby -e '
+  path = ARGV.fetch(0)
+  source = File.binread(path)
+  current = "linnet_english_words:\n  dictionary: linnet_en\n  user_dict: linnet_en\n  enable_completion: false\n  enable_sentence: false\n  enable_user_dict: true\n"
+  stale = "linnet_english_words:\n  dictionary: linnet_en\n  enable_completion: false\n  enable_sentence: false\n  enable_user_dict: false\n"
+  abort "current Chinese-mode English learner is missing" unless source.scan(current).length == 1
+  File.binwrite(path, source.sub(current, stale))
+' "${shared}/linnet_zh.schema.yaml"
 # Core-only updates deliberately keep the installed language pack. Reproduce
 # old Active owners so the native suite proves the Core projections, not a
 # coincidentally current pack, retire stale routing and schema defaults.
@@ -185,6 +195,20 @@ if [[ "${runtime_probe}" == --zime-bilingual-probe ]]; then
   DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
     "${scratch}/rime-smoke" "${shared}" "${user}" --zime-ranking-reopen-probe
   end_phase "reopen learned ranking in a fresh process"
+  begin_phase "persist English preference and honor the learning switch"
+  DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
+    "${scratch}/rime-smoke" "${shared}" "${user}" --zime-english-ranking-reopen-probe
+  "${scratch}/projection-fixture" zime-english-learning-off "${user}"
+  DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
+    bin/rime_deployer --build "${user}" "${shared}" "${user}/build" >/dev/null
+  DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
+    "${scratch}/rime-smoke" "${shared}" "${user}" --zime-english-learning-off-probe
+  "${scratch}/projection-fixture" default "${user}"
+  DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
+    bin/rime_deployer --build "${user}" "${shared}" "${user}/build" >/dev/null
+  DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
+    "${scratch}/rime-smoke" "${shared}" "${user}" --zime-english-ranking-reopen-probe
+  end_phase "persist English preference and honor the learning switch"
 fi
 
 if [[ -z "${runtime_probe}" || "${runtime_probe}" == --mixed-input-probe ]]; then

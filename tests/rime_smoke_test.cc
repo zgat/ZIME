@@ -99,6 +99,7 @@ struct CandidateOriginView {
   size_t phrase_code_size;
   double phrase_system_lexical_weight;
   int phrase_spelling_type;
+  int commit_count;
   std::string preedit;
   std::string sentence_components;
   size_t sentence_uppercase_entity_count;
@@ -229,6 +230,7 @@ std::vector<CandidateOriginView> CandidateOrigins(RimeSessionId session_id,
                           ? *phrase->system_lexical_weight()
                           : 0.0,
                       phrase ? static_cast<int>(phrase->spelling_type()) : -1,
+                      phrase ? phrase->entry().commit_count : 0,
                       candidate ? candidate->preedit() : "",
                       sentence_components.str(),
                       sentence_uppercase_entity_count,
@@ -1922,6 +1924,113 @@ void ExpectZIMERankingPersisted(RimeApi_stdbool* api) {
   ExpectFirstCandidate(api, session, "key", "科研");
   api->destroy_session(session);
   std::cout << "ZIME new-process learning and alternative Chinese preference: PASS\n";
+  const auto learn = [&](const char* schema, const char* chosen, int rounds) {
+    for (int round = 0; round < rounds; ++round) {
+      const auto learning = CreateSchemaSession(api, schema);
+      api->set_option(learning, "emoji", false);
+      Enter(api, learning, "key");
+      if (!api->select_candidate(learning, CandidateIndex(api, learning, chosen)) ||
+          TakeCommit(api, learning) != chosen) {
+        Fail("bilingual learning must commit only the selected main text");
+      }
+      api->destroy_session(learning);
+    }
+  };
+  const auto inspect = [&]() {
+    const auto learning = CreateSchemaSession(api, "linnet_zh_pinyin");
+    api->set_option(learning, "emoji", false);
+    Enter(api, learning, "key");
+    const auto rows = CandidateOrigins(learning);
+    if (rows.empty()) Fail("bilingual learning produced an empty candidate list");
+    std::cout << "ZIME bidirectional learning:";
+    for (std::size_t i = 0; i < std::min<std::size_t>(rows.size(), 3); ++i) {
+      std::cout << " [" << rows[i].text << ":" << rows[i].genuine_type
+                << ":commits=" << rows[i].commit_count << "]";
+    }
+    std::cout << std::endl;
+    api->destroy_session(learning);
+    return rows;
+  };
+  for (int count = 1; count <= 8; ++count) {
+    learn("linnet_zh_pinyin", "key", 1);
+    const auto rows = inspect();
+    const auto position = [&](const char* text) {
+      return std::find_if(rows.begin(), rows.end(), [&](const auto& row) {
+        return row.text == text;
+      });
+    };
+    const auto english = position("key");
+    const auto first_chinese = position("科研");
+    const auto second_chinese = position("可以");
+    if (english == rows.end() || first_chinese == rows.end() ||
+        second_chinese == rows.end() || english->genuine_type != "user_table" ||
+        english->commit_count != count ||
+        (count <= 6 ? english < first_chinese : english > first_chinese) ||
+        (count <= 3 ? english < second_chinese : english > second_chinese)) {
+      Fail("English must climb past individual Chinese choices as selections accumulate");
+    }
+  }
+  // Preference can change in either direction more than once; neither
+  // language is pinned after its first learned selection.
+  learn("linnet_zh_pinyin", "科研", 4);
+  if (inspect().front().text != "科研") Fail("Chinese could not regain priority");
+  learn("linnet_zh_pinyin", "key", 4);
+  if (inspect().front().text != "key") Fail("English could not regain priority");
+  learn("linnet_en", "key", 1);
+  const auto shared = inspect();
+  if (shared.front().text != "key" || shared.front().commit_count != 13) {
+    Fail("Chinese and English modes must share native English selection history");
+  }
+  api->finalize();
+  api->initialize(nullptr);
+  if (inspect().front().text != "key") Fail("engine restart lost English priority");
+  std::cout << "ZIME bidirectional native learning and shared English history: PASS\n";
+}
+
+void ExpectZIMEEnglishRankingPersisted(RimeApi_stdbool* api) {
+  const auto session = CreateSchemaSession(api, "linnet_zh_pinyin");
+  api->set_option(session, "emoji", false);
+  Enter(api, session, "key");
+  const auto rows = CandidateOrigins(session);
+  if (rows.size() < 2 || rows[0].text != "key" || rows[0].commit_count != 13 ||
+      rows[0].genuine_type != "user_table" || rows[1].text != "科研" ||
+      rows[1].commit_count != 10) {
+    Fail("a fresh process lost bilingual selection history or English ranking");
+  }
+  api->destroy_session(session);
+  std::cout << "ZIME fresh-process English ranking and exact persisted counts: PASS\n";
+}
+
+void ExpectZIMEEnglishLearningDisabled(RimeApi_stdbool* api) {
+  for (const char* schema : {"linnet_zh_pinyin", "linnet_en"}) {
+    for (int round = 0; round < 4; ++round) {
+      const auto session = CreateSchemaSession(api, schema);
+      api->set_option(session, "emoji", false);
+      Enter(api, session, "key");
+      const auto rows = CandidateOrigins(session);
+      const auto english = std::find_if(rows.begin(), rows.end(), [](const auto& row) {
+        return row.text == "key";
+      });
+      if (english == rows.end() || english->genuine_type != "table" ||
+          english->commit_count != 0 ||
+          !api->select_candidate(session, CandidateIndex(api, session, "key")) ||
+          TakeCommit(api, session) != "key") {
+        Fail("disabled English learning must ignore native user entries in both modes");
+      }
+      api->destroy_session(session);
+    }
+  }
+  const auto chinese = CreateSchemaSession(api, "linnet_zh_pinyin");
+  Enter(api, chinese, "nihao");
+  if (!api->select_candidate(chinese, CandidateIndex(api, chinese, "你好")) ||
+      TakeCommit(api, chinese) != "你好") Fail("could not select Chinese with English learning off");
+  Enter(api, chinese, "nihao");
+  const auto learned_chinese = CandidateOrigins(chinese);
+  if (learned_chinese.empty() || learned_chinese.front().genuine_type != "user_phrase") {
+    Fail("disabling English learning must not disable Chinese learning");
+  }
+  api->destroy_session(chinese);
+  std::cout << "ZIME English learning disabled independently in both modes: PASS\n";
 }
 
 std::string AbbreviatedModeLabel(RimeApi_stdbool* api,
@@ -7095,6 +7204,10 @@ int main(int argc, char** argv) {
       argc == 4 && std::strcmp(argv[3], "--zime-paging-probe") == 0;
   const bool zime_ranking_reopen_probe =
       argc == 4 && std::strcmp(argv[3], "--zime-ranking-reopen-probe") == 0;
+  const bool zime_english_ranking_reopen_probe =
+      argc == 4 && std::strcmp(argv[3], "--zime-english-ranking-reopen-probe") == 0;
+  const bool zime_english_learning_off_probe =
+      argc == 4 && std::strcmp(argv[3], "--zime-english-learning-off-probe") == 0;
   const bool mixed_learning_on_probe =
       argc == 4 &&
       std::strcmp(argv[3], "--mixed-learning-on-probe") == 0;
@@ -7114,6 +7227,7 @@ int main(int argc, char** argv) {
       !page_size_probe && !english_profile_probe &&
       !fast_config_reload_probe && !prediction_punctuation_probe &&
       !mixed_input_probe && !zime_bilingual_probe && !zime_paging_probe && !zime_ranking_reopen_probe &&
+      !zime_english_ranking_reopen_probe && !zime_english_learning_off_probe &&
       !mixed_learning_on_probe &&
       !mixed_learning_off_probe &&
       !mixed_latency_probe && !warm_session_probe && !cold_client_probe && !live_sync_probe) {
@@ -7125,6 +7239,7 @@ int main(int argc, char** argv) {
          "--english-profile-probe PROFILE CHINESE_SCHEMA CODE PREFIX|"
          "--fast-config-reload-probe|--prediction-punctuation-probe|"
          "--mixed-input-probe|--zime-bilingual-probe|--zime-paging-probe|--zime-ranking-reopen-probe|"
+         "--zime-english-ranking-reopen-probe|--zime-english-learning-off-probe|"
          "--mixed-learning-on-probe|"
          "--mixed-learning-off-probe|"
          "--mixed-latency-probe|--warm-session-probe|--cold-client-probe]");
@@ -7187,6 +7302,12 @@ int main(int argc, char** argv) {
 
   if (zime_ranking_reopen_probe) {
     ExpectZIMERankingPersisted(api);
+    api->finalize();
+    return 0;
+  }
+  if (zime_english_ranking_reopen_probe || zime_english_learning_off_probe) {
+    if (zime_english_ranking_reopen_probe) ExpectZIMEEnglishRankingPersisted(api);
+    else ExpectZIMEEnglishLearningDisabled(api);
     api->finalize();
     return 0;
   }

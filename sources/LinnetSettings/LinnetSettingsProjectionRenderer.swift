@@ -277,7 +277,7 @@ private extension LinnetSettingsProjectionRenderer {
     appendPinyinReverseTrigger(input.pinyinReverseTrigger, to: &entries)
     appendChineseLearningPolicy(input.chineseLearningPolicy, to: &entries)
     appendEnglishMetadataOptions(english, to: &entries)
-    appendEnglishLearningOptions(english, includeUserDictionary: false, to: &entries)
+    appendEnglishLearningOptions(english, translator: "linnet_english_words", to: &entries)
     guard !entries.isEmpty else { return nil }
     return renderPatch(entries)
   }
@@ -318,7 +318,7 @@ private extension LinnetSettingsProjectionRenderer {
     if !english.predictionEnabled {
       entries.append(("switches/@\(englishPredictionSwitchIndex)/reset", "0"))
     }
-    appendEnglishLearningOptions(english, includeUserDictionary: true, to: &entries)
+    appendEnglishLearningOptions(english, translator: "translator", to: &entries)
     guard !entries.isEmpty else { return nil }
     return renderPatch(entries)
   }
@@ -351,14 +351,15 @@ private extension LinnetSettingsProjectionRenderer {
 
   private static func appendEnglishLearningOptions(
     _ english: LinnetSettingsDocument.English,
-    includeUserDictionary: Bool,
+    translator: String,
     to entries: inout [(String, String)]
   ) {
-    guard !english.learnFromSelections else { return }
-    if includeUserDictionary {
-      entries.append(("translator/enable_user_dict", "false"))
-    }
-    entries.append(("linnet_english_interaction/learning_enabled", "false"))
+    // Core updates keep the installed language pack. Explicit projections
+    // repair older packs that disabled English word learning in Chinese mode.
+    // Both modes share Rime's English user dictionary, not a second store.
+    entries.append(("\(translator)/user_dict", quoted("linnet_en")))
+    entries.append(("\(translator)/enable_user_dict", english.learnFromSelections ? "true" : "false"))
+    entries.append(("linnet_english_interaction/learning_enabled", english.learnFromSelections ? "true" : "false"))
   }
 
   /// The bundled schema owns the enhanced default. Settings emits only the

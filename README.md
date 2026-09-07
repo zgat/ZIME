@@ -96,6 +96,7 @@ scripts/build-zime-delivery /absolute/path/to/ZIME.app /absolute/output/director
 0.1.5 的配色、字重与独立外观选项见 [验证记录](docs/ZIME-0.1.5-VALIDATION.md)。
 0.1.6 的中文简拼优先与跨语言学习排序见 [验证记录](docs/ZIME-0.1.6-VALIDATION.md)。
 0.1.7 的候选展开代码清理与设置点击修复见 [验证记录](docs/ZIME-0.1.7-VALIDATION.md)。
+0.1.8 修复中文模式下英文选词不学习的问题；中英文可随实际选词次数双向调整，记录跨重启保留。见 [验证记录](docs/ZIME-0.1.8-VALIDATION.md)。
 
 ## 上游与许可证
 

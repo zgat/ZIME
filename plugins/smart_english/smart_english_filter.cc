@@ -238,6 +238,7 @@ an<Translation> SmartEnglishFilter::Apply(an<Translation> translation,
     std::size_t original = 0;
     std::size_t static_rank = std::numeric_limits<std::size_t>::max();
     std::uint16_t session_count = 0;
+    int commit_count = 0;
     bool raw = false, exact = false, ambiguous_english = false,
          chinese = false, mixed = false,
          strong_chinese_collision = false;
@@ -272,6 +273,7 @@ an<Translation> SmartEnglishFilter::Apply(an<Translation> translation,
     item.raw = IsRawCandidate(item.candidate);
     has_pinyin = has_pinyin || item.genuine->type() == "linnet_pinyin";
     const auto phrase = rime::As<Phrase>(item.genuine);
+    item.commit_count = phrase ? std::max(0, phrase->entry().commit_count) : 0;
     item.mixed = IsMixedChineseCandidate(item.genuine);
     item.chinese = !item.mixed && phrase && phrase->language() &&
                    phrase->language()->name() == "linnet_zh";
@@ -457,6 +459,39 @@ an<Translation> SmartEnglishFilter::Apply(an<Translation> translation,
         });
     move_same_span_chinese_first(ambiguous_english,
                                  [](const auto&) { return true; });
+  }
+
+  // Language priority is a cold-start policy, not a permanent position. Rime
+  // exposes durable selection counts for both user_phrase and user_table.
+  // Their quality/weight values use different formulas and user-dictionary
+  // totals, so comparing those values across languages would be misleading.
+  // Move only the learned exact English row within its same-span Chinese
+  // block. Preserve native Chinese order and custom/partial-match barriers;
+  // equally or more frequently selected Chinese rows keep priority on ties.
+  if (!is_pinyin_flow && lowercase_chinese_exact && options_.learning_enabled) {
+    const auto exact = std::find_if(candidates.begin(), candidates.end(),
+        [](const auto& item) { return item.exact && item.commit_count > 0; });
+    if (exact != candidates.end()) {
+      const auto same_span_chinese = [&](const auto& item) {
+        return item.chinese && item.genuine->start() == exact->genuine->start() &&
+               item.genuine->end() == exact->genuine->end();
+      };
+      auto begin = exact;
+      while (begin != candidates.begin() && same_span_chinese(*std::prev(begin))) --begin;
+      auto end = std::next(exact);
+      while (end != candidates.end() && same_span_chinese(*end)) ++end;
+      auto insertion = begin;
+      for (auto row = begin; row != end; ++row) {
+        if (row != exact && row->commit_count >= exact->commit_count) {
+          insertion = std::next(row);
+        }
+      }
+      if (insertion < exact) {
+        std::rotate(insertion, exact, std::next(exact));
+      } else if (insertion > exact) {
+        std::rotate(exact, std::next(exact), insertion);
+      }
+    }
   }
 
   // Hallelujah appends pinyin-to-English results after ordinary English
