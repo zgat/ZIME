@@ -178,9 +178,9 @@ final class SettingsUITests: XCTestCase {
       ("sidecar_slate", "Slate"),
       ("clay_tiles", "Clay"),
       ("mist_jade", "Mist"),
-      ("native_glass", "Glass"),
+      ("native_glass", "Soft Gray"),
       ("ink_cinnabar", "Ink"),
-      ("macos", "macOS"),
+      ("macos", "Clear Blue"),
     ] {
       let theme = app.descendants(matching: .any)[
         "settings.appearance.theme.\(identifier)"]
@@ -192,6 +192,14 @@ final class SettingsUITests: XCTestCase {
     try selectEachSegmentedOption(
       ["System", "Light", "Dark"],
       identifier: "settings.appearance.mode",
+      in: app)
+    try selectEachSegmentedOption(
+      ["Full-row highlight", "Underline"],
+      identifier: "settings.appearance.selectionEffect",
+      in: app)
+    try selectEachSegmentedOption(
+      ["Rounded", "Square"],
+      identifier: "settings.appearance.cornerStyle",
       in: app)
 
     let fontSize = app.sliders["settings.appearance.fontSize"]
@@ -209,8 +217,8 @@ final class SettingsUITests: XCTestCase {
       "Iowan Old Style + Songti SC",
       "Charter + Songti SC",
     ], identifier: "settings.appearance.typeface", in: app)
-    try selectEachSegmentedOption(
-      ["3", "5", "7", "9"],
+    try selectEachPopUpOption(
+      ["3", "4", "5", "6", "7", "8", "9"],
       identifier: "settings.appearance.pageSize",
       in: app)
     try selectEachSegmentedOption(

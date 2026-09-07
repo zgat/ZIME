@@ -44,11 +44,13 @@ if (( $# == 0 )); then
   generated_features="${scratch}/bilingual-features.png"
   generated_themes="${scratch}/theme-gallery.png"
   generated_regions="${scratch}/regional-glosses.png"
+  generated_appearance="${scratch}/appearance-controls.png"
   "${candidate_interaction}" \
     --readme-product-gallery data/squirrel.yaml \
     "${generated_modes}" "${generated_features}" \
     --readme-theme-gallery data/squirrel.yaml "${generated_themes}" \
     --readme-regional-gallery data/squirrel.yaml "${generated_regions}" \
+    --readme-appearance-gallery data/squirrel.yaml "${generated_appearance}" \
     --verify-readme-render \
     resources/readme/input-modes.png "${generated_modes}" "README input-mode image" \
     --verify-readme-render \
@@ -56,7 +58,9 @@ if (( $# == 0 )); then
     --verify-readme-render \
     resources/readme/theme-gallery.png "${generated_themes}" "README theme gallery" \
     --verify-readme-render \
-    resources/readme/regional-glosses.png "${generated_regions}" "README regional glossary gallery"
+    resources/readme/regional-glosses.png "${generated_regions}" "README regional glossary gallery" \
+    --verify-readme-render \
+    resources/readme/appearance-controls.png "${generated_appearance}" "README appearance gallery"
   ! rg -n 'resources/readme/[^ )]+[.]svg' README.md
 else
   "${candidate_interaction}" "$@"

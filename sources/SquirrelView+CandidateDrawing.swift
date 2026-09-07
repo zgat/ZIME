@@ -29,6 +29,12 @@ extension SquirrelView {
   // Bezier cubic curve, which has continuous roundness
   func drawSmoothLines(_ vertex: [NSPoint], straightCorner: Set<Int>, alpha: CGFloat, beta rawBeta: CGFloat) -> CGPath? {
     guard vertex.count >= 3 else { return nil }
+    if rawBeta <= 0 {
+      let path = CGMutablePath()
+      path.addLines(between: vertex)
+      path.closeSubpath()
+      return path
+    }
     let beta = max(0.00001, rawBeta)
     let path = CGMutablePath()
     var previousPoint = vertex[vertex.count - 1]
@@ -352,7 +358,9 @@ extension SquirrelView {
     outerBox.origin.x += max(0.0, theme.hilitedCornerRadius + theme.borderLineWidth) / 2.0 - extraExpansion
     outerBox.origin.y += preeditRect.size.height + max(0, theme.hilitedCornerRadius + theme.borderLineWidth) / 2 - extraExpansion
 
-    let effectiveRadius = max(0, theme.hilitedCornerRadius + 2 * extraExpansion / theme.hilitedCornerRadius * max(0, theme.cornerRadius - theme.hilitedCornerRadius))
+    let effectiveRadius = theme.hilitedCornerRadius > 0
+      ? max(0, theme.hilitedCornerRadius + 2 * extraExpansion / theme.hilitedCornerRadius * max(0, theme.cornerRadius - theme.hilitedCornerRadius))
+      : 0
 
     if theme.linear || usesGridLayout, let highlightedTextRange = convert(range: highlightedRange) {
       let (leadingRect, bodyRect, trailingRect) = multilineRects(forRange: highlightedTextRange, extraSurounding: separatorWidth, bounds: outerBox)

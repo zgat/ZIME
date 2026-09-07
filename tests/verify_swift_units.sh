@@ -46,7 +46,7 @@ compile_run() {
 
 appearance_preview() {
   begin_phase "compile and run appearance-preview"
-  linnet_swift_compile appearance-preview -warnings-as-errors -sdk "${sdk}" -framework SwiftUI \
+  linnet_swift_compile appearance-preview -warnings-as-errors -enable-bare-slash-regex -sdk "${sdk}" -framework SwiftUI \
     sources/LinnetPackContract.swift \
     sources/LinnetDataChannel.swift \
     sources/LinnetDataRegistry.swift sources/LinnetDirectoryDelta.swift sources/LinnetDataRegistryTransactions.swift sources/LinnetDataRegistryStorage.swift \
@@ -55,9 +55,10 @@ appearance_preview() {
     sources/LinnetSettings/PersonalDataValidation.swift \
     sources/LinnetSettings/LinnetSettingsDocument.swift sources/LinnetSettings/LinnetSettingsDocumentStore.swift \
     sources/LinnetCandidatePresentation.swift \
+    sources/LinnetPanelGeometry.swift sources/LinnetClientAppearance.swift sources/SquirrelTheme.swift \
     sources/LinnetSettings/LinnetSettingsAppearancePreview.swift \
     sources/LinnetSettings/LinnetSettingsThemeFamilyPicker.swift \
-    tests/LinnetSettingsAppearancePreviewTests.swift
+    tests/ZIMEAppearanceContractTests.swift tests/LinnetSettingsAppearancePreviewTests.swift
   local preview_app="${scratch}/AppearancePreview.app/Contents"
   mkdir -p "${preview_app}/MacOS" "${preview_app}/Resources"
   cp "${LINNET_SWIFT_COMPILED_BINARY}" "${preview_app}/MacOS/AppearancePreview"

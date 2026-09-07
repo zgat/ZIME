@@ -51,8 +51,8 @@ final class SquirrelTheme {
   var highlightedBackColor: NSColor? = .selectedContentBackgroundColor
   var highlightedPreeditColor: NSColor?
   var preeditBackgroundColor: NSColor?
-  var borderLineWidth: CGFloat = 1
-  var borderWidth: CGFloat = 1
+  var borderLineWidth: CGFloat = 0.5
+  var borderWidth: CGFloat = 0.5
   var cornerRadius: CGFloat = 10
   var edgeInset = LinnetCandidatePresentation.candidateWindowInset
   var firstParagraphStyle: NSParagraphStyle = NSMutableParagraphStyle()
@@ -166,6 +166,7 @@ struct LinnetCandidateWindowInteractionTests {
     testKeyboardPagingRequestsExpansion()
     testDefaultNineCandidateNaturalSize()
     testEveryCandidateShowsTranslation()
+    testSquareAndRoundedPaths()
     testStructuredLocalGlosses()
     testRegionalDefinitionsWrapWithoutSummarization()
     testExpandedChineseCommentsDoNotCreateEnglishPlaceholder()
@@ -202,6 +203,11 @@ struct LinnetCandidateWindowInteractionTests {
       makeReadmeRegionalGallery(yamlPath: CommandLine.arguments[option + 1],
         outputPath: CommandLine.arguments[option + 2])
     }
+    if let option = CommandLine.arguments.firstIndex(of: "--readme-appearance-gallery"),
+      CommandLine.arguments.indices.contains(option + 2) {
+      makeReadmeAppearanceGallery(yamlPath: CommandLine.arguments[option + 1],
+        outputPath: CommandLine.arguments[option + 2])
+    }
     for option in CommandLine.arguments.indices
     where CommandLine.arguments[option] == "--verify-readme-render" {
       guard CommandLine.arguments.indices.contains(option + 3) else {
@@ -220,6 +226,26 @@ struct LinnetCandidateWindowInteractionTests {
       exit(EXIT_FAILURE)
     }
     print("LinnetCandidateWindowInteractionTests: PASS")
+  }
+
+  private static func testSquareAndRoundedPaths() {
+    let view = SquirrelView(frame: NSRect(x: 0, y: 0, width: 220, height: 90))
+    let rect = NSRect(x: 3, y: 3, width: 200, height: 70)
+    for radius in [CGFloat(0), 5, 8] {
+      guard let path = view.drawSmoothLines(view.rectVertex(of: rect), straightCorner: [],
+        alpha: 0.3 * radius, beta: 1.4 * radius) else {
+        failures.append("appearance path is missing")
+        continue
+      }
+      var curves = 0
+      path.applyWithBlock { element in
+        if element.pointee.type == .addCurveToPoint { curves += 1 }
+      }
+      require((curves == 0) == (radius == 0), "square corners must not contain rounded path segments")
+      require(path.contains(NSPoint(x: rect.midX, y: rect.midY)), "appearance path contains invalid coordinates")
+      require(path.contains(NSPoint(x: rect.minX + 0.01, y: rect.minY + 0.01)) == (radius == 0),
+              "window and full-row path did not adopt the chosen corner geometry")
+    }
   }
 
   private static func testEveryCandidateShowsTranslation() {
@@ -243,7 +269,7 @@ struct LinnetCandidateWindowInteractionTests {
             items: (0..<count).map { index in
               .init(text: words[index], comment: LinnetCandidatePresentation.reverseEnglishDetailPrefix + glosses[index],
                 page: 0, indexOnPage: index, absoluteIndex: index,
-                selectionLabel: String(index + 1))
+                selectionLabel: String(index + 1), emphasizesPrimaryText: true)
             }, pageSize: count, currentPage: 0, isLastPage: true, isExpanded: false, canExpand: false)
           var sizes: [NSSize] = []
           for selected in [0, count - 1] {
@@ -263,6 +289,11 @@ struct LinnetCandidateWindowInteractionTests {
                 "\(point)pt row \(index) lost its own translation: \(row)")
               require(row.components(separatedBy: glosses[index]).count == 2,
                 "explicit comment format duplicated translation")
+              let attributed = text.attributedSubstring(from: view.candidateRanges[index])
+              let wordRange = (attributed.string as NSString).range(of: words[index])
+              let font = attributed.attribute(.font, at: wordRange.location, effectiveRange: nil) as? NSFont
+              require(font == view.lightTheme.font,
+                "translation annotation or selection forced a different font weight")
             }
             require(view.detailTextView.isHidden && view.detailDividerView.isHidden,
               "selected-only translation surface returned")
@@ -1918,11 +1949,16 @@ struct LinnetCandidateWindowInteractionTests {
     let detail = LinnetCandidatePresentation.candidateComment(rawDetail).displayText
     let values = ["work", "works", "woke", "week", "wiki", "weak", "worse", "wise", "working"]
 
-    for sample in samples.values.sorted(by: { $0.identifier < $1.identifier }) {
+    let variants = samples.values.sorted(by: { $0.identifier < $1.identifier }).flatMap { sample in
+      [SquirrelTheme.SelectionStyle.tile, .underline].flatMap { style in
+        [true, false].map { rounded in appearanceSample(sample, style: style, rounded: rounded) }
+      }
+    }
+    for sample in variants {
       let dark = sample.identifier.hasSuffix("_dark")
       for point in [CGFloat(12), 16, 32] {
         for linear in [true, false] {
-          let context = "\(sample.identifier) \(point)pt \(linear ? "horizontal" : "vertical")"
+          let context = "\(sample.identifier) \(sample.selectionStyle) radius=\(sample.cornerRadius) \(point)pt \(linear ? "horizontal" : "vertical")"
           let panel = SquirrelPanel(
             position: NSRect(x: 320, y: 420, width: 2, height: 20))
           let controller = SquirrelInputController()
@@ -2203,14 +2239,30 @@ struct LinnetCandidateWindowInteractionTests {
     let border: NSColor
     let primary: NSColor
     let label: NSColor
-    let selectedBackground: NSColor
-    let selectedPrimary: NSColor
-    let selectedLabel: NSColor
-    let cornerRadius: CGFloat
-    let highlightedCornerRadius: CGFloat
+    var selectedBackground: NSColor
+    let selectionIndicator: NSColor
+    var selectedPrimary: NSColor
+    var selectedLabel: NSColor
+    var cornerRadius: CGFloat
+    var highlightedCornerRadius: CGFloat
     let mutuallyExclusive: Bool
     let isTranslucent: Bool
-    let selectionStyle: SquirrelTheme.SelectionStyle
+    var selectionStyle: SquirrelTheme.SelectionStyle
+  }
+
+  private static func appearanceSample(
+    _ palette: ThemeSample, style: SquirrelTheme.SelectionStyle, rounded: Bool
+  ) -> ThemeSample {
+    var result = palette
+    result.selectionStyle = style
+    result.cornerRadius = rounded ? 8 : 0
+    result.highlightedCornerRadius = rounded ? 5 : 0
+    if style != .tile {
+      result.selectedBackground = palette.selectionIndicator
+      result.selectedPrimary = palette.primary
+      result.selectedLabel = palette.label
+    }
+    return result
   }
 
   private static func makeReadmeProductGallery(
@@ -2395,6 +2447,47 @@ struct LinnetCandidateWindowInteractionTests {
     return bitmapSnapshot(of: panel.contentView)
   }
 
+  private static func makeReadmeAppearanceGallery(yamlPath: String, outputPath: String) {
+    guard let yaml = try? String(contentsOfFile: yamlPath, encoding: .utf8) else { return }
+    let samples = parseThemeSamples(yaml)
+    let size = NSSize(width: 1120, height: 900)
+    guard let (bitmap, context) = bitmapSurface(size: size, failure: "appearance gallery") else { return }
+    NSGraphicsContext.saveGraphicsState()
+    NSGraphicsContext.current = context
+    NSColor(srgbRed: 0.96, green: 0.97, blue: 0.98, alpha: 1).setFill()
+    NSRect(origin: .zero, size: size).fill()
+    let ink = NSColor(srgbRed: 0.15, green: 0.18, blue: 0.22, alpha: 1)
+    ("颜色、选中效果与窗口角形，分开设置" as NSString).draw(at: NSPoint(x: 48, y: 818),
+      withAttributes: [.font: NSFont.systemFont(ofSize: 32, weight: .medium), .foregroundColor: ink])
+    ("雾灰（原“原生玻璃”）· 常规字重 · 真实候选窗渲染" as NSString).draw(at: NSPoint(x: 49, y: 778),
+      withAttributes: [.font: NSFont.systemFont(ofSize: 21), .foregroundColor: NSColor.darkGray])
+    let variants: [(SquirrelTheme.SelectionStyle, Bool, String)] = [
+      (.tile, true, "整行变色 · 圆角"), (.tile, false, "整行变色 · 直角"),
+      (.underline, true, "下划线 · 圆角"), (.underline, false, "下划线 · 直角")
+    ]
+    for (index, variant) in variants.enumerated() {
+      let x = CGFloat(50 + (index % 2) * 550)
+      let top = CGFloat(700 - (index / 2) * 330)
+      (variant.2 as NSString).draw(at: NSPoint(x: x, y: top),
+        withAttributes: [.font: NSFont.systemFont(ofSize: 23, weight: .medium), .foregroundColor: ink])
+      for (modeIndex, mode) in ["light", "dark"].enumerated() {
+        guard let palette = samples["linnet_glass_\(mode)"],
+          let panel = renderProductCandidatePanel(
+            sample: appearanceSample(palette, style: variant.0, rounded: variant.1),
+            preedit: "", items: [("你", "you (informal)"), ("你好", "hello; hi"), ("工作", "work; job")]) else {
+          failures.append("appearance gallery failed to render")
+          continue
+        }
+        let scale = min(1, 475 / CGFloat(panel.pixelsWide))
+        let height = CGFloat(panel.pixelsHigh) * scale
+        drawBitmap(panel, in: NSRect(x: x, y: top - 24 - CGFloat(modeIndex) * 135 - height,
+          width: CGFloat(panel.pixelsWide) * scale, height: height))
+      }
+    }
+    NSGraphicsContext.restoreGraphicsState()
+    writeReadmeBitmap(bitmap, outputPath: outputPath, label: "README appearance gallery")
+  }
+
   private static func makeReadmeRegionalGallery(yamlPath: String, outputPath: String) {
     guard let yaml = try? String(contentsOfFile: yamlPath, encoding: .utf8) else { return }
     let samples = parseThemeSamples(yaml)
@@ -2407,7 +2500,7 @@ struct LinnetCandidateWindowInteractionTests {
     let ink = NSColor(srgbRed: 0.12, green: 0.12, blue: 0.13, alpha: 1)
     ("词义与注释分层，保留简繁词条的归属" as NSString).draw(at: NSPoint(x: 52, y: 675),
       withAttributes: [.font: NSFont.systemFont(ofSize: 36, weight: .semibold), .foregroundColor: ink])
-    ("macOS 浅色 / 深色 · 当前候选窗渲染 · 20 pt" as NSString).draw(at: NSPoint(x: 54, y: 632),
+    ("澄蓝浅色 / 深色 · 当前候选窗渲染 · 20 pt" as NSString).draw(at: NSPoint(x: 54, y: 632),
       withAttributes: [.font: NSFont.systemFont(ofSize: 22), .foregroundColor: NSColor.darkGray])
     let lexicon = ZIMELocalLexicon(url: URL(fileURLWithPath: "resources/zime-cedict.sqlite3"))
     let variants = [
@@ -2667,9 +2760,9 @@ struct LinnetCandidateWindowInteractionTests {
       ("linnet_sidecar", "青岩", "Sidecar Slate"),
       ("linnet_clay", "陶印", "Clay Tiles"),
       ("linnet_mist_jade", "月白雾青", "Mist Jade"),
-      ("linnet_glass", "原生玻璃", "Native Glass"),
+      ("linnet_glass", "雾灰", "Soft Gray"),
       ("linnet_ink_cinnabar", "夜墨朱砂", "Ink Cinnabar"),
-      ("linnet_macos", "macOS", "Neutral Blue"),
+      ("linnet_macos", "澄蓝", "Clear Blue"),
     ]
     guard samples.count == 16,
       families.allSatisfy({
@@ -2761,7 +2854,7 @@ struct LinnetCandidateWindowInteractionTests {
           width: candidateWidth, height: candidateHeight))
     }
 
-    ("雾青与原生玻璃使用 macOS 材质；macOS 主题使用中性色与蓝色选中行。" as NSString).draw(
+    ("主题只改变颜色；选中效果与窗口角形在设置中独立选择。" as NSString).draw(
       at: NSPoint(x: 52, y: 18),
       withAttributes: [.font: detailFont, .foregroundColor: secondary])
     NSGraphicsContext.restoreGraphicsState()
@@ -2852,11 +2945,7 @@ struct LinnetCandidateWindowInteractionTests {
         let label = rimeColor(fields["label_color"]),
         let selectedBackground = rimeColor(fields["hilited_candidate_back_color"]),
         let selectedPrimary = rimeColor(fields["hilited_candidate_text_color"]),
-        let selectedLabel = rimeColor(fields["hilited_candidate_label_color"]),
-        let corner = fields["corner_radius"].flatMap(Double.init),
-        let highlightedCorner = fields["hilited_corner_radius"].flatMap(Double.init),
-        let selectionStyle = fields["linnet_selection_style"]
-          .flatMap(SquirrelTheme.SelectionStyle.init(rawValue:))
+        let selectedLabel = rimeColor(fields["hilited_candidate_label_color"])
       else { return }
       result[identifier] = ThemeSample(
         identifier: identifier,
@@ -2865,13 +2954,14 @@ struct LinnetCandidateWindowInteractionTests {
         primary: primary,
         label: label,
         selectedBackground: selectedBackground,
+        selectionIndicator: rimeColor(fields["linnet_selection_indicator_color"]) ?? selectedBackground,
         selectedPrimary: selectedPrimary,
         selectedLabel: selectedLabel,
-        cornerRadius: corner,
-        highlightedCornerRadius: highlightedCorner,
-        mutuallyExclusive: fields["mutual_exclusive"] == "true",
-        isTranslucent: fields["translucency"] == "true",
-        selectionStyle: selectionStyle)
+        cornerRadius: 8,
+        highlightedCornerRadius: 5,
+        mutuallyExclusive: false,
+        isTranslucent: false,
+        selectionStyle: .tile)
     }
     for rawLine in source.split(separator: "\n", omittingEmptySubsequences: false) {
       let line = String(rawLine.prefix { $0 != "#" })

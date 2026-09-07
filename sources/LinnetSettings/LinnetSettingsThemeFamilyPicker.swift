@@ -1,5 +1,5 @@
 // Visual theme-family selection for the Appearance settings draft. Theme
-// colors and treatments still come only from the bundled squirrel.yaml catalog.
+// colors come from squirrel.yaml; treatment and geometry are independent.
 
 import AppKit
 import SwiftUI
@@ -12,9 +12,9 @@ extension LinnetSettingsDocument.ThemeFamily {
     case .sidecarSlate: "Slate"
     case .clayTiles: "Clay"
     case .mistJade: "Mist"
-    case .nativeGlass: "Glass"
+    case .nativeGlass: "Soft Gray"
     case .inkCinnabar: "Ink"
-    case .macOS: "macOS"
+    case .macOS: "Clear Blue"
     }
   }
 }
@@ -24,6 +24,8 @@ extension LinnetSettingsDocument.ThemeFamily {
 struct LinnetSettingsThemeFamilyPicker: View {
   @Binding var selection: LinnetSettingsDocument.ThemeFamily
   @Binding var mode: LinnetSettingsDocument.ThemeMode
+  var selectionEffect: LinnetSettingsDocument.CandidateSelectionEffect = .fullRow
+  var cornerStyle: LinnetSettingsDocument.CandidateCornerStyle = .rounded
   private let columns = [GridItem(.adaptive(minimum: 190, maximum: 250), spacing: 10)]
   var body: some View {
     GroupBox("Theme") {
@@ -139,7 +141,8 @@ struct LinnetSettingsThemeFamilyPicker: View {
     let appearance = LinnetSettingsDocument.Appearance(
       fontPoint: 16, themeMode: mode,
       chineseCandidateLayout: .horizontal, englishCandidateLayout: .horizontal,
-      pageSize: 3, themeFamily: family)
+      pageSize: 3, themeFamily: family,
+      selectionEffect: selectionEffect, cornerStyle: cornerStyle)
     if case .success(let preview) = LinnetSettingsAppearancePreview.presentation(
       for: appearance, systemIsDark: mode == .dark, catalog: catalog) {
       let fonts = (

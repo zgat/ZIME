@@ -14,6 +14,7 @@ struct LinnetSettingsProjectionRendererTests {
       try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
       testDefaultInteractionProjection()
       testThemeFamilyAndAppearanceMapping()
+      try testIndependentSelectionAndCorners()
       testFontPresetProjection()
       testCandidateLayoutMapping()
       testLightweightAppearanceProjection()
@@ -40,13 +41,13 @@ struct LinnetSettingsProjectionRendererTests {
   }
 
   private static func testThemeFamilyAndAppearanceMapping() {
-    guard LinnetSettingsDocument.currentSchemaVersion == 13,
+    guard LinnetSettingsDocument.currentSchemaVersion == 14,
       LinnetSettingsDocument.ThemeFamily.allCases.map(\.rawValue) == [
         "paper_ledger", "moon_jade", "sidecar_slate", "clay_tiles", "mist_jade",
         "native_glass", "ink_cinnabar", "macos",
       ]
     else {
-      fail("the settings codec must publish exactly the eight ordered theme families in schema v13")
+      fail("the settings codec must publish exactly the eight ordered theme families in schema v14")
     }
     let families: [(LinnetSettingsDocument.ThemeFamily, String)] = [
       (.paperLedger, "linnet_paper"),
@@ -419,6 +420,48 @@ struct LinnetSettingsProjectionRendererTests {
     }
   }
 
+  private static func testIndependentSelectionAndCorners() throws {
+    for family in LinnetSettingsDocument.ThemeFamily.allCases {
+      let legacy = try JSONDecoder().decode(LinnetSettingsDocument.self, from: Data(
+        "{\"schemaVersion\":13,\"appearance\":{\"themeFamily\":\"\(family.rawValue)\",\"chineseCandidateLayout\":\"horizontal\",\"englishCandidateLayout\":\"vertical\",\"pageSize\":5}}".utf8))
+      let expected: LinnetSettingsDocument.CandidateSelectionEffect =
+        [.paperLedger, .moonJade, .inkCinnabar].contains(family) ? .underline : .fullRow
+      require(legacy.appearance.selectionEffect == expected && legacy.appearance.cornerStyle == .rounded,
+              "v13 must adopt the old treatment once, independently of future palettes")
+      require(legacy.appearance.chineseCandidateLayout == .horizontal && legacy.appearance.pageSize == 5,
+              "v14 migration must not repeat the v13 layout migration")
+      for effect in LinnetSettingsDocument.CandidateSelectionEffect.allCases {
+        for corners in LinnetSettingsDocument.CandidateCornerStyle.allCases {
+          var document = legacy
+          document.appearance.selectionEffect = effect
+          document.appearance.cornerStyle = corners
+          let roundTrip = try JSONDecoder().decode(LinnetSettingsDocument.self,
+            from: JSONEncoder().encode(document))
+          require(roundTrip == document, "appearance choices did not round-trip")
+          let projection = LinnetSettingsProjectionRenderer.renderProjections(document: document)[
+            LinnetSettingsProjectionRenderer.squirrelCustomFile] ?? ""
+          require(projection.contains("\"style/linnet_selection_style\": \"underline\"") == (effect == .underline),
+                  "selection effect projection is palette-dependent")
+          require(projection.contains("\"style/corner_radius\": 0") == (corners == .square)
+                    && projection.contains("\"style/hilited_corner_radius\": 0") == (corners == .square),
+                  "square windows must also have square full-row highlighting")
+          document.appearance.themeFamily = family == .paperLedger ? .nativeGlass : .paperLedger
+          let changed = try JSONDecoder().decode(LinnetSettingsDocument.self,
+            from: JSONEncoder().encode(document))
+          require(changed.appearance.selectionEffect == effect && changed.appearance.cornerStyle == corners,
+                  "changing the theme overwrote independent appearance choices")
+        }
+      }
+    }
+    for key in ["selectionEffect", "cornerStyle"] {
+      do {
+        _ = try JSONDecoder().decode(LinnetSettingsDocument.self,
+          from: Data("{\"schemaVersion\":14,\"appearance\":{\"\(key)\":\"unsupported\"}}".utf8))
+        fail("unknown \(key) must fail closed")
+      } catch DecodingError.dataCorrupted { }
+    }
+  }
+
   private static func testLightweightAppearanceProjection() {
     var baseline = LinnetSettingsDocument.Appearance.default
     baseline.pageSize = 5
@@ -428,6 +471,8 @@ struct LinnetSettingsProjectionRendererTests {
     var requested = baseline
     requested.fontPoint = 21
     requested.themeFamily = .nativeGlass
+    requested.selectionEffect = .underline
+    requested.cornerStyle = .square
     requested.pageSize = 9
     requested.chineseCandidateLayout = .horizontal
     requested.englishCandidateLayout = .horizontal
@@ -436,6 +481,8 @@ struct LinnetSettingsProjectionRendererTests {
     let projected = requested.livePanelProjection(over: baseline)
     require(projected.fontPoint == 21 && projected.themeFamily == .nativeGlass,
             "panel-live appearance fields were not retained")
+    require(projected.selectionEffect == .underline && projected.cornerStyle == .square,
+            "selection and corners must publish without a dictionary rebuild")
     require(projected.pageSize == 5,
             "page size escaped the full Apply boundary")
     require(projected.chineseCandidateLayout == .vertical

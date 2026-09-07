@@ -7,6 +7,7 @@ import Vision
 @main
 struct LinnetSettingsAppearancePreviewTests {
   @MainActor static func main() {
+    ZIMEAppearanceContractTests.run()
     testCloudThemeRecognition()
     testBundledThemeSourceIsComplete()
     testCatalogOwnsThemePairs()
@@ -15,7 +16,7 @@ struct LinnetSettingsAppearancePreviewTests {
     testThemePairsRemainDistinctAndReadable()
     testTranslucentSelectionContrast()
     testMoonJadeAndNativeGlassVisualRoles()
-    testSlateAndMoonHaveDifferentVisualStructures()
+    testThemesOnlyChangeColors()
     testSystemModeAndTypographyStayDraftDerived()
     testPreviewUsesSelectedPageSize()
     testPreviewUsesTheCanonicalBilingualFontCascade()
@@ -209,12 +210,12 @@ struct LinnetSettingsAppearancePreviewTests {
           require(preview.detailGeometry(for: language, expanded: false).placement == .footer,
                   "a horizontal bilingual layout must keep selected detail below")
         }
-        require(preview.selectionStyle == source.selectionStyle,
-                "preview selection style must come from the canonical scheme")
-        require(preview.cornerRadius == source.cornerRadius,
-                "preview window radius must come from the canonical scheme")
-        require(preview.highlightedCornerRadius == source.highlightedCornerRadius,
-                "preview selection radius must come from the canonical scheme")
+        require(preview.selectionStyle == .tile,
+                "preview selection style must come from the draft")
+        require(preview.cornerRadius == appearance.cornerStyle.windowRadius,
+                "preview window radius must come from the draft")
+        require(preview.highlightedCornerRadius == appearance.cornerStyle.selectionRadius,
+                "preview selection radius must follow the window corners")
       }
     }
 
@@ -240,23 +241,13 @@ struct LinnetSettingsAppearancePreviewTests {
       }
     }
 
-    let expectedRadii: [LinnetSettingsDocument.ThemeFamily: (Double, Double)] = [
-      .paperLedger: (7, 0),
-      .moonJade: (10, 0),
-      .sidecarSlate: (4, 2), // Crisp opaque Slate tiles, distinct from Moon's bar.
-      .clayTiles: (12, 7),
-      .mistJade: (10, 6),
-      .nativeGlass: (10, 6),
-      .inkCinnabar: (8, 0),
-      .macOS: (10, 5),
-    ]
-    for (family, expected) in expectedRadii {
+    for family in LinnetSettingsDocument.ThemeFamily.allCases {
       var appearance = LinnetSettingsDocument.Appearance.default
       appearance.themeFamily = family
       appearance.themeMode = .light
       let preview = projected(appearance, systemIsDark: false, catalog: catalog)
-      require(preview.cornerRadius == expected.0, "theme window radius drifted")
-      require(preview.highlightedCornerRadius == expected.1, "theme selection radius drifted")
+      require(preview.cornerRadius == 8, "theme changed the default window radius")
+      require(preview.highlightedCornerRadius == 5, "theme changed the default selection radius")
     }
 
     var glassAppearance = LinnetSettingsDocument.Appearance.default
@@ -265,9 +256,8 @@ struct LinnetSettingsAppearancePreviewTests {
     guard let glass = catalog.scheme(for: glassAppearance, systemIsDark: false) else {
       fail("the native Glass source is unavailable")
     }
-    require(glass.isTranslucent, "the native Glass theme must enable material translucency")
-    require(glass.palette.background.alpha < 255,
-            "the native Glass tint must leave the system material visible")
+    require(glass.palette.background.alpha == 255,
+            "Soft Gray must remain legible independently of the app underneath")
 
   }
 
@@ -292,23 +282,19 @@ struct LinnetSettingsAppearancePreviewTests {
       require(light.identifier.hasSuffix("_light") && dark.identifier.hasSuffix("_dark"),
               "a theme family lost its explicit Light/Dark twins")
       require(light.palette != dark.palette, "a theme family reused one palette for both appearances")
-      let materialFamilies: Set<LinnetSettingsDocument.ThemeFamily> = [.mistJade, .nativeGlass]
-      require(light.isTranslucent == materialFamilies.contains(family),
-              "only Mist Jade and Native Glass may own translucent Light surfaces")
-      require(dark.isTranslucent == materialFamilies.contains(family),
-              "only Mist Jade and Native Glass may own translucent Dark surfaces")
       lightPaletteKeys.insert(paletteKey(light.palette))
       darkPaletteKeys.insert(paletteKey(dark.palette))
 
-      for scheme in [light, dark] where !scheme.isTranslucent {
+      for scheme in [light, dark] {
         require(contrast(scheme.palette.primary, scheme.palette.background) >= 4.5,
                 "opaque theme primary text fell below the product contrast floor")
         require(contrast(scheme.palette.secondary, scheme.palette.background) >= 3.0,
                 "opaque theme supporting text fell below the product contrast floor")
-        let selectedSurface = scheme.selectionStyle == .tile
-          ? scheme.palette.selectedBackground : scheme.palette.background
+        let selectedSurface = scheme.palette.selectedBackground
         require(contrast(scheme.palette.selectedPrimary, selectedSurface) >= 4.5,
                 "opaque theme selected text fell below the product contrast floor")
+        require(contrast(scheme.palette.selectionIndicator, scheme.palette.background) >= 3,
+                "\(scheme.identifier) underline is not clearly visible")
       }
     }
 
@@ -365,27 +351,46 @@ struct LinnetSettingsAppearancePreviewTests {
       guard let scheme = catalog.scheme(for: native, systemIsDark: mode == .dark) else {
         fail("the standard Native Glass source is unavailable")
       }
-      require(scheme.isTranslucent,
-              "standard Native Glass must use the shared native material projection")
       let background = scheme.palette.background
       let backgroundSpread = [background.red, background.green, background.blue]
         .map(Int.init).max()! - [background.red, background.green, background.blue]
         .map(Int.init).min()!
-      require(backgroundSpread <= 4,
-              "standard Native Glass must remain neutral instead of inheriting an artistic tint")
+      require(backgroundSpread <= 12,
+              "Soft Gray must remain close to neutral")
     }
   }
 
-  private static func testSlateAndMoonHaveDifferentVisualStructures() {
+  private static func testThemesOnlyChangeColors() {
     let catalog = canonicalCatalog()
-    guard let moon = catalog.pair(for: .moonJade), let slate = catalog.pair(for: .sidecarSlate) else {
-      fail("missing Moon/Slate themes")
-    }
-    for (moonScheme, slateScheme) in [(moon.light, slate.light), (moon.dark, slate.dark)] {
-      require(moonScheme.selectionStyle == .bar && slateScheme.selectionStyle == .tile,
-              "Moon and Slate must not differ only by a slight color shift")
-      require(slateScheme.highlightedCornerRadius <= 3 && !slateScheme.isTranslucent,
-              "Slate must retain crisp opaque selection instead of another rounded glass tile")
+    for effect in LinnetSettingsDocument.CandidateSelectionEffect.allCases {
+      for corners in LinnetSettingsDocument.CandidateCornerStyle.allCases {
+        for family in LinnetSettingsDocument.ThemeFamily.allCases {
+          for mode in [LinnetSettingsDocument.ThemeMode.light, .dark] {
+            var appearance = LinnetSettingsDocument.Appearance.default
+            appearance.selectionEffect = effect
+            appearance.cornerStyle = corners
+            appearance.themeFamily = family
+            appearance.themeMode = mode
+            let preview = projected(appearance, systemIsDark: false, catalog: catalog)
+            require(preview.selectionStyle.rawValue == effect.projectedStyle,
+                    "palette changed the chosen selection effect")
+            require(preview.cornerRadius == corners.windowRadius
+                      && preview.highlightedCornerRadius == corners.selectionRadius,
+                    "palette changed window or selection corners")
+            require(!preview.isTranslucent && !preview.isMutuallyExclusive,
+                    "palette changed the surface material")
+            let font = LinnetCandidatePresentation.platformFont(fontNames: [], size: 16)
+            let line = LinnetSettingsAppearancePreview.candidateLine("1", "输入", selected: true,
+              preview, fonts: (label: font, candidate: font))
+            let range = (line.string as NSString).range(of: "输入")
+            let actual = line.attribute(.foregroundColor, at: range.location, effectiveRange: nil) as? NSColor
+            let expected = effect == .fullRow ? preview.palette.selectedPrimary : preview.palette.primary
+            require(actual == expected.nsColor, "underline text used tile-only foreground color")
+            require(line.attribute(.font, at: range.location, effectiveRange: nil) as? NSFont == font,
+                    "candidate preview must preserve the selected regular font")
+          }
+        }
+      }
     }
   }
 

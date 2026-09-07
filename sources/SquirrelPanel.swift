@@ -326,11 +326,9 @@ extension SquirrelPanel {
     view.separatorWidth = usesInlineLayout
       ? inlineSeparator.boundingRect(with: .zero).width : 0
     let candidateLines = candidates.items.enumerated().map { itemIndex, item in
-      var attrs = itemIndex == index ? theme.highlightedAttrs : theme.attrs
-      if item.emphasizesPrimaryText, let font = attrs[.font] as? NSFont {
-        attrs[.font] = NSFontManager.shared.convert(
-          font, toHaveTrait: .boldFontMask)
-      }
+      // Translation is an annotation, not a reason to change the user's face
+      // or weight. Use the same regular fonts as the Settings preview.
+      let attrs = itemIndex == index ? theme.highlightedAttrs : theme.attrs
       let labelAttrs = itemIndex == index ? theme.labelHighlightedAttrs : theme.labelAttrs
       let commentAttrs = itemIndex == index ? theme.commentHighlightedAttrs : theme.commentAttrs
       let label = theme.candidateFormat.contains(/\[label\]/)

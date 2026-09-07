@@ -1,6 +1,15 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Selection effect" : {"localizations":{"zh-Hans":{"stringUnit":{"state":"translated","value":"选中效果"}}}},
+    "Full-row highlight" : {"localizations":{"zh-Hans":{"stringUnit":{"state":"translated","value":"整行变色"}}}},
+    "Underline" : {"localizations":{"zh-Hans":{"stringUnit":{"state":"translated","value":"下划线"}}}},
+    "Window corners" : {"localizations":{"zh-Hans":{"stringUnit":{"state":"translated","value":"窗口角形"}}}},
+    "Rounded" : {"localizations":{"zh-Hans":{"stringUnit":{"state":"translated","value":"圆角"}}}},
+    "Square" : {"localizations":{"zh-Hans":{"stringUnit":{"state":"translated","value":"直角"}}}},
+    "Themes change colors only. Full-row highlighting follows the window corners." : {"localizations":{"zh-Hans":{"stringUnit":{"state":"translated","value":"主题只改变颜色。整行选中背景与窗口保持相同角形。"}}}},
+    "Clear Blue" : {"localizations":{"zh-Hans":{"stringUnit":{"state":"translated","value":"澄蓝"}}}},
+    "Soft Gray" : {"localizations":{"zh-Hans":{"stringUnit":{"state":"translated","value":"雾灰"}}}},
     "Update channel" : {"localizations":{"zh-Hans":{"stringUnit":{"state":"translated","value":"更新频道"}}}},
     "Stable" : {"localizations":{"zh-Hans":{"stringUnit":{"state":"translated","value":"正式版"}}}},
     "Preview" : {"localizations":{"zh-Hans":{"stringUnit":{"state":"translated","value":"预览版"}}}},

@@ -8,10 +8,10 @@
 
 import Foundation
 
-/// Canonical settings document (schema v13). ZIME's bilingual layout defaults
+/// Canonical settings document (schema v14). ZIME's bilingual layout defaults
 /// are projected over the bundled Rime distribution without modifying its data.
 struct LinnetSettingsDocument: Codable, Equatable, Sendable {
-  static let currentSchemaVersion = 13
+  static let currentSchemaVersion = 14
 
   var schemaVersion: Int
   var appearance: Appearance
@@ -100,6 +100,21 @@ extension LinnetSettingsDocument {
     case vertical
   }
 
+  enum CandidateSelectionEffect: String, Codable, CaseIterable, Sendable {
+    case fullRow = "full_row"
+    case underline
+
+    var projectedStyle: String { self == .fullRow ? "tile" : "underline" }
+  }
+
+  enum CandidateCornerStyle: String, Codable, CaseIterable, Sendable {
+    case rounded
+    case square
+
+    var windowRadius: Double { self == .rounded ? 8 : 0 }
+    var selectionRadius: Double { self == .rounded ? 5 : 0 }
+  }
+
   /// Controls whether the candidate window offers its native-like disclosure
   /// control. The current expanded/collapsed state is transient panel state;
   /// it is deliberately not persisted in this document.
@@ -167,6 +182,8 @@ extension LinnetSettingsDocument {
     var themeFamily: ThemeFamily
     var themeMode: ThemeMode
     var fontPreset: FontPreset
+    var selectionEffect: CandidateSelectionEffect
+    var cornerStyle: CandidateCornerStyle
     var chineseCandidateLayout: CandidateLayout
     var englishCandidateLayout: CandidateLayout
     var candidateBrowsingMode: CandidateBrowsingMode
@@ -191,12 +208,16 @@ extension LinnetSettingsDocument {
       pageSize: Int,
       candidateBrowsingMode: CandidateBrowsingMode = .expandable,
       themeFamily: ThemeFamily = ThemeFamily.defaultValue,
-      fontPreset: FontPreset = .system
+      fontPreset: FontPreset = .system,
+      selectionEffect: CandidateSelectionEffect = .fullRow,
+      cornerStyle: CandidateCornerStyle = .rounded
     ) {
       self.fontPoint = fontPoint
       self.themeFamily = themeFamily
       self.themeMode = themeMode
       self.fontPreset = fontPreset
+      self.selectionEffect = selectionEffect
+      self.cornerStyle = cornerStyle
       self.chineseCandidateLayout = chineseCandidateLayout
       self.englishCandidateLayout = englishCandidateLayout
       self.candidateBrowsingMode = candidateBrowsingMode
@@ -224,6 +245,14 @@ extension LinnetSettingsDocument {
       themeMode = modeValue.flatMap(ThemeMode.init(rawValue:)) ?? .system
       let fontValue = try container.decodeIfPresent(String.self, forKey: .fontPreset)
       fontPreset = fontValue.flatMap(FontPreset.init(rawValue:)) ?? .system
+      // Adopt the former theme treatment once for pre-v14 documents. Once
+      // saved, changing the palette can never change these independent choices.
+      let legacyUnderline = [.paperLedger, .moonJade, .inkCinnabar].contains(themeFamily)
+      selectionEffect = try container.decodeIfPresent(
+        CandidateSelectionEffect.self, forKey: .selectionEffect)
+        ?? (legacyUnderline ? .underline : .fullRow)
+      cornerStyle = try container.decodeIfPresent(
+        CandidateCornerStyle.self, forKey: .cornerStyle) ?? .rounded
       let chineseLayoutValue = try container.decodeIfPresent(
         String.self, forKey: .chineseCandidateLayout)
       let englishLayoutValue = try container.decodeIfPresent(

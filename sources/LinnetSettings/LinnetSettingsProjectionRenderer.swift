@@ -162,6 +162,13 @@ private extension LinnetSettingsProjectionRenderer {
     _ appearance: LinnetSettingsDocument.Appearance
   ) -> String? {
     var entries: [(String, String)] = []
+    if appearance.selectionEffect != .fullRow {
+      entries.append(("style/linnet_selection_style", quoted(appearance.selectionEffect.projectedStyle)))
+    }
+    if appearance.cornerStyle != .rounded {
+      entries.append(("style/corner_radius", formatNumber(appearance.cornerStyle.windowRadius)))
+      entries.append(("style/hilited_corner_radius", formatNumber(appearance.cornerStyle.selectionRadius)))
+    }
     if appearance.fontPoint != LinnetSettingsDocument.Appearance.defaultFontPoint {
       entries.append(("style/font_point", formatNumber(appearance.fontPoint)))
       entries.append((

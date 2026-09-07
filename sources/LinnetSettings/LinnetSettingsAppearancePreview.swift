@@ -1,5 +1,5 @@
 // Local visual projection for the Appearance settings draft. The bundled
-// squirrel.yaml remains the only source for theme colors and treatments.
+// squirrel.yaml owns palette colors only. The settings document owns treatment.
 
 import AppKit
 import SwiftUI
@@ -60,6 +60,7 @@ enum LinnetSettingsAppearancePreview {
     let primary: ColorComponents
     let secondary: ColorComponents
     let selectedBackground: ColorComponents
+    let selectionIndicator: ColorComponents
     let selectedPrimary: ColorComponents
   }
 
@@ -67,11 +68,6 @@ enum LinnetSettingsAppearancePreview {
     struct Scheme: Equatable {
       let identifier: String
       let palette: Palette
-      let selectionStyle: SelectionStyle
-      let cornerRadius: Double
-      let highlightedCornerRadius: Double
-      let isTranslucent: Bool
-      let isMutuallyExclusive: Bool
     }
 
     struct ThemePair: Equatable {
@@ -159,23 +155,6 @@ enum LinnetSettingsAppearancePreview {
       identifier: String,
       fields: [String: String]
     ) throws -> Scheme {
-      guard let selectionStyle = SelectionStyle(
-        rawValue: fields["linnet_selection_style"] ?? "")
-      else {
-        throw Failure.malformedThemeData
-      }
-      let isTranslucent: Bool
-      switch fields["translucency"] {
-      case nil, "false": isTranslucent = false
-      case "true": isTranslucent = true
-      default: throw Failure.malformedThemeData
-      }
-      let isMutuallyExclusive: Bool
-      switch fields["mutual_exclusive"] {
-      case nil, "false": isMutuallyExclusive = false
-      case "true": isMutuallyExclusive = true
-      default: throw Failure.malformedThemeData
-      }
       return Scheme(
         identifier: identifier,
         palette: try Palette(
@@ -184,13 +163,10 @@ enum LinnetSettingsAppearancePreview {
           primary: color("candidate_text_color", fields),
           secondary: color("comment_text_color", fields),
           selectedBackground: color("hilited_candidate_back_color", fields),
+          selectionIndicator: color(fields["linnet_selection_indicator_color"] == nil
+            ? "hilited_candidate_back_color" : "linnet_selection_indicator_color", fields),
           selectedPrimary: color("hilited_candidate_text_color", fields)
-        ),
-        selectionStyle: selectionStyle,
-        cornerRadius: try metric("corner_radius", fields),
-        highlightedCornerRadius: try metric("hilited_corner_radius", fields),
-        isTranslucent: isTranslucent,
-        isMutuallyExclusive: isMutuallyExclusive
+        )
       )
     }
 
@@ -204,13 +180,6 @@ enum LinnetSettingsAppearancePreview {
         throw Failure.malformedThemeData
       }
       return ColorComponents(value)
-    }
-
-    private static func metric(_ key: String, _ fields: [String: String]) throws -> Double {
-      guard let raw = fields[key], let value = Double(raw), value.isFinite, value >= 0 else {
-        throw Failure.malformedThemeData
-      }
-      return value
     }
 
     private static func scalar(_ value: String) -> String {
@@ -274,11 +243,11 @@ enum LinnetSettingsAppearancePreview {
     }
     return .success(Presentation(
       palette: scheme.palette,
-      selectionStyle: scheme.selectionStyle,
-      cornerRadius: scheme.cornerRadius,
-      highlightedCornerRadius: scheme.highlightedCornerRadius,
-      isTranslucent: scheme.isTranslucent,
-      isMutuallyExclusive: scheme.isMutuallyExclusive,
+      selectionStyle: appearance.selectionEffect == .fullRow ? .tile : .underline,
+      cornerRadius: appearance.cornerStyle.windowRadius,
+      highlightedCornerRadius: appearance.cornerStyle.selectionRadius,
+      isTranslucent: false,
+      isMutuallyExclusive: false,
       chineseCandidateLayout: appearance.chineseCandidateLayout,
       englishCandidateLayout: appearance.englishCandidateLayout,
       candidateBrowsingMode: appearance.candidateBrowsingMode,
@@ -601,7 +570,7 @@ extension LinnetSettingsAppearancePreview {
     _ preview: LinnetSettingsAppearancePreview.Presentation,
     fonts: (label: NSFont, candidate: NSFont)
   ) -> NSAttributedString {
-    let candidateColor = selected
+    let candidateColor = selected && preview.selectionStyle == .tile
       ? preview.palette.selectedPrimary.nsColor : preview.palette.primary.nsColor
     let labelColor = selected && preview.selectionStyle == .tile
       ? preview.palette.selectedPrimary.nsColor : preview.palette.secondary.nsColor
@@ -713,7 +682,7 @@ extension LinnetSettingsAppearancePreview {
     @ViewBuilder content: () -> Content
   ) -> some View {
     content()
-      .foregroundStyle(selected ? preview.palette.selectedPrimary.color : preview.palette.primary.color)
+      .foregroundStyle(selected && preview.selectionStyle == .tile ? preview.palette.selectedPrimary.color : preview.palette.primary.color)
       .background {
         if selected && preview.selectionStyle == .tile {
           ZStack {
@@ -733,7 +702,7 @@ extension LinnetSettingsAppearancePreview {
       }
       .overlay(alignment: .bottomLeading) {
         if selected && preview.selectionStyle == .underline {
-          Rectangle().fill(preview.palette.selectedBackground.color).frame(height: 2)
+          Rectangle().fill(preview.palette.selectionIndicator.color).frame(height: 2)
         }
       }
       .overlay(alignment: .leading) {

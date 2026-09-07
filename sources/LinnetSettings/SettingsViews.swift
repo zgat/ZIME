@@ -104,6 +104,24 @@ struct AppearanceTabView: View {
 
         Divider()
 
+        Picker("Selection effect", selection: $model.configuration.documentDraft.appearance.selectionEffect) {
+          Text("Full-row highlight").tag(LinnetSettingsDocument.CandidateSelectionEffect.fullRow)
+          Text("Underline").tag(LinnetSettingsDocument.CandidateSelectionEffect.underline)
+        }
+        .pickerStyle(.segmented)
+        .accessibilityIdentifier("settings.appearance.selectionEffect")
+        Picker("Window corners", selection: $model.configuration.documentDraft.appearance.cornerStyle) {
+          Text("Rounded").tag(LinnetSettingsDocument.CandidateCornerStyle.rounded)
+          Text("Square").tag(LinnetSettingsDocument.CandidateCornerStyle.square)
+        }
+        .pickerStyle(.segmented)
+        .accessibilityIdentifier("settings.appearance.cornerStyle")
+        Text("Themes change colors only. Full-row highlighting follows the window corners.")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+
+        Divider()
+
         Picker("Chinese candidates", selection: $model.configuration.documentDraft.appearance.chineseCandidateLayout) {
           Text("Horizontal").tag(LinnetSettingsDocument.CandidateLayout.horizontal)
           Text("Vertical").tag(LinnetSettingsDocument.CandidateLayout.vertical)
@@ -145,7 +163,9 @@ struct AppearanceTabView: View {
     VStack(alignment: .leading, spacing: 16) {
       LinnetSettingsThemeFamilyPicker(
         selection: $model.configuration.documentDraft.appearance.themeFamily,
-        mode: $model.configuration.documentDraft.appearance.themeMode
+        mode: $model.configuration.documentDraft.appearance.themeMode,
+        selectionEffect: model.configuration.documentDraft.appearance.selectionEffect,
+        cornerStyle: model.configuration.documentDraft.appearance.cornerStyle
       )
       LinnetSettingsAppearancePreviewView(appearance: model.configuration.documentDraft.appearance)
       Text(
