@@ -11,6 +11,7 @@ cd "${repo_root}"
 
 runtime_probe="${1:-}"
 if [[ "${1:-}" == --zime-bilingual-probe ||
+      "${1:-}" == --zime-shortcuts-probe ||
       "${1:-}" == --zime-paging-probe ||
       "${1:-}" == --mixed-input-probe ||
       "${1:-}" == --mixed-latency-probe ||
@@ -21,7 +22,7 @@ if [[ "${1:-}" == --zime-bilingual-probe ||
       "${1:-}" == --live-sync-probe ]]; then
   :
 elif [[ $# -ne 0 ]]; then
-  echo "usage: $0 [--zime-bilingual-probe|--zime-paging-probe|--mixed-input-probe|--mixed-latency-probe|--warm-session-probe|--cold-client-probe|--profile-key-matrix-probe|--fast-config-reload-probe|--live-sync-probe]" >&2
+  echo "usage: $0 [--zime-bilingual-probe|--zime-shortcuts-probe|--zime-paging-probe|--mixed-input-probe|--mixed-latency-probe|--warm-session-probe|--cold-client-probe|--profile-key-matrix-probe|--fast-config-reload-probe|--live-sync-probe]" >&2
   exit 64
 fi
 

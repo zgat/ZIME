@@ -174,8 +174,7 @@ enum LinnetSettingsDocumentStore {
     if FileManager.default.fileExists(atPath: userSettings.path),
       let legacy = try? LinnetPersonalDataStore.readLegacyUserSettings(userSettings) {
       document.english.sentenceCapitalization = legacy.sentenceCapitalization
-      document.english.tabBehavior =
-        LinnetSettingsDocument.TabBehavior(rawValue: legacy.tabBehavior) ?? .smartComplete
+      document.shortcuts.smartComplete = legacy.tabBehavior == "smart_complete" ? .optionTab : nil
     }
     if let profile = legacyChineseProfile(from: directory) {
       document.input.chineseProfile = profile

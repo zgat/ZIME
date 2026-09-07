@@ -206,6 +206,11 @@ struct InputTabView: View {
             reverseLookupSection
           }
         }
+        GroupBox {
+          ZIMEKeyboardShortcutSettings(shortcuts: $model.configuration.documentDraft.shortcuts)
+            .padding(8)
+        }
+        .disabled(!model.configuration.canEdit)
         GroupBox("Smart English") {
           LinnetSettingsTwoColumnLayout {
             englishCandidateSuggestions
@@ -391,29 +396,6 @@ struct InputTabView: View {
         "Add a trailing space when Space accepts a candidate",
         isOn: $model.configuration.documentDraft.english.spaceAddsTrailingSpace
       )
-      Picker("Tab key", selection: $model.configuration.documentDraft.english.tabBehavior) {
-        Text("Smart complete").tag(LinnetSettingsDocument.TabBehavior.smartComplete)
-        Text("Navigate candidates").tag(LinnetSettingsDocument.TabBehavior.navigate)
-        Text("Pass to application").tag(LinnetSettingsDocument.TabBehavior.pass)
-      }
-      Picker(
-        "Translation side",
-        selection: $model.configuration.documentDraft.english.translationToggleKey
-      ) {
-        Text("Tab").tag(LinnetSettingsDocument.TranslationToggleKey.tab)
-        Text("Option-Return").tag(
-          LinnetSettingsDocument.TranslationToggleKey.optionReturn)
-      }
-      Picker(
-        "Commit translation",
-        selection: $model.configuration.documentDraft.english.translationCommitKey
-      ) {
-        Text("Return").tag(LinnetSettingsDocument.TranslationCommitKey.enter)
-        Text("Space").tag(LinnetSettingsDocument.TranslationCommitKey.space)
-      }
-      Text("Number keys 1–9 always commit the corresponding translation row.")
-        .font(.caption)
-        .foregroundStyle(.secondary)
       Text(
         "Turning off learning stops reading and updating English learning data. Existing data returns when learning is enabled again; static context suggestions and spacing remain available."
       )
@@ -472,7 +454,8 @@ struct InputTabView: View {
   private var inputChangesPending: Bool {
     guard let baseline = model.configuration.documentBaseline else { return false }
     return model.configuration.documentDraft.input != baseline.input ||
-      model.configuration.documentDraft.english != baseline.english
+      model.configuration.documentDraft.english != baseline.english ||
+      model.configuration.documentDraft.shortcuts != baseline.shortcuts
   }
 
   private var reverseLookupExample: String {

@@ -91,6 +91,9 @@ final class SquirrelInputController: IMKInputController {
       if let bilingualHandled = handleBilingualKeyDown(
         event,
         modifiers: modifiers) {
+        if bilingualHandled {
+          acknowledgeConsumedCandidateChord(event, modifiers: modifiers)
+        }
         return bilingualHandled
       }
       let keyCode = event.keyCode
@@ -118,6 +121,23 @@ final class SquirrelInputController: IMKInputController {
     default:
       return false
     }
+  }
+
+  /// Rime still receives physical modifier edges. A Host-owned chord must also
+  /// retire ascii_composer's pending tap; otherwise Shift's later release can
+  /// be mistaken for an isolated mode-switch gesture. A nonmodifier key-up is
+  /// sufficient to retire the tap and never inserts or selects a candidate.
+  private func acknowledgeConsumedCandidateChord(
+    _ event: NSEvent, modifiers: NSEvent.ModifierFlags
+  ) {
+    guard !modifiers.intersection([.shift, .control, .option, .command]).isEmpty,
+      sessionIsCurrent() else { return }
+    let key = SquirrelKeycode.osxKeycodeToRime(
+      keycode: event.keyCode, keychar: event.charactersIgnoringModifiers?.first,
+      shift: modifiers.contains(.shift), caps: modifiers.contains(.capsLock))
+    guard key != UInt32(XK_VoidSymbol) else { return }
+    _ = rimeAPI.process_key(session, Int32(key),
+      Int32(SquirrelKeycode.osxModifiersToRime(modifiers: modifiers) | kReleaseMask.rawValue))
   }
 
   override func recognizedEvents(_ sender: Any!) -> Int {
@@ -579,24 +599,18 @@ extension SquirrelInputController {
     }
   }
 
-  /// Returns a decision only when the bilingual surface owns the key. Source
-  /// candidates remain Rime-owned; translation mode is a transient projection.
+  /// Candidate actions are state-independent: the same confirmation binding
+  /// accepts the visible source or translation row. Idle/client keys stay local.
   private func handleBilingualKeyDown(
     _ event: NSEvent,
     modifiers: NSEvent.ModifierFlags
   ) -> Bool? {
     let shortcutModifiers = modifiers.intersection([.command, .control, .option, .shift])
-    let toggleKey = NSApp.squirrelAppDelegate.activeSettingsDocument?
-      .english.translationToggleKey ?? .tab
-    let togglesTranslation = switch toggleKey {
-    case .tab:
-      event.keyCode == UInt16(kVK_Tab) && shortcutModifiers.isEmpty
-    case .optionReturn:
-      (event.keyCode == UInt16(kVK_Return) ||
-        event.keyCode == UInt16(kVK_ANSI_KeypadEnter)) &&
-        shortcutModifiers == [.option]
-    }
-    if togglesTranslation {
+    let bindings = NSApp.squirrelAppDelegate.activeSettingsDocument?.shortcuts ?? .default
+    let action = bindings.action(keyCode: event.keyCode, modifiers: shortcutModifiers.rawValue)
+    if event.isARepeat, action == .switchSourceTranslation,
+      hasPendingRimeInput || bilingualTranslationMode { return true }
+    if action == .switchSourceTranslation {
       if bilingualTranslationMode {
         bilingualTranslationMode = false
         bilingualHighlightedIndex = -1
@@ -619,29 +633,36 @@ extension SquirrelInputController {
       return true
     }
 
-    guard bilingualTranslationMode else { return nil }
     let presented = NSApp.squirrelAppDelegate.panel?.candidateSnapshot
+    if action == .commitCandidate {
+      guard hasPendingRimeInput || bilingualTranslationMode,
+        let presented, !presented.items.isEmpty else { return nil }
+      let selected = bilingualTranslationMode ? bilingualHighlightedIndex : presented.highlightedItemIndex
+      guard presented.items.indices.contains(selected) else { return true }
+      return selectCandidate(absoluteIndex: presented.items[selected].absoluteIndex)
+    }
+    if action == .smartComplete {
+      if bilingualTranslationMode { return true }
+      guard hasPendingRimeInput, inputModeIdentity?.schemaID == "linnet_en",
+        inputModeIdentity?.asciiMode == false,
+        let source = bilingualSourceSnapshot else { return nil }
+      guard let input = rimeAPI.get_input(session).map({ String(cString: $0) }),
+        let completed = LinnetCandidatePresentation.smartCompletionText(
+          input: input, candidates: source.items.map(\.text), highlighted: source.highlightedItemIndex)
+      else { return true }
+      // Replace marked input only. No selection notifier, user-learning write
+      // or client insertText occurs until the explicit confirmation action.
+      _ = completed.withCString { rimeAPI.set_input(session, $0) }
+      rimeUpdate()
+      return true
+    }
+
+    guard bilingualTranslationMode else { return nil }
     if event.keyCode == UInt16(kVK_Escape) {
       bilingualTranslationMode = false
       bilingualHighlightedIndex = -1
       rimeUpdate()
       return true
-    }
-    let commitKey = NSApp.squirrelAppDelegate.activeSettingsDocument?
-      .english.translationCommitKey ?? .enter
-    let commitsTranslation = switch commitKey {
-    case .enter:
-      (event.keyCode == UInt16(kVK_Return) ||
-        event.keyCode == UInt16(kVK_ANSI_KeypadEnter)) && shortcutModifiers.isEmpty
-    case .space:
-      event.keyCode == UInt16(kVK_Space) && shortcutModifiers.isEmpty
-    }
-    if commitsTranslation {
-      guard let presented,
-        presented.items.indices.contains(bilingualHighlightedIndex)
-      else { return true }
-      return selectCandidate(
-        absoluteIndex: presented.items[bilingualHighlightedIndex].absoluteIndex)
     }
     if shortcutModifiers.isEmpty,
       let digit = event.charactersIgnoringModifiers?.first?.wholeNumberValue,
@@ -650,6 +671,10 @@ extension SquirrelInputController {
       presented.items.indices.contains(digit - 1) {
       return selectCandidate(absoluteIndex: presented.items[digit - 1].absoluteIndex)
     }
+    // An unbound commit-like key must not dismiss translations and commit a
+    // different, hidden source candidate via Rime's raw/space fallback.
+    if [UInt16(kVK_Return), UInt16(kVK_ANSI_KeypadEnter), UInt16(kVK_Space)].contains(event.keyCode),
+      shortcutModifiers.isEmpty { return true }
     if [UInt16(kVK_LeftArrow), UInt16(kVK_UpArrow)].contains(event.keyCode) {
       guard let presented, !presented.items.isEmpty else { return true }
       bilingualHighlightedIndex = max(0, bilingualHighlightedIndex - 1)

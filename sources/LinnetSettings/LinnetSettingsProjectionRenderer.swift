@@ -339,7 +339,7 @@ private extension LinnetSettingsProjectionRenderer {
     ))
     entries.append((
       "linnet_english_interaction/tab_behavior",
-      quoted(english.tabBehavior.rawValue)
+      quoted("pass")
     ))
     entries.append((
       "linnet_english_interaction/space_adds_trailing_space",

@@ -281,7 +281,7 @@ final class SettingsUITests: XCTestCase {
 
     for label in [
       "Show IPA pronunciation",
-      "Show Chinese definitions",
+      "Show bilingual candidate translations",
       "Show Smart English context suggestions",
       "Capitalize sentence starts",
       "Learn from English selections",
@@ -289,11 +289,11 @@ final class SettingsUITests: XCTestCase {
     ] {
       try clickCheckBox(label, in: app)
     }
-    try selectEachPopUpOption([
-      "Smart complete",
-      "Navigate candidates",
-      "Pass to application",
-    ], in: app)
+    for action in ["switchSourceTranslation", "commitCandidate", "smartComplete"] {
+      XCTAssertTrue(app.buttons["settings.shortcuts.\(action)"].exists)
+    }
+    XCTAssertFalse(app.popUpButtons["Tab key"].exists)
+    XCTAssertFalse(app.popUpButtons["Commit translation"].exists)
 
   }
 

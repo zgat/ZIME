@@ -83,7 +83,7 @@ struct SettingsConfigurationSession: Equatable, Sendable {
     readiness = available ? .ready : .servicesUnavailable
   }
   func makeDocumentTicket() -> DocumentTicket? {
-    guard canPersist, let documentBaselineRevision else { return nil }
+    guard canPersist, documentDraft.shortcuts.isValid, let documentBaselineRevision else { return nil }
     return DocumentTicket(
       baselineRevision: documentBaselineRevision,
       submittedDraft: documentDraft)

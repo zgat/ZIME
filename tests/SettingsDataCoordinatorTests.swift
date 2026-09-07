@@ -1030,7 +1030,7 @@ struct SettingsDataCoordinatorTests {
       let replacementDocumentRevision = try LinnetSettingsDocumentStore.snapshot(from: live).revision
       replacementDocument.input.chineseProfile = .jiajia
       replacementDocument.english.sentenceCapitalization = true
-      replacementDocument.english.tabBehavior = .navigate
+      replacementDocument.shortcuts.smartComplete = .init(keyCode: 99)
       do {
         _ = try await coordinator.run(
           .applyConfiguration(
@@ -1081,7 +1081,7 @@ struct SettingsDataCoordinatorTests {
         appliedEnglishSchema.contains(
           "\"linnet_english_interaction/sentence_capitalization\": true"),
         appliedEnglishSchema.contains(
-          "\"linnet_english_interaction/tab_behavior\": \"navigate\""),
+          "\"linnet_english_interaction/tab_behavior\": \"pass\""),
         requestOrder.currentReloadCount() == 0,
         try exportContains(
           "linnet_custom_words", row: "Cloud Team\tcloud team",
@@ -1113,7 +1113,7 @@ struct SettingsDataCoordinatorTests {
       configurationDocument.input.traditionalChinese = true
       configurationDocument.input.pinyinReverseTrigger = .verticalBar
       configurationDocument.english.sentenceCapitalization = false
-      configurationDocument.english.tabBehavior = .pass
+      configurationDocument.shortcuts.smartComplete = nil
       let configurationResult = try await coordinator.run(
         .applyConfiguration(
           personal: applyResult.personalSnapshot.data,

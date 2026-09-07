@@ -2069,6 +2069,71 @@ void ExpectZIMEModeLearningDisabled(RimeApi_stdbool* api, bool chinese_disabled)
   std::cout << "ZIME mode-local learning switch: " << disabled_schema << " disabled: PASS\n";
 }
 
+void ExpectZIMERecordedShortcutBridge(RimeApi_stdbool* api) {
+  for (const auto& [modifier_key, modifier] : std::array<std::pair<int, int>, 4>{{
+      {XK_Shift_L, kShiftMask}, {XK_Control_L, kControlMask},
+      {XK_Alt_L, kAltMask}, {XK_Super_L, kSuperMask}}}) {
+    const auto session = CreateSchemaSession(api, "linnet_zh_pinyin");
+    Enter(api, session, "key");
+    api->process_key(session, modifier_key, modifier);
+    // The Host consumed a modified Tab action without sending its key-down.
+    api->process_key(session, XK_Tab, modifier | kReleaseMask);
+    api->process_key(session, modifier_key, kReleaseMask);
+    ExpectNoCommit(api, session, "recorded chord modifier release");
+    if (std::string(api->get_input(session)) != "key") Fail("recorded chord changed input on modifier release");
+    RimeStatus_stdbool status = {};
+    RIME_STRUCT_INIT(RimeStatus_stdbool, status);
+    if (!api->get_status(session, &status) || status.is_ascii_mode ||
+        std::string(status.schema_id) != "linnet_zh_pinyin") {
+      Fail("recorded shortcut was mistaken for an isolated Shift mode switch");
+    }
+    api->free_status(&status);
+    api->destroy_session(session);
+  }
+  for (const char* schema : {"linnet_zh_pinyin", "linnet_en"}) {
+    RimeConfig config = {};
+    char value[32] = {};
+    if (!api->schema_open(schema, &config) ||
+        !api->config_get_string(&config, "linnet_english_interaction/tab_behavior", value, sizeof(value)) ||
+        std::string(value) != "pass") {
+      Fail("fixed native Tab action must be retired by the Core projection");
+    }
+    api->config_close(&config);
+    const auto session = CreateSchemaSession(api, schema);
+    Enter(api, session, schema == std::string("linnet_en") ? "cluod" : "nihao");
+    const std::string original = api->get_input(session);
+    if (api->process_key(session, XK_Tab, 0)) Fail("native Tab still owns completion/navigation");
+    ExpectNoCommit(api, session, "unbound native Tab");
+    if (api->get_input(session) != original) Fail("retired native Tab changed the preedit");
+    api->destroy_session(session);
+  }
+  for (const auto& [input, completed] : {
+      std::make_pair("cluod", "cloud"), std::make_pair("ear", "early access")}) {
+    const auto session = CreateSchemaSession(api, "linnet_en");
+    Enter(api, session, input);
+    if (!api->set_input(session, completed) || std::string(api->get_input(session)) != completed ||
+        api->get_caret_pos(session) != std::strlen(completed)) {
+      Fail("Host completion bridge did not replace marked input and move the caret");
+    }
+    ExpectNoCommit(api, session, "smart completion must not insert text");
+    // A phrase may expose only its final word as the current menu candidate;
+    // native confirmation must include the already-composed prefix as well.
+    if (!api->select_candidate(session, 0) ||
+        TakeCommit(api, session) != completed) {
+      Fail("explicit candidate confirmation did not commit completed English");
+    }
+    api->destroy_session(session);
+  }
+  const auto chinese = CreateSchemaSession(api, "linnet_zh_pinyin");
+  Enter(api, chinese, "nihao");
+  if (!api->select_candidate(chinese, CandidateIndex(api, chinese, "你好")) ||
+      TakeCommit(api, chinese) != "你好") {
+    Fail("source confirmation committed the raw pinyin instead of the candidate");
+  }
+  api->destroy_session(chinese);
+  std::cout << "ZIME shortcut bridge: native Tab retired, completion marked-only, explicit source confirmation: PASS\n";
+}
+
 std::string AbbreviatedModeLabel(RimeApi_stdbool* api,
                                  RimeSessionId session,
                                  bool ascii_mode) {
@@ -7238,6 +7303,8 @@ int main(int argc, char** argv) {
       argc == 4 && std::strcmp(argv[3], "--zime-bilingual-probe") == 0;
   const bool zime_paging_probe =
       argc == 4 && std::strcmp(argv[3], "--zime-paging-probe") == 0;
+  const bool zime_shortcuts_probe =
+      argc == 4 && std::strcmp(argv[3], "--zime-shortcuts-probe") == 0;
   const bool zime_ranking_reopen_probe =
       argc == 4 && std::strcmp(argv[3], "--zime-ranking-reopen-probe") == 0;
   const bool zime_english_ranking_reopen_probe =
@@ -7265,6 +7332,7 @@ int main(int argc, char** argv) {
       !page_size_probe && !english_profile_probe &&
       !fast_config_reload_probe && !prediction_punctuation_probe &&
       !mixed_input_probe && !zime_bilingual_probe && !zime_paging_probe && !zime_ranking_reopen_probe &&
+      !zime_shortcuts_probe &&
       !zime_english_ranking_reopen_probe && !zime_english_learning_off_probe && !zime_chinese_learning_off_probe &&
       !mixed_learning_on_probe &&
       !mixed_learning_off_probe &&
@@ -7277,6 +7345,7 @@ int main(int argc, char** argv) {
          "--english-profile-probe PROFILE CHINESE_SCHEMA CODE PREFIX|"
          "--fast-config-reload-probe|--prediction-punctuation-probe|"
          "--mixed-input-probe|--zime-bilingual-probe|--zime-paging-probe|--zime-ranking-reopen-probe|"
+         "--zime-shortcuts-probe|"
          "--zime-english-ranking-reopen-probe|--zime-english-learning-off-probe|"
          "--zime-chinese-learning-off-probe|"
          "--mixed-learning-on-probe|"
@@ -7351,6 +7420,11 @@ int main(int argc, char** argv) {
     return 0;
   }
 
+  if (zime_shortcuts_probe) {
+    ExpectZIMERecordedShortcutBridge(api);
+    api->finalize();
+    return 0;
+  }
   if (zime_paging_probe) {
     ExpectCandidatePagingShortcuts(api, "linnet_zh_pinyin", "shi");
     ExpectCandidatePagingBoundaries(api, "linnet_zh_pinyin", "shi");

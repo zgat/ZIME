@@ -647,6 +647,7 @@ extension SquirrelApplicationDelegate {
     if scope == .appearance {
       guard desired.document.input == previous.document.input,
         desired.document.english == previous.document.english,
+        desired.document.shortcuts == previous.document.shortcuts,
         desired.document.appearance.livePanelProjection(
           over: previous.document.appearance) == desired.document.appearance
       else {

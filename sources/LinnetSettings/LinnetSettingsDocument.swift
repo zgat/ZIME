@@ -8,26 +8,30 @@
 
 import Foundation
 
-/// Canonical settings document (schema v15). ZIME's bilingual layout defaults
+/// Canonical settings document (schema v16). ZIME's bilingual layout defaults
 /// are projected over the bundled Rime distribution without modifying its data.
 struct LinnetSettingsDocument: Codable, Equatable, Sendable {
-  static let currentSchemaVersion = 15
+  static let currentSchemaVersion = 16
 
   var schemaVersion: Int
   var appearance: Appearance
   var input: Input
   var english: English
+  var shortcuts: Shortcuts
+  private enum CodingKeys: String, CodingKey { case schemaVersion, appearance, input, english, shortcuts }
 
   init(
     schemaVersion: Int = currentSchemaVersion,
     appearance: Appearance,
     input: Input,
-    english: English
+    english: English,
+    shortcuts: Shortcuts = .default
   ) {
     self.schemaVersion = schemaVersion
     self.appearance = appearance
     self.input = input
     self.english = english
+    self.shortcuts = shortcuts
   }
 }
 
@@ -115,20 +119,107 @@ extension LinnetSettingsDocument {
     var selectionRadius: Double { self == .rounded ? 5 : 0 }
   }
 
-  enum TabBehavior: String, Codable, CaseIterable, Sendable {
-    case pass
-    case navigate
-    case smartComplete = "smart_complete"
+  /// Physical macOS key identity; modifier bits match NSEvent's public flags.
+  /// Return and keypad Enter are one action and conflict as the same shortcut.
+  struct Shortcut: Codable, Equatable, Hashable, Sendable {
+    static let shift: UInt = 1 << 17
+    static let control: UInt = 1 << 18
+    static let option: UInt = 1 << 19
+    static let command: UInt = 1 << 20
+    static let modifierMask = shift | control | option | command
+    let keyCode: UInt16
+    let modifiers: UInt
+
+    init(keyCode: UInt16, modifiers: UInt = 0) {
+      self.keyCode = keyCode == 76 ? 36 : keyCode
+      self.modifiers = modifiers
+    }
+
+    static let tab = Shortcut(keyCode: 48)
+    static let enter = Shortcut(keyCode: 36)
+    static let optionTab = Shortcut(keyCode: 48, modifiers: option)
+
+    private static let keyNames: [UInt16: String] = [
+      0:"A", 1:"S", 2:"D", 3:"F", 4:"H", 5:"G", 6:"Z", 7:"X", 8:"C", 9:"V",
+      11:"B", 12:"Q", 13:"W", 14:"E", 15:"R", 16:"Y", 17:"T", 18:"1", 19:"2",
+      20:"3", 21:"4", 22:"6", 23:"5", 24:"=", 25:"9", 26:"7", 27:"-", 28:"8",
+      29:"0", 30:"]", 31:"O", 32:"U", 33:"[", 34:"I", 35:"P", 36:"↩", 37:"L",
+      38:"J", 39:"'", 40:"K", 41:";", 42:"\\", 43:",", 44:"/", 45:"N", 46:"M",
+      47:".", 48:"⇥", 49:"Space", 50:"`", 65:".", 67:"*", 69:"+", 75:"/",
+      78:"-", 81:"=", 82:"0", 83:"1", 84:"2", 85:"3", 86:"4", 87:"5", 88:"6",
+      89:"7", 91:"8", 92:"9", 96:"F5", 97:"F6", 98:"F7", 99:"F3", 100:"F8",
+      101:"F9", 103:"F11", 105:"F13", 106:"F16", 107:"F14", 109:"F10", 111:"F12",
+      113:"F15", 118:"F4", 120:"F2", 122:"F1", 64:"F17", 79:"F18", 80:"F19", 90:"F20"
+    ]
+
+    var isValid: Bool {
+      guard modifiers & ~Self.modifierMask == 0, let name = Self.keyNames[keyCode] else { return false }
+      if modifiers & (Self.control | Self.option | Self.command) == 0,
+        ![36, 48, 49].contains(keyCode),
+        !(name.hasPrefix("F") && Int(name.dropFirst()) != nil) { return false }
+      // These system/window shortcuts cannot reliably reach an input method.
+      if modifiers & Self.command != 0, [12, 13, 4, 46, 48, 49].contains(keyCode) { return false }
+      if modifiers & Self.control != 0, keyCode == 49 { return false }
+      return true
+    }
+
+    var displayName: String {
+      var result = ""
+      for (flag, label) in [(Self.control, "⌃"), (Self.option, "⌥"), (Self.shift, "⇧"), (Self.command, "⌘")] {
+        if modifiers & flag != 0 { result += label }
+      }
+      return result + (Self.keyNames[keyCode] ?? "?")
+    }
+
+    func matches(keyCode: UInt16, modifiers: UInt) -> Bool {
+      self == Shortcut(keyCode: keyCode, modifiers: modifiers & Self.modifierMask)
+    }
+
+    init(from decoder: Decoder) throws {
+      let values = try decoder.container(keyedBy: CodingKeys.self)
+      self.init(keyCode: try values.decode(UInt16.self, forKey: .keyCode),
+                modifiers: try values.decode(UInt.self, forKey: .modifiers))
+      guard isValid else {
+        throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Unsupported shortcut"))
+      }
+    }
   }
 
-  enum TranslationToggleKey: String, Codable, CaseIterable, Sendable {
-    case tab
-    case optionReturn = "option_return"
-  }
+  struct Shortcuts: Codable, Equatable, Sendable {
+    enum Action: String, CaseIterable, Sendable {
+      case switchSourceTranslation, commitCandidate, smartComplete
+    }
+    var switchSourceTranslation: Shortcut = .tab
+    var commitCandidate: Shortcut = .enter
+    var smartComplete: Shortcut? = .optionTab
+    static let `default` = Shortcuts()
 
-  enum TranslationCommitKey: String, Codable, CaseIterable, Sendable {
-    case enter
-    case space
+    subscript(action: Action) -> Shortcut? {
+      get {
+        switch action {
+        case .switchSourceTranslation: switchSourceTranslation
+        case .commitCandidate: commitCandidate
+        case .smartComplete: smartComplete
+        }
+      }
+      set {
+        switch action {
+        case .switchSourceTranslation: if let newValue { switchSourceTranslation = newValue }
+        case .commitCandidate: if let newValue { commitCandidate = newValue }
+        case .smartComplete: smartComplete = newValue
+        }
+      }
+    }
+
+    var isValid: Bool {
+      let bindings = Action.allCases.compactMap { self[$0] }
+      return bindings.allSatisfy(\.isValid) && Set(bindings).count == bindings.count
+    }
+
+    func action(keyCode: UInt16, modifiers: UInt) -> Action? {
+      guard isValid else { return nil }
+      return Action.allCases.first { self[$0]?.matches(keyCode: keyCode, modifiers: modifiers) == true }
+    }
   }
 
   /// One product-level choice owns the two Rime learning switches. Keeping
@@ -397,47 +488,35 @@ extension LinnetSettingsDocument {
 
   struct English: Codable, Equatable, Sendable {
     var sentenceCapitalization: Bool
-    var tabBehavior: TabBehavior
     var showIPA: Bool
     var showTranslation: Bool
     var predictionEnabled: Bool
     var learnFromSelections: Bool
     var spaceAddsTrailingSpace: Bool
-    var translationToggleKey: TranslationToggleKey
-    var translationCommitKey: TranslationCommitKey
 
     static let `default` = English(
       sentenceCapitalization: false,
-      tabBehavior: .smartComplete,
       showIPA: true,
       showTranslation: true,
       predictionEnabled: true,
       learnFromSelections: true,
-      spaceAddsTrailingSpace: true,
-      translationToggleKey: .tab,
-      translationCommitKey: .enter
+      spaceAddsTrailingSpace: true
     )
 
     init(
       sentenceCapitalization: Bool,
-      tabBehavior: TabBehavior,
       showIPA: Bool = true,
       showTranslation: Bool = true,
       predictionEnabled: Bool = true,
       learnFromSelections: Bool = true,
-      spaceAddsTrailingSpace: Bool = true,
-      translationToggleKey: TranslationToggleKey = .tab,
-      translationCommitKey: TranslationCommitKey = .enter
+      spaceAddsTrailingSpace: Bool = true
     ) {
       self.sentenceCapitalization = sentenceCapitalization
-      self.tabBehavior = tabBehavior
       self.showIPA = showIPA
       self.showTranslation = showTranslation
       self.predictionEnabled = predictionEnabled
       self.learnFromSelections = learnFromSelections
       self.spaceAddsTrailingSpace = spaceAddsTrailingSpace
-      self.translationToggleKey = translationToggleKey
-      self.translationCommitKey = translationCommitKey
     }
 
     init(from decoder: Decoder) throws {
@@ -445,8 +524,6 @@ extension LinnetSettingsDocument {
       sentenceCapitalization =
         try container.decodeIfPresent(Bool.self, forKey: .sentenceCapitalization)
         ?? English.default.sentenceCapitalization
-      let behaviorValue = try container.decodeIfPresent(String.self, forKey: .tabBehavior)
-      tabBehavior = behaviorValue.flatMap(TabBehavior.init(rawValue:)) ?? .smartComplete
       showIPA = try container.decodeIfPresent(Bool.self, forKey: .showIPA) ?? true
       showTranslation = try container.decodeIfPresent(Bool.self, forKey: .showTranslation) ?? true
       predictionEnabled =
@@ -455,12 +532,6 @@ extension LinnetSettingsDocument {
         try container.decodeIfPresent(Bool.self, forKey: .learnFromSelections) ?? true
       spaceAddsTrailingSpace =
         try container.decodeIfPresent(Bool.self, forKey: .spaceAddsTrailingSpace) ?? true
-      translationToggleKey =
-        try container.decodeIfPresent(TranslationToggleKey.self, forKey: .translationToggleKey)
-        ?? .tab
-      translationCommitKey =
-        try container.decodeIfPresent(TranslationCommitKey.self, forKey: .translationCommitKey)
-        ?? .enter
     }
   }
 
@@ -472,6 +543,24 @@ extension LinnetSettingsDocument {
     appearance = try container.decodeIfPresent(Appearance.self, forKey: .appearance) ?? .default
     input = try container.decodeIfPresent(Input.self, forKey: .input) ?? .default
     english = try container.decodeIfPresent(English.self, forKey: .english) ?? .default
+    shortcuts = container.contains(.shortcuts)
+      ? try container.decode(Shortcuts.self, forKey: .shortcuts) : .default
+    if !container.contains(.shortcuts), container.contains(.english) {
+      let legacy = try container.decode(LegacyShortcuts.self, forKey: .english)
+      guard legacy.translationToggleKey == nil || ["tab", "option_return"].contains(legacy.translationToggleKey!),
+        legacy.translationCommitKey == nil || ["enter", "space"].contains(legacy.translationCommitKey!)
+      else {
+        throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Unsupported legacy shortcut"))
+      }
+      if legacy.translationToggleKey == "option_return" {
+        shortcuts.switchSourceTranslation = .init(keyCode: 36, modifiers: Shortcut.option)
+      }
+      if legacy.translationCommitKey == "space" { shortcuts.commitCandidate = .init(keyCode: 49) }
+      if ["pass", "navigate"].contains(legacy.tabBehavior ?? "") { shortcuts.smartComplete = nil }
+    }
+    guard shortcuts.isValid else {
+      throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Conflicting shortcuts"))
+    }
     // v4 changes two shipped defaults. Older documents necessarily stored the
     // previous values without recording whether they were explicit, so adopt
     // the new product defaults once; users can still opt back into either value.
@@ -498,6 +587,24 @@ extension LinnetSettingsDocument {
     input: .default,
     english: .default
   )
+
+  private struct LegacyShortcuts: Decodable {
+    var tabBehavior: String?
+    var translationToggleKey: String?
+    var translationCommitKey: String?
+  }
+
+  func encode(to encoder: Encoder) throws {
+    guard shortcuts.isValid else {
+      throw EncodingError.invalidValue(shortcuts, .init(codingPath: encoder.codingPath, debugDescription: "Invalid or conflicting shortcuts"))
+    }
+    var container = encoder.container(keyedBy: CodingKeys.self)
+    try container.encode(schemaVersion, forKey: .schemaVersion)
+    try container.encode(appearance, forKey: .appearance)
+    try container.encode(input, forKey: .input)
+    try container.encode(english, forKey: .english)
+    try container.encode(shortcuts, forKey: .shortcuts)
+  }
 
   /// Clamps values into their bounded contract ranges and pins the schema
   /// version, so nothing the renderer emits can produce invalid Rime.

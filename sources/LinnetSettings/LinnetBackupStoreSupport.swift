@@ -527,7 +527,7 @@ extension LinnetBackupStore {
     let document = try LinnetSettingsDocumentStore.load(from: source)
     if !hadDocument {
       guard document.english.sentenceCapitalization == legacy.sentenceCapitalization,
-        document.english.tabBehavior.rawValue == legacy.tabBehavior
+        (document.shortcuts.smartComplete != nil) == (legacy.tabBehavior == "smart_complete")
       else {
         throw Failure.invalidDocument("backup-v2 interaction adoption")
       }

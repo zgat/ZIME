@@ -99,6 +99,8 @@ scripts/build-zime-delivery /absolute/path/to/ZIME.app /absolute/output/director
 0.1.8 修复中文模式下英文选词不学习的问题；中英文可随实际选词次数双向调整，记录跨重启保留。见 [验证记录](docs/ZIME-0.1.8-VALIDATION.md)。
 0.1.9 将两种输入模式的学习隔离：中文模式内中英文一起排序，独立英文模式另行训练，互不影响。见 [验证记录](docs/ZIME-0.1.9-VALIDATION.md)。
 
+0.1.10 将候选快捷键改为按键录入：Tab 切换原文／译文，Enter 确认当前候选，Option-Tab 智能补全待输入内容。三项独立配置并检查冲突，移除旧的仅译文上屏和 Tab 行为下拉设置。见 [验证记录](docs/ZIME-0.1.10-VALIDATION.md)。
+
 ## 上游与许可证
 
 ZIME 基于 [Linnet](https://github.com/Ares-X/Linnet) 的

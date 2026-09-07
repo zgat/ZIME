@@ -96,6 +96,15 @@ compile_run projection-renderer \
   sources/LinnetSettings/LinnetSettingsDocument.swift sources/LinnetSettings/LinnetSettingsDocumentStore.swift \
   sources/LinnetSettings/LinnetSettingsProjectionRenderer.swift \
   tests/LinnetSettingsProjectionRendererTests.swift
+compile_run keyboard-shortcuts -enable-bare-slash-regex -framework SwiftUI \
+  sources/LinnetPackContract.swift \
+  sources/LinnetDataChannel.swift \
+  sources/LinnetDataRegistry.swift sources/LinnetDirectoryDelta.swift sources/LinnetDataRegistryTransactions.swift sources/LinnetDataRegistryStorage.swift \
+  sources/LinnetSettings/SettingsContract.swift \
+  sources/LinnetSettings/LinnetSettingsDocument.swift \
+  sources/LinnetCandidatePresentation.swift \
+  sources/LinnetSettings/ZIMEKeyboardShortcutRecorder.swift \
+  tests/ZIMEKeyboardShortcutTests.swift
 if [[ "${1:-}" == --skip-appearance-preview ]]; then
   echo "SKIP: appearance-preview (explicitly requested; not a full Swift gate pass)"
 else

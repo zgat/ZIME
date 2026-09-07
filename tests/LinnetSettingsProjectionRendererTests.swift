@@ -42,7 +42,7 @@ struct LinnetSettingsProjectionRendererTests {
   }
 
   private static func testThemeFamilyAndAppearanceMapping() {
-    guard LinnetSettingsDocument.currentSchemaVersion == 15,
+    guard LinnetSettingsDocument.currentSchemaVersion == 16,
       LinnetSettingsDocument.ThemeFamily.allCases.map(\.rawValue) == [
         "paper_ledger", "moon_jade", "sidecar_slate", "clay_tiles", "mist_jade",
         "native_glass", "ink_cinnabar", "macos",
@@ -209,7 +209,7 @@ struct LinnetSettingsProjectionRendererTests {
       }
       guard contents.contains(
         "\"linnet_english_interaction/sentence_capitalization\": false"),
-        contents.contains("\"linnet_english_interaction/tab_behavior\": \"smart_complete\""),
+        contents.contains("\"linnet_english_interaction/tab_behavior\": \"pass\""),
         contents.contains("\"linnet_english_interaction/space_adds_trailing_space\": true"),
         !contents.contains("recognizer/patterns/linnet_pinyin"),
         !contents.contains("linnet_pinyin/prefix")
@@ -609,7 +609,7 @@ struct LinnetSettingsProjectionRendererTests {
     }
     guard let english = projections[LinnetSettingsProjectionRenderer.englishCustomFile],
       english.contains("\"linnet_english_interaction/sentence_capitalization\": false"),
-      english.contains("\"linnet_english_interaction/tab_behavior\": \"smart_complete\""),
+      english.contains("\"linnet_english_interaction/tab_behavior\": \"pass\""),
       english.contains("\"translator/enable_user_dict\": true"),
       projections[LinnetSettingsProjectionRenderer.squirrelCustomFile] == nil
     else {

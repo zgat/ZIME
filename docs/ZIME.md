@@ -1,4 +1,4 @@
-# ZIME 0.1.9
+# ZIME 0.1.10
 
 ZIME is a macOS 13+ Apple-silicon input method with one shared local engine and
 two system-visible modes:
@@ -30,12 +30,34 @@ Outside a real candidate menu, normal punctuation and raw/code input still apply
 The extra menu-bar mode indicator defaults off; macOS's input-source menu still
 provides Settings and the current mode. Shift mode switching is unchanged.
 
-The default translation-side key is Tab. Option-Return can be selected instead
-in Settings. On the translation side, arrow keys move the highlight, 1–9
-commit a row directly, and the configured Return or Space key commits the
-highlighted row. Escape or the toggle key returns to source candidates. If no
-local definition exists, the source list remains active and ZIME reports
-“暂无本地译文”. Definitions are never appended automatically.
+Settings → Input → Candidate shortcuts records actual keys instead of offering
+fixed shortcut menus. The three independent actions are:
+
+- **Switch source / translation** (Tab by default): changes the candidate side
+  without inserting text.
+- **Confirm current candidate** (Enter by default, including keypad Enter):
+  commits the highlighted row on either side. There is no separate
+  translation-only commit setting; Enter on source candidates selects the word,
+  not the raw pinyin.
+- **Smart completion** (Option-Tab by default): fills the highlighted English
+  completion or spelling correction into marked input, without committing or
+  learning it. Confirm to insert. This action does not switch translation sides
+  and can be left unassigned.
+
+Click a shortcut and press the desired key or chord; Escape cancels recording,
+and Delete clears the optional completion binding. Conflicts, bare typing keys,
+editing keys and common system-reserved shortcuts are rejected. Recording is
+window-local and requires no global keyboard or accessibility permission.
+Schema 16 migrates existing translation-switch and confirmation choices into
+these shared actions. Old pass/navigate Tab behavior leaves completion unbound;
+old smart completion receives Option-Tab. Rime's legacy fixed Tab action is
+always projected as pass so it cannot compete with the recorded Host binding.
+
+On the translation side, arrow keys move the highlight and 1–9 commit a row
+directly. Escape or the toggle key returns to source candidates. If no local
+definition exists, the source list remains active and ZIME reports
+“暂无本地译文”. Definitions are never appended automatically. Outside composition,
+these candidate shortcuts pass through to the application.
 
 Selecting a translation first selects the corresponding source candidate in
 Rime, preserving normal user-frequency learning, then substitutes only the

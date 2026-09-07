@@ -65,7 +65,8 @@ extension SettingsDataCoordinator {
     if document.appearance.livePanelProjection(over: currentDocument.appearance)
       == document.appearance,
       currentDocument.input == document.input,
-      currentDocument.english == document.english {
+      currentDocument.english == document.english,
+      currentDocument.shortcuts == document.shortcuts {
       return .appearanceOnly
     }
     return .configurationOnly

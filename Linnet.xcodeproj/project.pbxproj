@@ -94,6 +94,7 @@
 		E80000000000000000000001 /* SettingsPresentationStatus.swift in Settings Sources */ = {isa = PBXBuildFile; fileRef = E80000000000000000000002 /* SettingsPresentationStatus.swift */; };
 		E81200000000000000000001 /* SettingsRuntimeReachability.swift in Settings Sources */ = {isa = PBXBuildFile; fileRef = E81200000000000000000002 /* SettingsRuntimeReachability.swift */; };
 		F10000000000000000000001 /* LinnetSettingsPage.swift in Settings Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000002 /* LinnetSettingsPage.swift */; };
+		F91000000000000000000001 /* ZIMEKeyboardShortcutRecorder.swift in Settings Sources */ = {isa = PBXBuildFile; fileRef = F91000000000000000000002 /* ZIMEKeyboardShortcutRecorder.swift */; };
 		F20000000000000000000001 /* LinnetSettingsDownloadTransport.swift in Settings Sources */ = {isa = PBXBuildFile; fileRef = F20000000000000000000002 /* LinnetSettingsDownloadTransport.swift */; };
 		F20000000000000000000003 /* LinnetSettingsExclusiveFileSink.swift in Settings Sources */ = {isa = PBXBuildFile; fileRef = F20000000000000000000004 /* LinnetSettingsExclusiveFileSink.swift */; };
 		F30000000000000000000001 /* SettingsSessionState.swift in Settings Sources */ = {isa = PBXBuildFile; fileRef = F30000000000000000000002 /* SettingsSessionState.swift */; };
@@ -264,6 +265,7 @@
 		E80000000000000000000002 /* SettingsPresentationStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SettingsPresentationStatus.swift; path = sources/LinnetSettings/SettingsPresentationStatus.swift; sourceTree = "<group>"; };
 		E81200000000000000000002 /* SettingsRuntimeReachability.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SettingsRuntimeReachability.swift; path = sources/LinnetSettings/SettingsRuntimeReachability.swift; sourceTree = "<group>"; };
 		F10000000000000000000002 /* LinnetSettingsPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LinnetSettingsPage.swift; path = sources/LinnetSettings/LinnetSettingsPage.swift; sourceTree = "<group>"; };
+		F91000000000000000000002 /* ZIMEKeyboardShortcutRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ZIMEKeyboardShortcutRecorder.swift; path = sources/LinnetSettings/ZIMEKeyboardShortcutRecorder.swift; sourceTree = "<group>"; };
 		F20000000000000000000002 /* LinnetSettingsDownloadTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LinnetSettingsDownloadTransport.swift; path = sources/LinnetSettings/LinnetSettingsDownloadTransport.swift; sourceTree = "<group>"; };
 		F20000000000000000000004 /* LinnetSettingsExclusiveFileSink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LinnetSettingsExclusiveFileSink.swift; path = sources/LinnetSettings/LinnetSettingsExclusiveFileSink.swift; sourceTree = "<group>"; };
 		F30000000000000000000002 /* SettingsSessionState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SettingsSessionState.swift; path = sources/LinnetSettings/SettingsSessionState.swift; sourceTree = "<group>"; };
@@ -384,6 +386,7 @@
 				E81200000000000000000002 /* SettingsRuntimeReachability.swift */,
 				E80000000000000000000002 /* SettingsPresentationStatus.swift */,
 				F10000000000000000000002 /* LinnetSettingsPage.swift */,
+				F91000000000000000000002 /* ZIMEKeyboardShortcutRecorder.swift */,
 				F81000000000000000000002 /* SettingsWindowCloseGuard.swift */,
 				F40000000000000000000002 /* LinnetSettingsDownloadSource.swift */,
 				FA0000000000000000000002 /* LinnetSettingsUpdateChecker.swift */,
@@ -697,6 +700,7 @@
 				E81200000000000000000001 /* SettingsRuntimeReachability.swift in Settings Sources */,
 				E80000000000000000000001 /* SettingsPresentationStatus.swift in Settings Sources */,
 				F10000000000000000000001 /* LinnetSettingsPage.swift in Settings Sources */,
+				F91000000000000000000001 /* ZIMEKeyboardShortcutRecorder.swift in Settings Sources */,
 				F81000000000000000000001 /* SettingsWindowCloseGuard.swift in Settings Sources */,
 				F40000000000000000000001 /* LinnetSettingsDownloadSource.swift in Settings Sources */,
 				FA0000000000000000000001 /* LinnetSettingsUpdateChecker.swift in Settings Sources */,

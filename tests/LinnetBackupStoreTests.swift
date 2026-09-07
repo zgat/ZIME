@@ -562,7 +562,7 @@ struct LinnetBackupStoreTests {
       restoredPersonal.disabledWords.map(\.value) == ["legacy-disabled"],
       restoredPersonal.expansions.map(\.trigger) == ["x;legacy"],
       restoredDocument.english.sentenceCapitalization,
-      restoredDocument.english.tabBehavior == .pass,
+      restoredDocument.shortcuts.smartComplete == nil,
       restoredRuntime.hasPrefix("patch:\n"),
       !FileManager.default.fileExists(
         atPath: restored.appending(path: LinnetPersonalDataStore.legacyUserSettingsFile).path

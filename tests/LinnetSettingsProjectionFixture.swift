@@ -55,7 +55,7 @@ struct LinnetSettingsProjectionFixture {
       document.input.pinyinReverseTrigger = .verticalBar
       document.input.traditionalChinese = true
       document.english.sentenceCapitalization = false
-      document.english.tabBehavior = .pass
+      document.shortcuts.smartComplete = nil
       document.english.spaceAddsTrailingSpace = false
       runtimePersonal = .init(
         customWords: [], disabledWords: ["hello"], expansions: [])

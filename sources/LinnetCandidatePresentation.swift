@@ -19,6 +19,31 @@ struct ZIMENullCloudTranslationProvider: ZIMECloudTranslationProvider {
 }
 
 enum LinnetCandidatePresentation {
+  /// Smart completion edits only a plain English preedit. URLs, code tokens,
+  /// Chinese segments and multiline text cannot be replaced through this path.
+  static func smartCompletionText(input: String, candidates: [String], highlighted: Int) -> String? {
+    func englishText(_ text: String) -> Bool {
+      guard !text.isEmpty, text.utf8.count <= 128 else { return false }
+      var hasLetter = false
+      for byte in text.utf8 {
+        if (65...90).contains(byte) || (97...122).contains(byte) { hasLetter = true }
+        else if ![32, 39, 45].contains(byte) { return false }
+      }
+      return hasLetter
+    }
+    guard englishText(input), candidates.indices.contains(highlighted) else { return nil }
+    var word = candidates[highlighted].trimmingCharacters(in: .whitespaces)
+    guard englishText(word), word != input else { return nil }
+    // A phrase preedit is segmented by Rime; its visible menu describes the
+    // final word. Repeated completion must not discard the confirmed prefix.
+    if let boundary = input.lastIndex(of: " ") {
+      let prefix = String(input[...boundary])
+      if !word.hasPrefix(prefix) { word = prefix + word }
+    }
+    guard englishText(word), word != input else { return nil }
+    return word
+  }
+
   private struct BilingualAnnotation: Codable {
     let displayText: String
     let translations: [String]
