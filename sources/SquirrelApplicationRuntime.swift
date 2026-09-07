@@ -181,7 +181,8 @@ extension SquirrelApplicationDelegate {
     guard loadedConfig.openBaseConfig() else { return false }
     config = loadedConfig
     enableNotifications = loadedConfig.getString("show_notifications_when") != "never"
-    showStatusIcon = loadedConfig.getBool("status_icon/show") ?? true
+    // macOS already owns the input-source menu; do not duplicate it by default.
+    showStatusIcon = loadedConfig.getBool("status_icon/show") ?? false
     refreshStatusItem()
     if let panel = panel, let config = self.config {
       panel.resetThemeCache()

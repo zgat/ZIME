@@ -1,4 +1,4 @@
-# ZIME 0.1.1
+# ZIME 0.1.2
 
 ZIME is a macOS 13+ Apple-silicon input method with one shared local engine and
 two system-visible modes:
@@ -19,6 +19,12 @@ English default to a vertical list. Settings offers every page size from 3
 through 9 in a menu. Existing pre-0.1.1 settings migrate once to vertical,
 scrolling-only lists, preserving fonts, theme, page size and learning settings.
 English input shows Chinese senses; Chinese input shows English definitions.
+
+During candidate composition, minus pages up and equal/plus pages down.
+At the first/last page these keys are consumed without a commit or state change.
+Outside a real candidate menu, normal punctuation and raw/code input still apply.
+The extra menu-bar mode indicator defaults off; macOS's input-source menu still
+provides Settings and the current mode. Shift mode switching is unchanged.
 
 The default translation-side key is Tab. Option-Return can be selected instead
 in Settings. On the translation side, arrow keys move the highlight, 1–9

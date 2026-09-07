@@ -11,6 +11,7 @@ cd "${repo_root}"
 
 runtime_probe="${1:-}"
 if [[ "${1:-}" == --zime-bilingual-probe ||
+      "${1:-}" == --zime-paging-probe ||
       "${1:-}" == --mixed-input-probe ||
       "${1:-}" == --mixed-latency-probe ||
       "${1:-}" == --warm-session-probe ||
@@ -20,7 +21,7 @@ if [[ "${1:-}" == --zime-bilingual-probe ||
       "${1:-}" == --live-sync-probe ]]; then
   :
 elif [[ $# -ne 0 ]]; then
-  echo "usage: $0 [--zime-bilingual-probe|--mixed-input-probe|--mixed-latency-probe|--warm-session-probe|--cold-client-probe|--profile-key-matrix-probe|--fast-config-reload-probe|--live-sync-probe]" >&2
+  echo "usage: $0 [--zime-bilingual-probe|--zime-paging-probe|--mixed-input-probe|--mixed-latency-probe|--warm-session-probe|--cold-client-probe|--profile-key-matrix-probe|--fast-config-reload-probe|--live-sync-probe]" >&2
   exit 64
 fi
 
@@ -217,6 +218,8 @@ if [[ -n "${runtime_probe}" ]]; then
     echo "Linnet native Rime cold-client first-key latency: PASS"
   elif [[ "${runtime_probe}" == --profile-key-matrix-probe ]]; then
     echo "Linnet native Rime formal eight-profile key matrix: PASS"
+  elif [[ "${runtime_probe}" == --zime-paging-probe ]]; then
+    echo "ZIME native Rime paging boundaries: PASS"
   elif [[ "${runtime_probe}" == --live-sync-probe ]]; then
     echo "Linnet native Rime live synchronization: PASS"
   else

@@ -15,6 +15,11 @@ chord_duration: 0.1  # seconds
 # options: always | never | appropriate
 show_notifications_when: appropriate
 
+# Keep the macOS input-source menu as the only default menu-bar entry.
+# Advanced configurations may explicitly opt into a separate mode indicator.
+status_icon:
+  show: false
+
 style:
   color_scheme: linnet_paper_light
   color_scheme_dark: linnet_paper_dark

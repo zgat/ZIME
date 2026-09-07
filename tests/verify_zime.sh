@@ -47,6 +47,12 @@ rg -Fq 'configuration.enabled' sources/ZIMECandidateTranslator.swift ||
   fail "cloud consent gate"
 [[ -f resources/zime-cedict.sqlite3 && -f resources/ZIME-Lexicon-NOTICE.txt ]] ||
   fail "direct bilingual dictionary and attribution"
+ruby -ryaml -e 'abort unless YAML.load_file("data/squirrel.yaml").dig("status_icon", "show") == false' ||
+  fail "duplicate menu-bar indicator must default off"
+rg -Fq 'var showStatusIcon = false' sources/SquirrelApplicationDelegate.swift ||
+  fail "status indicator startup default"
+rg -Fq 'loadedConfig.getBool("status_icon/show") ?? false' sources/SquirrelApplicationRuntime.swift ||
+  fail "legacy config must not restore duplicate indicator"
 if rg -n 'URLSession|NSURLConnection|curl_easy|CFNetwork' \
   sources/SquirrelInputController.swift sources/LinnetCandidatePresentation.swift \
   plugins/smart_english; then

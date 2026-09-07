@@ -13,6 +13,8 @@ ZIME 是一款面向 Apple Silicon、macOS 13 及以上版本的本地优先双�
 - 英文候选显示中文释义，中文候选显示英文释义，内置 CC-CEDICT 中英词典；
 - 本地用户词频、自动组词、上下文排序、Emoji 与本地词库缓存；
 - 轻按 Shift 切换中文/智能英文，Caps Lock 保持原始 ASCII；
+- 候选翻页用 `-` 上一页、`=` / `+` 下一页，到首尾页停留，不把符号上屏；
+- 默认仅保留 macOS 输入源菜单，不再另建中英文状态栏图标；
 - 原生设置界面，以及给高级用户的 Rime YAML 投影。
 
 ![中英文候选逐行翻译](resources/readme/bilingual-features.png)
@@ -57,6 +59,7 @@ scripts/build-zime-delivery /absolute/path/to/ZIME.app /absolute/output/director
 
 0.1.1 的验证范围、词库比较和已知限制见
 [验证记录](docs/ZIME-0.1.1-VALIDATION.md)。
+0.1.2 的翻页边界与菜单栏修复见 [验证记录](docs/ZIME-0.1.2-VALIDATION.md)。
 
 ## 上游与许可证
 

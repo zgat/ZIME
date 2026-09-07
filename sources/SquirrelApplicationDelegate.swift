@@ -46,7 +46,7 @@ final class SquirrelApplicationDelegate: NSObject, NSApplicationDelegate {
   var config: SquirrelConfig?
   var panel: SquirrelPanel?
   var enableNotifications = false
-  var showStatusIcon = true
+  var showStatusIcon = false
   var statusItem: NSStatusItem?
   var currentModeLabel = "中"
   var activeSettingsRevision: String?

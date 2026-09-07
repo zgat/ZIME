@@ -364,14 +364,19 @@ class LinnetInteractionProcessor : public Processor {
 
   ProcessResult ProcessPrintablePagingKey(Context* context,
                                           const KeyEvent& key) const {
-    if (!IsPlainKey(key)) return kNoop;
+    const bool shifted_plus = key.keycode() == XK_plus &&
+        (key.modifier() & ~(kShiftMask | kLockMask)) == 0;
+    if (!IsPlainKey(key) && !shifted_plus) return kNoop;
     const bool previous =
         key.keycode() == XK_bracketleft || key.keycode() == XK_minus;
     const bool next =
-        key.keycode() == XK_bracketright || key.keycode() == XK_equal;
+        key.keycode() == XK_bracketright || key.keycode() == XK_equal ||
+        key.keycode() == XK_plus;
     if (!previous && !next) return kNoop;
-    // A paging symbol owns the key only when it can move to a real adjacent
-    // page. Every boundary case stays on the normal punctuation/input path.
+    // Minus/equal/plus remain paging keys at the first/last candidate page:
+    // consume the no-op instead of committing a word and leaking punctuation.
+    // With no real menu (including raw/code segments), symbols remain input.
+    // Bracket punctuation retains its existing boundary behavior.
     if (!context || context->composition().empty()) return kNoop;
 
     Segment& segment = context->composition().back();
@@ -379,11 +384,14 @@ class LinnetInteractionProcessor : public Processor {
       return kNoop;
     }
     const int page_size = engine_->schema()->page_size();
-    if (page_size <= 0) return kNoop;
+    if (page_size <= 0 || segment.menu->Prepare(1) == 0) return kNoop;
+    const ProcessResult boundary_result =
+        key.keycode() == XK_bracketleft || key.keycode() == XK_bracketright
+            ? kNoop : kAccepted;
     const size_t selected = segment.selected_index;
     size_t target = 0;
     if (previous) {
-      if (selected < static_cast<size_t>(page_size)) return kNoop;
+      if (selected < static_cast<size_t>(page_size)) return boundary_result;
       target = selected - static_cast<size_t>(page_size);
     } else {
       const size_t page_start =
@@ -393,7 +401,7 @@ class LinnetInteractionProcessor : public Processor {
       const int candidate_count =
           segment.menu->Prepare(next_page_start + page_size);
       if (candidate_count <= static_cast<int>(next_page_start)) {
-        return kNoop;
+        return boundary_result;
       }
       target = (std::min)(selected + static_cast<size_t>(page_size),
                           static_cast<size_t>(candidate_count - 1));

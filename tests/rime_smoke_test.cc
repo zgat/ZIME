@@ -1951,9 +1951,10 @@ void ExpectCandidatePagingShortcuts(RimeApi_stdbool* api,
     }
   };
   for (const auto& key_case :
-       std::array<std::tuple<int, const char*, int, const char*>, 2>{{
+       std::array<std::tuple<int, const char*, int, const char*>, 3>{{
            {XK_bracketright, "right bracket", XK_bracketleft, "left bracket"},
            {XK_equal, "equal", XK_minus, "minus"},
+           {XK_plus, "shift plus", XK_minus, "minus"},
        }}) {
     const RimeSessionId session = CreateSchemaSession(api, schema_id);
     Enter(api, session, input);
@@ -1972,7 +1973,8 @@ void ExpectCandidatePagingShortcuts(RimeApi_stdbool* api,
       final_page = context.menu.page_no;
       api->free_context(&context);
       if (is_last_page) break;
-      if (!api->process_key(session, std::get<0>(key_case), 0)) {
+      if (!api->process_key(session, std::get<0>(key_case),
+                            std::get<0>(key_case) == XK_plus ? kShiftMask : 0)) {
         Fail(std::string(schema_id) + " " + std::get<1>(key_case) +
              " did not move to the next candidate page");
       }
@@ -1988,24 +1990,43 @@ void ExpectCandidatePagingShortcuts(RimeApi_stdbool* api,
            " did not return from the final candidate page");
     }
     expect_expansion_request(session, true, "missing after accepted previous paging");
+    while (CurrentCandidatePage(api, session, "return to first page") > 0) {
+      if (!api->process_key(session, std::get<2>(key_case), 0)) {
+        Fail("could not return to first candidate page");
+      }
+      expect_expansion_request(session, true, "returning to first page");
+    }
+    for (int repeat = 0; repeat < 20; ++repeat) {
+      if (!api->process_key(session, XK_minus, 0) ||
+          CurrentCandidatePage(api, session, "first-page repeat") != 0) {
+        Fail("minus escaped after returning to first page");
+      }
+      ExpectNoCommit(api, session, "minus after returning to first page");
+      expect_expansion_request(session, false, "boundary must not expand");
+    }
     api->destroy_session(session);
   }
 }
 
-void ExpectCandidatePagingBoundaryNormalInput(RimeApi_stdbool* api,
-                                              const char* schema_id,
-                                              const std::string& input) {
+void ExpectCandidatePagingBoundaries(RimeApi_stdbool* api,
+                                    const char* schema_id,
+                                    const std::string& input) {
   struct BoundaryCase {
     int keycode;
     const char* expected_symbol;
     bool final_page;
+    bool consume;
+    int modifiers = 0;
   };
-  for (const auto& boundary : std::array<BoundaryCase, 4>{{
-           {XK_bracketleft, "【", false},
-           {XK_minus, "-", false},
-           {XK_bracketright, "】", true},
-           {XK_equal, "=", true},
+  for (const auto& boundary : std::array<BoundaryCase, 6>{{
+           {XK_bracketleft, "【", false, false},
+           {XK_minus, "-", false, true},
+           {XK_bracketright, "】", true, false},
+           {XK_equal, "=", true, true},
+           {XK_plus, "+", true, true},
+           {XK_plus, "+", true, true, kShiftMask},
        }}) {
+    if (std::string(schema_id) == "linnet_en" && !boundary.consume) continue;
     const RimeSessionId session = CreateSchemaSession(api, schema_id);
     Enter(api, session, input);
     if (boundary.final_page) {
@@ -2039,7 +2060,41 @@ void ExpectCandidatePagingBoundaryNormalInput(RimeApi_stdbool* api,
       Fail(std::string(schema_id) + " normal paging fallback has no selection");
     }
     const std::string selected_text = selected_candidate->text();
-    const bool handled = api->process_key(session, boundary.keycode, 0);
+    if (boundary.consume) {
+      const std::string before_input = live->context()->input();
+      const size_t before_selected = live->context()->composition().back().selected_index;
+      const auto before_candidates = Candidates(api, session);
+      const int before_page = CurrentCandidatePage(api, session, "boundary no-op");
+      for (int repeat = 0; repeat < 20; ++repeat) {
+        if (!api->process_key(session, boundary.keycode, boundary.modifiers)) {
+          Fail(std::string(schema_id) + " boundary paging escaped to the host");
+        }
+        ExpectNoCommit(api, session, "boundary paging must never commit");
+        if (live->context()->input() != before_input ||
+            live->context()->composition().empty() ||
+            live->context()->composition().back().selected_index != before_selected ||
+            CurrentCandidatePage(api, session, "repeated boundary") != before_page) {
+          Fail(std::string(schema_id) + " boundary paging changed composition");
+        }
+        const auto after_candidates = Candidates(api, session);
+        if (after_candidates.size() != before_candidates.size()) {
+          Fail("boundary paging changed candidate count");
+        }
+        for (size_t index = 0; index < before_candidates.size(); ++index) {
+          if (after_candidates[index].text != before_candidates[index].text) {
+            Fail("boundary paging changed candidate text");
+          }
+        }
+        std::array<char, 8> request = {};
+        if (api->get_property(session, kCandidateExpansionRequestProperty,
+                              request.data(), request.size())) {
+          Fail("boundary no-op requested candidate expansion");
+        }
+      }
+      api->destroy_session(session);
+      continue;
+    }
+    const bool handled = api->process_key(session, boundary.keycode, boundary.modifiers);
     std::string actual = TakeCommit(api, session, "normal paging boundary");
     if (!handled) actual.push_back(static_cast<char>(boundary.keycode));
     const std::string expected = selected_text + boundary.expected_symbol;
@@ -2072,21 +2127,30 @@ void ExpectSmartEnglishHyphenBoundary(RimeApi_stdbool* api) {
   }
   const std::string expected = candidates[selected].text;
 
-  if (api->process_key(session, XK_minus, 0)) {
+  if (!api->process_key(session, XK_minus, 0)) {
     api->destroy_session(session);
-    Fail("Smart English built- captured the hyphen as candidate paging");
+    Fail("Smart English first-page minus escaped candidate paging");
+  }
+  ExpectNoCommit(api, session, "Smart English first-page minus");
+  if (std::string(api->get_input(session)) != "built" ||
+      !api->process_key(session, XK_Return, 0)) {
+    Fail("Smart English boundary minus changed input or prevented explicit commit");
   }
   if (TakeCommit(api, session, "Smart English built- boundary") != expected) {
     api->destroy_session(session);
-    Fail("Smart English built- did not confirm the selected word before the host hyphen");
+    Fail("Smart English explicit Return did not confirm the selected word");
   }
   const char* remaining_input = api->get_input(session);
   const bool retained_input = remaining_input && *remaining_input != '\0';
   const bool retained_candidates = !Candidates(api, session).empty();
-  api->destroy_session(session);
   if (retained_input || retained_candidates) {
     Fail("Smart English built- left marked text for the host hyphen to replace");
   }
+  if (api->process_key(session, XK_minus, 0)) {
+    Fail("Smart English idle hyphen must remain host-owned after explicit commit");
+  }
+  ExpectNoCommit(api, session, "idle hyphen");
+  api->destroy_session(session);
 }
 
 LatencySample MeasureKey(RimeApi_stdbool* api,
@@ -6207,14 +6271,14 @@ void ExpectFormalProfileKeyMatrix(RimeApi_stdbool* api) {
     const std::string paging_input =
         PagingInputForProfile(api, schema_id, reviewed->second);
     ExpectCandidatePagingShortcuts(api, schema_id.c_str(), paging_input);
-    ExpectCandidatePagingBoundaryNormalInput(
+    ExpectCandidatePagingBoundaries(
         api, schema_id.c_str(), paging_input);
     ExpectNineCandidateSelectKeys(api, schema_id.c_str(), paging_input);
     ExpectFormalProfileCommitKeys(api, schema_id, paging_input);
     ExpectFormalProfileSymbolKeys(
         api, schema_id, paging_input, semicolon_is_spelling);
 
-    // With no adjacent candidate page, these keys use ordinary Chinese
+    // With no candidate menu, these keys use ordinary Chinese
     // punctuation or the host-owned ASCII path. Slash, '-' and '=' remain
     // ASCII by design.
     const std::array<std::pair<char, const char*>, 10> idle_symbols = {{
@@ -6894,6 +6958,8 @@ int main(int argc, char** argv) {
       argc == 4 && std::strcmp(argv[3], "--mixed-input-probe") == 0;
   const bool zime_bilingual_probe =
       argc == 4 && std::strcmp(argv[3], "--zime-bilingual-probe") == 0;
+  const bool zime_paging_probe =
+      argc == 4 && std::strcmp(argv[3], "--zime-paging-probe") == 0;
   const bool mixed_learning_on_probe =
       argc == 4 &&
       std::strcmp(argv[3], "--mixed-learning-on-probe") == 0;
@@ -6912,7 +6978,7 @@ int main(int argc, char** argv) {
       !lifecycle_raw_exit_probe &&
       !page_size_probe && !english_profile_probe &&
       !fast_config_reload_probe && !prediction_punctuation_probe &&
-      !mixed_input_probe && !zime_bilingual_probe &&
+      !mixed_input_probe && !zime_bilingual_probe && !zime_paging_probe &&
       !mixed_learning_on_probe &&
       !mixed_learning_off_probe &&
       !mixed_latency_probe && !warm_session_probe && !cold_client_probe && !live_sync_probe) {
@@ -6923,7 +6989,7 @@ int main(int argc, char** argv) {
          "--page-size-probe EXPECTED|"
          "--english-profile-probe PROFILE CHINESE_SCHEMA CODE PREFIX|"
          "--fast-config-reload-probe|--prediction-punctuation-probe|"
-         "--mixed-input-probe|--zime-bilingual-probe|"
+         "--mixed-input-probe|--zime-bilingual-probe|--zime-paging-probe|"
          "--mixed-learning-on-probe|"
          "--mixed-learning-off-probe|"
          "--mixed-latency-probe|--warm-session-probe|--cold-client-probe]");
@@ -6983,6 +7049,60 @@ int main(int argc, char** argv) {
     expected_fresh_schema = "linnet_zh_jiajia";
   }
   ExpectFreshDefaultSchema(api, expected_fresh_schema);
+
+  if (zime_paging_probe) {
+    ExpectCandidatePagingShortcuts(api, "linnet_zh_pinyin", "shi");
+    ExpectCandidatePagingBoundaries(api, "linnet_zh_pinyin", "shi");
+    ExpectCandidatePagingShortcuts(api, "linnet_en", "a");
+    ExpectCandidatePagingBoundaries(api, "linnet_en", "a");
+    ExpectSmartEnglishHyphenBoundary(api);
+    ExpectCandidatePagingBoundaries(api, "linnet_zh_pinyin", "shuaigeshuainv");
+    for (const char* schema : {"linnet_zh_pinyin", "linnet_en"}) {
+      for (int symbol : {XK_minus, XK_equal, XK_plus}) {
+        const int modifiers = symbol == XK_plus ? kShiftMask : 0;
+        const RimeSessionId idle = CreateSchemaSession(api, schema);
+        api->set_option(idle, "ascii_punct", true);
+        const bool handled = api->process_key(idle, symbol, modifiers);
+        std::string output = TakeOptionalCommit(api, idle);
+        if (!handled) output.push_back(static_cast<char>(symbol));
+        if (output != std::string(1, static_cast<char>(symbol)) ||
+            !Candidates(api, idle).empty()) {
+          Fail("idle paging symbol stopped being ordinary input");
+        }
+        api->destroy_session(idle);
+
+        const RimeSessionId raw = CreateSchemaSession(api, schema);
+        api->set_option(raw, "ascii_mode", true);
+        if (api->process_key(raw, symbol, modifiers)) {
+          Fail("raw ASCII symbol was consumed by candidate paging");
+        }
+        ExpectNoCommit(api, raw, "raw ASCII paging symbol");
+        api->destroy_session(raw);
+      }
+      for (int modifier : {RimeModifier::kControlMask, kAltMask, kSuperMask}) {
+        const RimeSessionId shortcut = CreateSchemaSession(api, schema);
+        Enter(api, shortcut, "shi");
+        if (api->process_key(shortcut, XK_minus, modifier)) {
+          Fail("modified minus shortcut was consumed by candidate paging");
+        }
+        ExpectNoCommit(api, shortcut, "host shortcut at candidate page");
+        if (std::string(api->get_input(shortcut)) != "shi") {
+          Fail("host shortcut changed composing input");
+        }
+        api->destroy_session(shortcut);
+      }
+      ExpectCapsLockRawPath(api, schema);
+    }
+    const RimeSessionId modes = CreateSchemaSession(api, "linnet_zh_pinyin");
+    TapShift(api, modes, XK_Shift_L);
+    ExpectCurrentSchema(api, modes, "linnet_en", "ZIME Shift to English");
+    TapShift(api, modes, XK_Shift_R);
+    ExpectCurrentSchema(api, modes, "linnet_zh_pinyin", "ZIME Shift to Chinese");
+    api->destroy_session(modes);
+    api->finalize();
+    std::cout << "rime_smoke_test: ZIME paging boundaries: PASS\n";
+    return 0;
+  }
 
   if (zime_bilingual_probe) {
     ExpectZIMEBilingualCandidateContract(api);
