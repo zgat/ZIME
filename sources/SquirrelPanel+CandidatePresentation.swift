@@ -220,6 +220,12 @@ extension SquirrelPanel {
     } else {
       screenRect.width * textWidthRatio - metrics.edgeInset.width * 2
     }
+    // Full definitions wrap naturally in the normal stacked candidate list;
+    // do not let a large desktop stretch one dictionary note across the screen.
+    if presentationRole == .candidate, !linear, !metrics.vertical,
+      candidateSnapshot?.isExpanded != true {
+      return min(maxWidth, min(480, max(300, metrics.fontPoint * 24)))
+    }
     return maxWidth
   }
 

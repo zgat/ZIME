@@ -27,6 +27,7 @@ linnet_swift_compile candidate-interaction \
   sources/LinnetDataRegistry.swift sources/LinnetDirectoryDelta.swift sources/LinnetDataRegistryTransactions.swift sources/LinnetDataRegistryStorage.swift \
   sources/LinnetSettings/SettingsContract.swift \
   sources/LinnetCandidatePresentation.swift \
+  sources/ZIMELocalLexicon.swift \
   sources/LinnetClientAppearance.swift \
   sources/LinnetPanelGeometry.swift \
   sources/SquirrelView.swift \
@@ -42,16 +43,20 @@ if (( $# == 0 )); then
   generated_modes="${scratch}/input-modes.png"
   generated_features="${scratch}/bilingual-features.png"
   generated_themes="${scratch}/theme-gallery.png"
+  generated_regions="${scratch}/regional-glosses.png"
   "${candidate_interaction}" \
     --readme-product-gallery data/squirrel.yaml \
     "${generated_modes}" "${generated_features}" \
     --readme-theme-gallery data/squirrel.yaml "${generated_themes}" \
+    --readme-regional-gallery data/squirrel.yaml "${generated_regions}" \
     --verify-readme-render \
     resources/readme/input-modes.png "${generated_modes}" "README input-mode image" \
     --verify-readme-render \
     resources/readme/bilingual-features.png "${generated_features}" "README bilingual image" \
     --verify-readme-render \
-    resources/readme/theme-gallery.png "${generated_themes}" "README theme gallery"
+    resources/readme/theme-gallery.png "${generated_themes}" "README theme gallery" \
+    --verify-readme-render \
+    resources/readme/regional-glosses.png "${generated_regions}" "README regional glossary gallery"
   ! rg -n 'resources/readme/[^ )]+[.]svg' README.md
 else
   "${candidate_interaction}" "$@"

@@ -54,6 +54,26 @@ final class SquirrelView: NSView {
   private var presentationMetrics: LinnetPanelGeometry.PresentationMetrics?
   private var candidateColumnWidth: CGFloat?
   private var pointerTrackingArea: NSTrackingArea?
+  // AppKit keeps tooltip owners weak; retain them for this publication only.
+  private(set) var candidateToolTipTexts: [NSString] = []
+
+  func clearCandidateToolTips() {
+    removeAllToolTips()
+    textView.removeAllToolTips()
+    candidateToolTipTexts.removeAll()
+  }
+
+  func publishCandidateToolTips(comments: [String]) {
+    clearCandidateToolTips()
+    guard comments.count == candidateInteractionFrames.count else { return }
+    candidateToolTipTexts = comments.map { LinnetCandidatePresentation.fullCandidateComment($0) as NSString }
+    for index in comments.indices where candidateToolTipTexts[index].length > 0 {
+      let frame = candidateInteractionFrames[index]
+      addToolTip(frame, owner: candidateToolTipTexts[index], userData: nil)
+      textView.addToolTip(textView.convert(frame, from: self),
+        owner: candidateToolTipTexts[index], userData: nil)
+    }
+  }
 
   var lightTheme = SquirrelTheme()
   var darkTheme = SquirrelTheme()
@@ -110,6 +130,7 @@ final class SquirrelView: NSView {
     candidateRanges: [NSRange], detailRange: NSRange, hilightedIndex: Int, preeditRange: NSRange, highlightedPreeditRange: NSRange,
     controlMode: LinnetCandidatePresentation.CandidateControlMode, usesGridLayout: Bool
   ) {
+    clearCandidateToolTips()
     self.candidateRanges = candidateRanges
     self.detailRange = detailRange
     self.hilightedIndex = hilightedIndex

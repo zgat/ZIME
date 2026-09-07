@@ -141,7 +141,9 @@ final class LinnetCandidateAccessibility {
       element.setAccessibilityRole(.button)
       element.setAccessibilityLabel(label)
       element.setAccessibilityHelp(
-        NSLocalizedString("Commit current candidate", comment: "Candidate accessibility action"))
+        [LinnetCandidatePresentation.fullCandidateComment(candidate.comment),
+          NSLocalizedString("Commit current candidate", comment: "Candidate accessibility action")]
+          .filter { !$0.isEmpty }.joined(separator: "\n"))
       element.setAccessibilitySelected(index == highlightedIndex)
       element.setAccessibilityFrameInParentSpace(geometry.candidateFrames[index])
       element.performPress = { [weak self] in

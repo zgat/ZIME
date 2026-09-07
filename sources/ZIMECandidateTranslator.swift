@@ -13,6 +13,7 @@ final class ZIMECandidateTranslator {
   private var generation = UUID()
   private var pageKey: [String] = []
   private var configuration = ZIMETranslationConfiguration()
+  private var region = ZIMELocalLexicon.RegionProfile.mainland
   private var cache: [String: (text: String, expires: Date)] = [:]
   private var cooldownUntil = Date.distantPast
 
@@ -37,39 +38,46 @@ final class ZIMECandidateTranslator {
   }
 
   func annotate(_ snapshot: SquirrelInputController.CandidateSnapshot,
-    showTranslation: Bool, refresh: @escaping () -> Void
+    showTranslation: Bool, region: ZIMELocalLexicon.RegionProfile = .mainland,
+    refresh: @escaping () -> Void
   ) -> SquirrelInputController.CandidateSnapshot {
     let currentConfiguration = loadConfiguration()
-    if configuration != currentConfiguration {
+    if configuration != currentConfiguration || self.region != region {
       cancel()
       cache.removeAll()
       cooldownUntil = .distantPast
       configuration = currentConfiguration
+      self.region = region
     }
     if !showTranslation || !configuration.enabled { cancel() }
     var missing: [String] = []
     let items = snapshot.items.map { item -> SquirrelInputController.CandidateItem in
       let original = LinnetCandidatePresentation.candidateComment(item.comment)
       let chinese = ZIMELocalLexicon.containsHan(item.text)
-      let exact = localLexicon.translations(for: item.text)
+      let allSenses = localLexicon.translations(for: item.text)
+      let exact = localLexicon.translations(for: item.text, region: region)
+      let excludedByRegion = chinese && !allSenses.isEmpty && exact.isEmpty
+      let originalTranslations = chinese
+        ? ZIMELocalLexicon.regionalTranslations(original.translations, for: item.text, region: region)
+        : original.translations
       // A direct Chinese dictionary definition outranks reverse English senses
       // such as surname romanizations. Preserve English IPA when already known.
-      let translations = chinese && !exact.isEmpty ? Array(exact.prefix(3))
-        : !original.translations.isEmpty ? original.translations : Array(exact.prefix(3))
+      let translations = excludedByRegion ? [] : chinese && !exact.isEmpty ? Array(exact.prefix(3))
+        : !originalTranslations.isEmpty ? originalTranslations : Array(exact.prefix(3))
       let term = item.text.trimmingCharacters(in: .whitespacesAndNewlines)
       let cached = cache[term].flatMap { $0.expires > Date() ? $0.text : nil }
-      let canRequest = showTranslation && configuration.enabled && item.page == snapshot.currentPage && term.count <= 64
+      let canRequest = !excludedByRegion && showTranslation && configuration.enabled && item.page == snapshot.currentPage && term.count <= 64
         && !term.isEmpty && (chinese || item.comment.hasPrefix(LinnetCandidatePresentation.smartEnglishDetailPrefix))
         && !term.contains("@") && !term.contains("://")
       var comment = item.comment
       if showTranslation {
         if !translations.isEmpty {
           comment = !chinese && !original.translations.isEmpty ? item.comment : Self.comment(translations)
-        } else if let cached, !cached.isEmpty {
+        } else if !excludedByRegion, let cached, !cached.isEmpty {
           comment = Self.comment([cached])
         } else {
           // Unmarked comments are spelling hints, never English translations.
-          comment = "暂无本地译文"
+          comment = excludedByRegion ? "当前地区暂无本地释义" : "暂无本地译文"
           if canRequest {
             if cached == nil && cooldownUntil <= Date() {
               if !missing.contains(term) { missing.append(term) }

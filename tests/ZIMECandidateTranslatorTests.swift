@@ -49,6 +49,21 @@ struct ZIMECandidateTranslatorTests {
     precondition(local.items.allSatisfy { $0.commitOverride == nil && !$0.comment.isEmpty })
     precondition(LinnetCandidatePresentation.candidateComment(local.items[0].comment).translations.first?.contains("handsome") == true)
     precondition(local.items[3].comment == "暂无本地译文")
+    let regionalSnapshot = SquirrelInputController.CandidateSnapshot(items: ["你", "土豆", "德士"].enumerated().map { i, text in
+      // Simulate an engine gloss which must not bypass the regional lookup.
+      .init(absoluteIndex: i, page: 0, indexOnPage: i, text: text,
+        comment: "\u{001E}(Singapore, Malaysia) taxi", selectionLabel: String(i + 1))
+    }, currentPage: 0, pageSize: 3, highlightedItemIndex: 0, isLastPage: true, canExpand: false, isExpanded: false)
+    for region in [ZIMELocalLexicon.RegionProfile.mainland, .traditionalRegions, .mainland] {
+      let regional = translator.annotate(regionalSnapshot, showTranslation: true, region: region) {}
+      precondition(regional.items.map(\.text) == ["你", "土豆", "德士"])
+      precondition(regional.items.allSatisfy { $0.commitOverride == nil })
+      let potato = LinnetCandidatePresentation.candidateComment(regional.items[1].comment).translations
+      precondition(potato.contains { $0.contains("peanut") } == (region == .traditionalRegions))
+      if region == .mainland {
+        precondition(regional.items[2].comment == "当前地区暂无本地释义", "engine fallback resurrected excluded sense")
+      }
+    }
     try await Task.sleep(nanoseconds: 650_000_000)
     precondition(sent.isEmpty && reads == 0 && refreshes == 0, "disabled cloud must access neither network nor credentials")
 
@@ -72,6 +87,10 @@ struct ZIMECandidateTranslatorTests {
     _ = translator.annotate(snapshot, showTranslation: true) { refreshes += 1 }
     try await Task.sleep(nanoseconds: 500_000_000)
     precondition(sent.count == count, "cached translation must not trigger another request")
+    let excluded = translator.annotate(regionalSnapshot, showTranslation: true, region: .mainland) { refreshes += 1 }
+    precondition(excluded.items[2].comment == "当前地区暂无本地释义")
+    try await Task.sleep(nanoseconds: 650_000_000)
+    precondition(sent.count == count, "cloud fallback must not resurrect explicitly excluded regional senses")
     print("ZIMECandidateTranslatorTests: PASS (mock transport only)")
   }
 }

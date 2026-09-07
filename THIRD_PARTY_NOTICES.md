@@ -46,6 +46,9 @@ attribution are `data/zime/cedict.txt.gz`, `scripts/build-zime-lexicon`, and
 `resources/ZIME-Lexicon-NOTICE.txt`; the latter is also bundled alongside
 `zime-cedict.sqlite3` in the App. This supplement is not yet represented in
 Linnet's inherited release-inventory generator.
+The region-specific definition strings in `sources/ZIMELocalLexicon.swift`
+are also adaptations of that snapshot under CC BY-SA 4.0. They split the
+mixed regional note for 你/妳 without replacing its meaning with a summary.
 
 Linnet uses selected, pinned inputs from:
 

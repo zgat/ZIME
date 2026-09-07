@@ -555,7 +555,8 @@ extension SquirrelInputController {
       }
       let showTranslation = NSApp.squirrelAppDelegate.activeSettingsDocument?.english.showTranslation ?? true
       let sourceCandidateSnapshot = candidateTranslator.annotate(rawCandidateSnapshot,
-        showTranslation: showTranslation) { [weak self] in
+        showTranslation: showTranslation,
+        region: rimeAPI.get_option(session, "traditionalization") ? .traditionalRegions : .mainland) { [weak self] in
           guard let self, self.activeClient != nil, self.sessionIsCurrent() else { return }
           self.refreshCandidatePresentation()
         }

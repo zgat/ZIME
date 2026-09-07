@@ -18,6 +18,36 @@ struct ZIMETranslationTests {
     require(lexicon.translations(for: "ZIME测试未收录的虚构长词").isEmpty, "unknown words must not fabricate definitions")
     require(!lexicon.translations(for: "handsome").isEmpty, "English reverse headword")
     require(ZIMELocalLexicon(url: nil).translations(for: "帅").isEmpty, "missing data fails safely")
+    // The same glyphs must follow the selected source, not a script heuristic.
+    for _ in 0..<3 {
+      require(lexicon.translations(for: "土豆", region: .mainland) == ["potato"], "Mainland potato must exclude Taiwan peanut")
+      require(lexicon.translations(for: "土豆", region: .traditionalRegions).contains { $0.contains("peanut") }, "Traditional-region senses missing after cache switch")
+      require(lexicon.translations(for: "德士", region: .mainland).isEmpty, "Singapore/Malaysia sense leaked into Mainland group")
+      require(lexicon.translations(for: "德士", region: .traditionalRegions).first?.contains("taxi") == true, "Singapore/Malaysia group missing")
+    }
+    for term in ["你", "妳"] {
+      let mainland = lexicon.translations(for: term, region: .mainland).joined(separator: " / ")
+      let traditional = lexicon.translations(for: term, region: .traditionalRegions).joined(separator: " / ")
+      require(mainland.contains("both males and females") && !mainland.contains("Taiwan"), "mixed pronoun note not split for Mainland")
+      require(traditional.contains("Taiwan") && !traditional.contains("Mainland") && !traditional.contains("mainland"), "mixed pronoun note not split for Taiwan")
+    }
+    let originalNi = lexicon.translations(for: "你").first!
+    require(lexicon.translations(for: "你", region: .mainland).first == originalNi,
+      "general informal/polite distinction must not be summarized away")
+    let regionalFixture = ["(HK) regional sense", "(Macau) local usage", "(PRC) mainland usage",
+      "(Singapore, Malaysia) taxi", "a company in Taiwan and mainland China",
+      "China Airlines (Taiwan)", "(dialect) to take a shower", "not (positive)",
+      "(PRC, Tw) shared regional usage", "AA battery (Tw) (PRC equivalent: 五號電池[wu3 hao4 dian4 chi2])"]
+    let mainland = ZIMELocalLexicon.regionalTranslations(regionalFixture, for: "fixture", region: .mainland)
+    let traditional = ZIMELocalLexicon.regionalTranslations(regionalFixture, for: "fixture", region: .traditionalRegions)
+    require(!mainland.contains(regionalFixture[0]) && traditional.contains(regionalFixture[0]), "HK usage filtering")
+    require(!mainland.contains(regionalFixture[1]) && traditional.contains(regionalFixture[1]), "Macau usage filtering")
+    require(mainland.contains(regionalFixture[2]) && !traditional.contains(regionalFixture[2]), "PRC usage filtering")
+    for unchanged in regionalFixture[4...8] {
+      require(mainland.contains(unchanged) && traditional.contains(unchanged), "unclassified/common sense was altered: \(unchanged)")
+    }
+    require(traditional.last == "AA battery (Tw)", "cross-region equivalence note was not filtered independently")
+    require(lexicon.translations(for: "他", region: .mainland) == lexicon.translations(for: "他"), "grammar/usage notes must remain intact")
     let start = Date()
     for _ in 0..<10000 { _ = lexicon.translations(for: "帅") }
     print("10,000 cached lookups: \(Date().timeIntervalSince(start)) s")

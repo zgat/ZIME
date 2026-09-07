@@ -46,6 +46,7 @@ extension LinnetSettingsDocument {
     case mistJade = "mist_jade"
     case nativeGlass = "native_glass"
     case inkCinnabar = "ink_cinnabar"
+    case macOS = "macos"
 
     static let defaultValue = ThemeFamily.paperLedger
 
@@ -59,6 +60,7 @@ extension LinnetSettingsDocument {
       case .mistJade: prefix = "linnet_mist_jade"
       case .nativeGlass: prefix = "linnet_glass"
       case .inkCinnabar: prefix = "linnet_ink_cinnabar"
+      case .macOS: prefix = "linnet_macos"
       }
       return "\(prefix)_\(isDark ? "dark" : "light")"
     }

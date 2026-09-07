@@ -9,10 +9,14 @@ https://creativecommons.org/licenses/by-sa/4.0/
 Changes by the ZIME contributors (2026): indexed simplified/traditional
 headwords; removed reference-only senses; ranked ordinary senses before
 bound forms and proper names; generated a bounded reverse English index.
+The runtime additionally filters explicit regional usage labels and projects
+the mixed Mainland/Taiwan note for 你/妳 into region-specific definitions.
+These projected definition strings also remain under CC BY-SA 4.0.
 This adapted dictionary remains licensed under CC BY-SA 4.0, independently
 of the application's GPL-3.0-or-later code. Attribution and license must be
 preserved in redistributed or adapted versions. No endorsement is implied.
 
 Reproducible source and conversion script are distributed with ZIME:
-data/zime/cedict.txt.gz and scripts/build-zime-lexicon.
+data/zime/cedict.txt.gz, scripts/build-zime-lexicon, and the regional projection
+in sources/ZIMELocalLexicon.swift.
 Repository: https://github.com/zgat/ZIME

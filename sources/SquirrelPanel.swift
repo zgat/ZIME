@@ -143,6 +143,7 @@ final class SquirrelPanel: NSPanel {
   }
 
   func hide() {
+    view.clearCandidateToolTips()
     panelPublicationGeneration &+= 1
     let hiddenGeneration = panelPublicationGeneration
     publication = nil
@@ -424,6 +425,7 @@ extension SquirrelPanel {
     }
     let publishedController = inputController
     let publishedGeneration = currentPublication
+    view.publishCandidateToolTips(comments: candidates.items.map(\.comment))
     candidateAccessibility.publish(
       parent: view,
       publication: .init(

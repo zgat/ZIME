@@ -14,6 +14,7 @@ extension LinnetSettingsDocument.ThemeFamily {
     case .mistJade: "Mist"
     case .nativeGlass: "Glass"
     case .inkCinnabar: "Ink"
+    case .macOS: "macOS"
     }
   }
 }

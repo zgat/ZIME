@@ -68,6 +68,50 @@ preset_color_schemes:
   native:
     name: 系統配色
 
+  # Neutral opaque surfaces keep the same appearance over any application.
+  # Rime colors are ABGR, not RGB. Blue tiles retain readable white text.
+  linnet_macos_light:
+    name: macOS 浅色／macOS Light
+    author: ZIME
+    color_space: srgb
+    back_color: 0xF6F6F6
+    border_color: 0xC6C6C6
+    text_color: 0x202020
+    candidate_text_color: 0x202020
+    label_color: 0x666666
+    comment_text_color: 0x666666
+    hilited_text_color: 0x202020
+    hilited_candidate_text_color: 0xFFFFFF
+    hilited_candidate_label_color: 0xFFFFFF
+    hilited_comment_text_color: 0xFFFFFF
+    hilited_candidate_back_color: 0xD66400
+    linnet_selection_style: tile
+    translucency: false
+    mutual_exclusive: false
+    corner_radius: 10
+    hilited_corner_radius: 5
+
+  linnet_macos_dark:
+    name: macOS 深色／macOS Dark
+    author: ZIME
+    color_space: srgb
+    back_color: 0x2C2C2C
+    border_color: 0x565656
+    text_color: 0xF5F5F5
+    candidate_text_color: 0xF5F5F5
+    label_color: 0xBEBEBE
+    comment_text_color: 0xBEBEBE
+    hilited_text_color: 0xF5F5F5
+    hilited_candidate_text_color: 0xFFFFFF
+    hilited_candidate_label_color: 0xFFFFFF
+    hilited_comment_text_color: 0xFFFFFF
+    hilited_candidate_back_color: 0xD66B0A
+    linnet_selection_style: tile
+    translucency: false
+    mutual_exclusive: false
+    corner_radius: 10
+    hilited_corner_radius: 5
+
   linnet_paper_light:
     name: 宣纸青黛／Paper Ledger Light
     author: Linnet

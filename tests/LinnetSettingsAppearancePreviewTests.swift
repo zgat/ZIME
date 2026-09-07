@@ -29,14 +29,17 @@ struct LinnetSettingsAppearancePreviewTests {
     _ = NSApplication.shared
     let originalAppearance = NSApp.appearance
     defer { NSApp.appearance = originalAppearance }
+    var failures: [String] = []
     for name in [NSAppearance.Name.aqua, .darkAqua] {
       NSApp.appearance = NSAppearance(named: name)
-      verifyThemeCards(appearance: name)
+      failures += verifyThemeCards(appearance: name)
     }
+    require(failures.isEmpty, failures.joined(separator: "\n"))
   }
 
   @MainActor
-  private static func verifyThemeCards(appearance: NSAppearance.Name) {
+  private static func verifyThemeCards(appearance: NSAppearance.Name) -> [String] {
+    var failures: [String] = []
     for width in [CGFloat(680), 900] {
       let view = NSHostingView(rootView: LinnetSettingsThemeFamilyPicker(
         selection: .constant(.nativeGlass), mode: .constant(.system))
@@ -60,14 +63,16 @@ struct LinnetSettingsAppearancePreviewTests {
       } catch { fail("cannot save rendered theme evidence: \(error)") }
       let text = themeCandidateText(in: image, widthInPoints: width)
       let samples = text.components(separatedBy: "输入").count - 1
-      if samples < 14 {
+      if samples < 16 {
         // Failed hosted jobs discard local files; retain the synthetic fixture
         // in their existing log without introducing another artifact uploader.
         print("LINNET_THEME_PREVIEW_FAILURE_PNG_BASE64=\(png.base64EncodedString())")
       }
-      require(samples >= 14,
-        "\(appearance) \(width)pt theme picker must show a readable Light/Dark candidate for all seven themes; found \(samples): \(text)")
+      if samples < 16 {
+        failures.append("\(appearance) \(width)pt theme picker must show a readable Light/Dark candidate for all eight themes; found \(samples): \(text)")
+      }
     }
+    return failures
   }
 
   private static func themeCandidateText(in image: CGImage, widthInPoints: CGFloat) -> String {
@@ -147,8 +152,9 @@ struct LinnetSettingsAppearancePreviewTests {
         "linnet_mist_jade_light", "linnet_mist_jade_dark",
         "linnet_glass_light", "linnet_glass_dark",
         "linnet_ink_cinnabar_light", "linnet_ink_cinnabar_dark",
+        "linnet_macos_light", "linnet_macos_dark",
       ],
-      "the canonical source must retain exactly seven paired Linnet theme families"
+      "the canonical source must retain exactly eight paired Linnet theme families"
     )
   }
 
@@ -242,6 +248,7 @@ struct LinnetSettingsAppearancePreviewTests {
       .mistJade: (10, 6),
       .nativeGlass: (10, 6),
       .inkCinnabar: (8, 0),
+      .macOS: (10, 5),
     ]
     for (family, expected) in expectedRadii {
       var appearance = LinnetSettingsDocument.Appearance.default
@@ -305,7 +312,7 @@ struct LinnetSettingsAppearancePreviewTests {
       }
     }
 
-    require(lightPaletteKeys.count == 7 && darkPaletteKeys.count == 7,
+    require(lightPaletteKeys.count == 8 && darkPaletteKeys.count == 8,
             "two named theme families collapsed to the same palette")
   }
 

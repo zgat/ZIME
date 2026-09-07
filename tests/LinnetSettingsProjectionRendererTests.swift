@@ -43,10 +43,10 @@ struct LinnetSettingsProjectionRendererTests {
     guard LinnetSettingsDocument.currentSchemaVersion == 13,
       LinnetSettingsDocument.ThemeFamily.allCases.map(\.rawValue) == [
         "paper_ledger", "moon_jade", "sidecar_slate", "clay_tiles", "mist_jade",
-        "native_glass", "ink_cinnabar",
+        "native_glass", "ink_cinnabar", "macos",
       ]
     else {
-      fail("the settings codec must publish exactly the seven ordered theme families in schema v13")
+      fail("the settings codec must publish exactly the eight ordered theme families in schema v13")
     }
     let families: [(LinnetSettingsDocument.ThemeFamily, String)] = [
       (.paperLedger, "linnet_paper"),
@@ -56,6 +56,7 @@ struct LinnetSettingsProjectionRendererTests {
       (.mistJade, "linnet_mist_jade"),
       (.nativeGlass, "linnet_glass"),
       (.inkCinnabar, "linnet_ink_cinnabar"),
+      (.macOS, "linnet_macos"),
     ]
     for (family, prefix) in families {
       for (mode, lightSuffix, darkSuffix) in [

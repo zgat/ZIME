@@ -166,6 +166,7 @@ struct LinnetCandidateWindowInteractionTests {
     testKeyboardPagingRequestsExpansion()
     testDefaultNineCandidateNaturalSize()
     testEveryCandidateShowsTranslation()
+    testRegionalDefinitionsWrapWithoutSummarization()
     testExpandedChineseCommentsDoNotCreateEnglishPlaceholder()
     testThemeLayoutMatrix()
     testVerticalPanelDoesNotMemorizeWhenDisabled()
@@ -194,6 +195,11 @@ struct LinnetCandidateWindowInteractionTests {
         yamlPath: CommandLine.arguments[option + 1],
         inputModesOutputPath: CommandLine.arguments[option + 2],
         bilingualOutputPath: CommandLine.arguments[option + 3])
+    }
+    if let option = CommandLine.arguments.firstIndex(of: "--readme-regional-gallery"),
+      CommandLine.arguments.indices.contains(option + 2) {
+      makeReadmeRegionalGallery(yamlPath: CommandLine.arguments[option + 1],
+        outputPath: CommandLine.arguments[option + 2])
     }
     for option in CommandLine.arguments.indices
     where CommandLine.arguments[option] == "--verify-readme-render" {
@@ -274,6 +280,47 @@ struct LinnetCandidateWindowInteractionTests {
           } else { failures.append("translated row has no accessible selection action") }
           panel.hide()
         }
+      }
+    }
+  }
+
+  private static func testRegionalDefinitionsWrapWithoutSummarization() {
+    guard let yaml = try? String(contentsOfFile: "data/squirrel.yaml", encoding: .utf8) else { return }
+    let fullNote = "you (Mainland China: 妳 is not commonly used; 你 is used to address both males and females.)"
+    let firstSense = "you (informal, as opposed to courteous 您[nin2])"
+    let comment = "\u{001E}\(firstSense)\u{001F}\(fullNote)\u{001F}third sense for full help"
+    for scheme in ["linnet_macos_light", "linnet_macos_dark"] {
+      guard let sample = parseThemeSamples(yaml)[scheme] else {
+        failures.append("missing macOS theme")
+        return
+      }
+      for point in [CGFloat(12), 16, 32] {
+        let panel = SquirrelPanel(position: NSRect(x: 260, y: 420, width: 2, height: 20))
+        let controller = SquirrelInputController()
+        panel.bind(controller: controller)
+        let view = panel.view
+        configureThemeLayout(view.lightTheme, sample: sample, point: point, linear: false)
+        let snapshot = SquirrelInputController.CandidateSnapshot(items: (0..<9).map { index in
+          .init(text: index == 0 ? "你" : "候选\(index)", comment: index == 0 ? comment : "\u{001E}candidate",
+            page: 0, indexOnPage: index, absoluteIndex: index, selectionLabel: String(index + 1))
+        }, pageSize: 9, currentPage: 0, isLastPage: true, isExpanded: false, canExpand: false)
+        require(panel.update(preedit: "ni", selRange: .empty, caretPos: 2,
+          candidates: snapshot, highlighted: 0, update: true, controller: controller), "long definition not published")
+        render(view)
+        let rendered = view.textView.textContentStorage?.attributedString?.string ?? ""
+        require(rendered.contains(firstSense) && rendered.contains(fullNote), "full usage note was shortened")
+        require(!rendered.contains("…"), "definition text was truncated")
+        let frames = view.candidateAccessibilityGeometry().candidateFrames
+        require(frames.count == 9 && frames.allSatisfy { view.bounds.insetBy(dx: -1, dy: -1).contains($0) }, "wrapped row hit frames were clipped")
+        require(frames.first!.height > frames.last!.height, "long definition did not wrap")
+        require(view.contentRect.width <= min(480, max(300, point * 24)) + 1, "long note stretched the candidate window")
+        require(view.candidateToolTipTexts.first?.description.contains("third sense for full help") == true, "full native tooltip lost an alternative")
+        if let first = view.accessibilityChildren()?.first as? LinnetCandidateAccessibilityElement {
+          require(first.accessibilityHelp()?.contains(fullNote) == true, "VoiceOver help lost full definition")
+          require(first.accessibilityPerformPress() && controller.selectedCandidateIndices == [0], "wrapped row selected the wrong candidate")
+        } else { failures.append("wrapped candidate has no AX element") }
+        panel.hide()
+        require(view.candidateToolTipTexts.isEmpty, "hidden panel retained old tooltips")
       }
     }
   }
@@ -1813,8 +1860,8 @@ struct LinnetCandidateWindowInteractionTests {
       return
     }
     let samples = parseThemeSamples(yaml)
-    guard samples.count == 14 else {
-      failures.append("theme layout matrix resolved \(samples.count) palettes instead of 14")
+    guard samples.count == 16 else {
+      failures.append("theme layout matrix resolved \(samples.count) palettes instead of 16")
       return
     }
     let rawDetail = "/w/ · n. 工作；v. 运作；adj. 有效；fig. 起作用"
@@ -2298,6 +2345,46 @@ struct LinnetCandidateWindowInteractionTests {
     return bitmapSnapshot(of: panel.contentView)
   }
 
+  private static func makeReadmeRegionalGallery(yamlPath: String, outputPath: String) {
+    guard let yaml = try? String(contentsOfFile: yamlPath, encoding: .utf8) else { return }
+    let samples = parseThemeSamples(yaml)
+    let size = NSSize(width: 1360, height: 760)
+    guard let (bitmap, context) = bitmapSurface(size: size, failure: "regional glossary gallery") else { return }
+    NSGraphicsContext.saveGraphicsState()
+    NSGraphicsContext.current = context
+    NSColor(srgbRed: 0.96, green: 0.96, blue: 0.97, alpha: 1).setFill()
+    NSRect(origin: .zero, size: size).fill()
+    let ink = NSColor(srgbRed: 0.12, green: 0.12, blue: 0.13, alpha: 1)
+    ("按地区保留释义，不提炼、不改写通用词义" as NSString).draw(at: NSPoint(x: 52, y: 675),
+      withAttributes: [.font: NSFont.systemFont(ofSize: 36, weight: .semibold), .foregroundColor: ink])
+    ("macOS 浅色 / 深色 · 当前候选窗渲染 · 20 pt" as NSString).draw(at: NSPoint(x: 54, y: 632),
+      withAttributes: [.font: NSFont.systemFont(ofSize: 22), .foregroundColor: NSColor.darkGray])
+    let lexicon = ZIMELocalLexicon(url: URL(fileURLWithPath: "resources/zime-cedict.sqlite3"))
+    let variants = [
+      ("linnet_macos_light", "简体：通用 + 大陆", ZIMELocalLexicon.RegionProfile.mainland),
+      ("linnet_macos_dark", "繁体：通用 + 港澳台 / 新马", .traditionalRegions)
+    ]
+    for (index, variant) in variants.enumerated() {
+      let x = CGFloat(54 + index * 660)
+      let note = "\u{001E}" + lexicon.translations(for: "你", region: variant.2).joined(separator: "\u{001F}")
+      guard let sample = samples[variant.0], let panel = renderProductCandidatePanel(sample: sample,
+        preedit: "ni", items: [("你", note), (index == 0 ? "拟" : "擬", "to plan; to draft"), ("泥", "mud; clay")]) else {
+        failures.append("regional gallery could not render \(variant.0)")
+        continue
+      }
+      (variant.1 as NSString).draw(at: NSPoint(x: x, y: 560),
+        withAttributes: [.font: NSFont.systemFont(ofSize: 25, weight: .medium), .foregroundColor: ink])
+      let scale = min(1.2, 580 / CGFloat(panel.pixelsWide))
+      let width = CGFloat(panel.pixelsWide) * scale
+      let height = CGFloat(panel.pixelsHigh) * scale
+      drawBitmap(panel, in: NSRect(x: x, y: 510 - height, width: width, height: height))
+    }
+    ("用法说明原样保留 · 长释义自动换行 · 悬停查看当前地区完整释义 · 原文默认上屏" as NSString)
+      .draw(at: NSPoint(x: 54, y: 80), withAttributes: [.font: NSFont.systemFont(ofSize: 23), .foregroundColor: ink])
+    NSGraphicsContext.restoreGraphicsState()
+    writeReadmeBitmap(bitmap, outputPath: outputPath, label: "README regional glossary gallery")
+  }
+
   private static func renderProductCandidatePanel(
     sample: ThemeSample,
     preedit: String,
@@ -2527,13 +2614,14 @@ struct LinnetCandidateWindowInteractionTests {
       ("linnet_mist_jade", "月白雾青", "Mist Jade"),
       ("linnet_glass", "原生玻璃", "Native Glass"),
       ("linnet_ink_cinnabar", "夜墨朱砂", "Ink Cinnabar"),
+      ("linnet_macos", "macOS", "Neutral Blue"),
     ]
-    guard samples.count == 14,
+    guard samples.count == 16,
       families.allSatisfy({
         samples["\($0.0)_light"] != nil && samples["\($0.0)_dark"] != nil
       })
     else {
-      failures.append("README theme gallery did not resolve all fourteen canonical palettes")
+      failures.append("README theme gallery did not resolve all sixteen canonical palettes")
       return
     }
 
@@ -2556,7 +2644,7 @@ struct LinnetCandidateWindowInteractionTests {
     NSGraphicsContext.current = context
     NSColor(srgbRed: 0.985, green: 0.989, blue: 0.989, alpha: 1).setFill()
     NSRect(origin: .zero, size: sheetSize).fill()
-    ("七套候选窗主题 · 当前产品真实渲染" as NSString).draw(
+    ("八套候选窗主题 · 当前产品真实渲染" as NSString).draw(
       at: NSPoint(x: 50, y: 1020),
       withAttributes: [.font: titleFont, .foregroundColor: ink])
     ("由 data/squirrel.yaml 通过当前 SquirrelView 生成 · 20 pt · Light / Dark" as NSString)
@@ -2618,8 +2706,8 @@ struct LinnetCandidateWindowInteractionTests {
           width: candidateWidth, height: candidateHeight))
     }
 
-    ("雾青与原生玻璃使用 macOS 材质；实际透明度会随外观和当前应用背景变化。" as NSString).draw(
-      at: NSPoint(x: 705, y: 62),
+    ("雾青与原生玻璃使用 macOS 材质；macOS 主题使用中性色与蓝色选中行。" as NSString).draw(
+      at: NSPoint(x: 52, y: 18),
       withAttributes: [.font: detailFont, .foregroundColor: secondary])
     NSGraphicsContext.restoreGraphicsState()
     writeReadmeBitmap(sheet, outputPath: outputPath, label: "README theme gallery")

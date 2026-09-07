@@ -93,6 +93,17 @@ enum LinnetCandidatePresentation {
       translations: chineseTranslationAlternatives(in: displayText))
   }
 
+  /// Full regional definitions for native tooltips/AX help; independent of
+  /// line wrapping and the existing three explicit translation alternatives.
+  static func fullCandidateComment(_ rawComment: String) -> String {
+    if rawComment.hasPrefix(reverseEnglishDetailPrefix) {
+      return String(rawComment.dropFirst())
+        .components(separatedBy: translationAlternativeSeparator)
+        .filter { !$0.isEmpty }.joined(separator: "\n")
+    }
+    return candidateComment(rawComment).displayText
+  }
+
   private static func chineseTranslationAlternatives(in detail: String) -> [String] {
     let translatedDetail = detail.components(separatedBy: " · ").last ?? detail
     let parts = translatedDetail.components(

@@ -180,6 +180,7 @@ final class SettingsUITests: XCTestCase {
       ("mist_jade", "Mist"),
       ("native_glass", "Glass"),
       ("ink_cinnabar", "Ink"),
+      ("macos", "macOS"),
     ] {
       let theme = app.descendants(matching: .any)[
         "settings.appearance.theme.\(identifier)"]
