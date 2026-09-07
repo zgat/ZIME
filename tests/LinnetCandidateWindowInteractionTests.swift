@@ -43,7 +43,6 @@ final class SquirrelTheme {
   ]
   var borderColor: NSColor? = .separatorColor
   var candidateBackColor: NSColor?
-  var candidateExpansionAllowed = false
   var candidateFormat = "[label] [candidate]"
   var commentAttrs: [NSAttributedString.Key: Any] = [:]
   var commentHighlightedAttrs: [NSAttributedString.Key: Any] = [:]
@@ -111,21 +110,15 @@ final class SquirrelInputController {
     let pageSize: Int
     let currentPage: Int
     let isLastPage: Bool
-    let isExpanded: Bool
-    let canExpand: Bool
   }
 
   private(set) var selectedCandidateIndices: [Int] = []
   private(set) var pageDirections: [Bool] = []
-  private(set) var refreshCount = 0
   var activeClient: Any?
 
   func page(up: Bool) -> Bool {
     pageDirections.append(up)
     return true
-  }
-  func refreshCandidatePresentation() {
-    refreshCount += 1
   }
   func selectCandidate(absoluteIndex: Int) -> Bool {
     selectedCandidateIndices.append(absoluteIndex)
@@ -163,13 +156,12 @@ struct LinnetCandidateWindowInteractionTests {
     testPreeditPressDoesNotInferEngineCaret()
     testInputModeStatusNotice()
     testScreenLocalPanelPlacement()
-    testKeyboardPagingRequestsExpansion()
     testDefaultNineCandidateNaturalSize()
     testEveryCandidateShowsTranslation()
     testSquareAndRoundedPaths()
     testStructuredLocalGlosses()
     testRegionalDefinitionsWrapWithoutSummarization()
-    testExpandedChineseCommentsDoNotCreateEnglishPlaceholder()
+    testChineseCommentsDoNotCreateEnglishPlaceholder()
     testThemeLayoutMatrix()
     testVerticalPanelDoesNotMemorizeWhenDisabled()
     for point in [CGFloat(12), 16, 32] {
@@ -270,7 +262,7 @@ struct LinnetCandidateWindowInteractionTests {
               .init(text: words[index], comment: LinnetCandidatePresentation.reverseEnglishDetailPrefix + glosses[index],
                 page: 0, indexOnPage: index, absoluteIndex: index,
                 selectionLabel: String(index + 1), emphasizesPrimaryText: true)
-            }, pageSize: count, currentPage: 0, isLastPage: true, isExpanded: false, canExpand: false)
+            }, pageSize: count, currentPage: 0, isLastPage: true)
           var sizes: [NSSize] = []
           for selected in [0, count - 1] {
             require(panel.update(preedit: "", selRange: .empty, caretPos: 0,
@@ -335,7 +327,7 @@ struct LinnetCandidateWindowInteractionTests {
         let snapshot = SquirrelInputController.CandidateSnapshot(items: (0..<9).map { index in
           .init(text: index == 0 ? "你" : "候选\(index)", comment: index == 0 ? comment : "\u{001E}candidate",
             page: 0, indexOnPage: index, absoluteIndex: index, selectionLabel: String(index + 1))
-        }, pageSize: 9, currentPage: 0, isLastPage: true, isExpanded: false, canExpand: false)
+        }, pageSize: 9, currentPage: 0, isLastPage: true)
         require(panel.update(preedit: "ni", selRange: .empty, caretPos: 2,
           candidates: snapshot, highlighted: 0, update: true, controller: controller), "long definition not published")
         render(view)
@@ -381,7 +373,7 @@ struct LinnetCandidateWindowInteractionTests {
               page: 0, indexOnPage: index, absoluteIndex: index, selectionLabel: String(index + 1))
           }
           _ = panel.update(preedit: "ni", selRange: .empty, caretPos: 2,
-            candidates: .init(items: items, pageSize: count, currentPage: 0, isLastPage: true, isExpanded: false, canExpand: false),
+            candidates: .init(items: items, pageSize: count, currentPage: 0, isLastPage: true),
             highlighted: 0, update: true, controller: controller)
           render(view)
           if let text = view.textView.textContentStorage?.attributedString {
@@ -418,9 +410,7 @@ struct LinnetCandidateWindowInteractionTests {
       },
       pageSize: 5,
       currentPage: 0,
-      isLastPage: true,
-      isExpanded: false,
-      canExpand: false)
+      isLastPage: true)
     let coldStarted = ProcessInfo.processInfo.systemUptime
     let published = panel.update(
       preedit: "ceshi", selRange: .empty, caretPos: 5,
@@ -471,8 +461,7 @@ struct LinnetCandidateWindowInteractionTests {
     _ = panel.update(
       preedit: "", selRange: .empty, caretPos: 0,
       candidates: .init(
-        items: [], pageSize: 0, currentPage: 0, isLastPage: true,
-        isExpanded: false, canExpand: false),
+        items: [], pageSize: 0, currentPage: 0, isLastPage: true),
       highlighted: 0, update: true,
       controller: controller)
     let text = panel.contentView?.subviews.compactMap { $0 as? NSTextView }.first?
@@ -562,45 +551,6 @@ struct LinnetCandidateWindowInteractionTests {
     }
   }
 
-  private static func testKeyboardPagingRequestsExpansion() {
-    let panel = SquirrelPanel(position: NSRect(x: 120, y: 120, width: 2, height: 20))
-    let candidateView = panel.view
-    candidateView.lightTheme.candidateExpansionAllowed = true
-    candidateView.darkTheme.candidateExpansionAllowed = true
-    panel.candidateSnapshot = .init(
-      items: [
-        .init(
-          text: "候选", comment: "", page: 2, indexOnPage: 0,
-          absoluteIndex: 18, selectionLabel: "1"),
-      ],
-      pageSize: 9,
-      currentPage: 2,
-      isLastPage: false,
-      isExpanded: false,
-      canExpand: true)
-    require(!panel.candidateExpansionRequested,
-            "expandable browsing did not begin with a compact candidate page")
-    panel.requestCandidateExpansionForKeyboardPaging()
-    require(
-      panel.candidateExpansionAnchorPage == 2,
-      "an accepted keyboard page switch did not anchor expansion to the visible page")
-    panel.candidateSnapshot = .init(
-      items: [], pageSize: 9, currentPage: 3, isLastPage: false,
-      isExpanded: true, canExpand: true)
-    panel.requestCandidateExpansionForKeyboardPaging()
-    require(
-      panel.candidateExpansionAnchorPage == 2,
-      "continued grid navigation re-anchored the visible candidate rows")
-    panel.hide()
-    require(!panel.candidateExpansionRequested,
-            "a new composition retained the prior keyboard expansion")
-    candidateView.lightTheme.candidateExpansionAllowed = false
-    candidateView.darkTheme.candidateExpansionAllowed = false
-    panel.requestCandidateExpansionForKeyboardPaging()
-    require(!panel.candidateExpansionRequested,
-            "scrolling-only browsing accepted a keyboard expansion request")
-  }
-
   private static func testExactCandidatePathHitTesting() {
     let splitCandidate = CGMutablePath()
     splitCandidate.addRect(NSRect(x: 0, y: 0, width: 10, height: 10))
@@ -635,9 +585,7 @@ struct LinnetCandidateWindowInteractionTests {
       ],
       pageSize: 2,
       currentPage: 0,
-      isLastPage: true,
-      isExpanded: false,
-      canExpand: false)
+      isLastPage: true)
     _ = panel.update(
       preedit: "", selRange: .empty, caretPos: 0,
       candidates: candidates, highlighted: 0, update: true,
@@ -847,15 +795,15 @@ struct LinnetCandidateWindowInteractionTests {
         expectedActions: [.pageUp]
       ),
       (
-        label: "non-finite expand frame",
-        mode: .disclosure(expanded: false),
+        label: "non-finite next-page frame",
+        mode: .paging(canPageUp: false, canPageDown: true),
         previous: nil,
         next: NSRect(x: CGFloat.nan, y: 4, width: 20, height: 20),
         expectedActions: []
       ),
       (
-        label: "non-finite collapse frame",
-        mode: .disclosure(expanded: true),
+        label: "non-finite previous-page frame",
+        mode: .paging(canPageUp: true, canPageDown: false),
         previous: NSRect(x: 52, y: 4, width: 20, height: CGFloat.infinity),
         next: nil,
         expectedActions: []
@@ -1147,9 +1095,7 @@ struct LinnetCandidateWindowInteractionTests {
       ]).items,
       pageSize: 2,
       currentPage: 1,
-      isLastPage: false,
-      isExpanded: false,
-      canExpand: false)
+      isLastPage: false)
     _ = panel.update(
       preedit: "", selRange: .empty, caretPos: 0,
       candidates: candidates, highlighted: 0, update: true,
@@ -1446,9 +1392,7 @@ struct LinnetCandidateWindowInteractionTests {
       },
       pageSize: candidates.count,
       currentPage: 0,
-      isLastPage: true,
-      isExpanded: false,
-      canExpand: false)
+      isLastPage: true)
   }
 
   private static func sendCandidateMouse(
@@ -1695,7 +1639,6 @@ struct LinnetCandidateWindowInteractionTests {
     theme.hilitedCornerRadius = sample.highlightedCornerRadius
     theme.selectionStyle = sample.selectionStyle
     theme.linear = true
-    theme.candidateExpansionAllowed = true
     theme.showPaging = true
     theme.linespace = LinnetCandidatePresentation.candidateRowSpacing
     theme.candidateFormat = "[label] [candidate]"
@@ -1730,9 +1673,7 @@ struct LinnetCandidateWindowInteractionTests {
       },
       pageSize: values.count,
       currentPage: 0,
-      isLastPage: true,
-      isExpanded: false,
-      canExpand: true)
+      isLastPage: false)
     _ = panel.update(
       preedit: "", selRange: .empty, caretPos: 0,
       candidates: candidates, highlighted: 0, update: true,
@@ -1758,26 +1699,26 @@ struct LinnetCandidateWindowInteractionTests {
       "default 16pt nine-candidate text view clipped its natural content width")
     require(
       paging.previousPage == nil && paging.nextPage != nil,
-      "default collapsed candidate row lost its single disclosure control")
+      "first candidate page lost its next-page control")
     require(
       abs(paging.stripFrame.maxX - candidateView.bounds.maxX) <= 0.5,
-      "default collapsed disclosure strip left the horizontal trailing edge")
-    if let disclosure = paging.nextPage {
+      "first-page paging strip left the horizontal trailing edge")
+    if let nextPage = paging.nextPage {
       require(
-        candidateView.click(at: disclosure.visualCenter) == .control(.expand),
-        "default collapsed disclosure control lost its expand hit target")
+        candidateView.click(at: nextPage.visualCenter) == .control(.pageDown),
+        "first-page paging control lost its paging hit target")
     }
     let stripBackgroundPoint = NSPoint(
       x: paging.stripFrame.midX,
       y: paging.stripFrame.minY + min(3, paging.stripFrame.height / 4))
     require(
       candidateView.shape.path?.contains(stripBackgroundPoint) == true,
-      "default collapsed disclosure strip was left outside the panel background")
-    let disclosureGlyph = candidateView.layer?.sublayers?.last?.sublayers?.first
+      "first-page paging strip was left outside the panel background")
+    let pagingGlyph = candidateView.layer?.sublayers?.last?.sublayers?.first
       as? CAShapeLayer
     require(
-      disclosureGlyph?.fillColor != theme.backgroundColor.cgColor,
-      "default collapsed disclosure glyph disappeared into the panel background")
+      pagingGlyph?.fillColor != theme.backgroundColor.cgColor,
+      "first-page paging glyph disappeared into the panel background")
 
     let frames = candidateView.candidateAccessibilityGeometry().candidateFrames
     require(frames.count == values.count, "default 16pt row did not expose all nine candidate cells")
@@ -1798,9 +1739,7 @@ struct LinnetCandidateWindowInteractionTests {
       },
       pageSize: values.count,
       currentPage: 1,
-      isLastPage: false,
-      isExpanded: false,
-      canExpand: false)
+      isLastPage: false)
     _ = panel.update(
       preedit: "", selRange: .empty, caretPos: 0,
       candidates: middlePage, highlighted: 0, update: true,
@@ -1826,9 +1765,7 @@ struct LinnetCandidateWindowInteractionTests {
       },
       pageSize: values.count,
       currentPage: 2,
-      isLastPage: true,
-      isExpanded: false,
-      canExpand: false)
+      isLastPage: true)
     _ = panel.update(
       preedit: "", selRange: .empty, caretPos: 0,
       candidates: lastPage, highlighted: 0, update: true,
@@ -1847,33 +1784,6 @@ struct LinnetCandidateWindowInteractionTests {
       candidateView.candidateAccessibilityGeometry().candidateFrames.count == 3,
       "a partial last page retained stale candidate geometry")
 
-    let expandedValues = values + values + values.prefix(3)
-    let expanded = SquirrelInputController.CandidateSnapshot(
-      items: expandedValues.enumerated().map { index, value in
-        .init(
-          text: value, comment: "", page: index / values.count,
-          indexOnPage: index % values.count, absoluteIndex: index,
-          selectionLabel: String(index % values.count + 1))
-      },
-      pageSize: values.count,
-      currentPage: 0,
-      isLastPage: false,
-      isExpanded: true,
-      canExpand: true)
-    _ = panel.update(
-      preedit: "", selRange: .empty, caretPos: 0,
-      candidates: expanded, highlighted: 0, update: true,
-      controller: controller)
-    panel.displayIfNeeded()
-    render(candidateView)
-    let expandedNaturalHeight = ceil(candidateView.contentRect.height + inset.height * 2)
-    require(
-      abs(panel.frame.height - expandedNaturalHeight) <= 0.5,
-      "expanded candidates retained height beyond their three visible rows")
-    require(
-      candidateView.candidateAccessibilityGeometry().candidateFrames.count == 21,
-      "expanded candidates lost or invented interaction geometry")
-
     _ = panel.update(
       preedit: "", selRange: .empty, caretPos: 0,
       candidates: candidates, highlighted: 0, update: true,
@@ -1882,7 +1792,7 @@ struct LinnetCandidateWindowInteractionTests {
     render(candidateView)
     require(
       abs(panel.frame.height - actualSize.height) <= 0.5,
-      "collapsing candidates did not restore the original natural height")
+      "returning to the first page did not restore its natural height")
     print(
       "Default 16pt nine-candidate natural panel: "
         + "\(actualSize.width)×\(actualSize.height), content "
@@ -1891,7 +1801,7 @@ struct LinnetCandidateWindowInteractionTests {
   }
 
 
-  private static func testExpandedChineseCommentsDoNotCreateEnglishPlaceholder() {
+  private static func testChineseCommentsDoNotCreateEnglishPlaceholder() {
     let panel = SquirrelPanel(position: NSRect(x: 260, y: 420, width: 2, height: 20))
     let controller = SquirrelInputController()
     panel.bind(controller: controller)
@@ -1902,7 +1812,6 @@ struct LinnetCandidateWindowInteractionTests {
     ]
     theme.font = NSFont.systemFont(ofSize: 16)
     theme.linear = true
-    theme.candidateExpansionAllowed = true
     theme.candidateFormat = "[label] [candidate]"
     theme.attrs = attributes
     theme.highlightedAttrs = attributes
@@ -1913,14 +1822,13 @@ struct LinnetCandidateWindowInteractionTests {
     theme.paragraphStyle = NSMutableParagraphStyle()
 
     let snapshot = SquirrelInputController.CandidateSnapshot(
-      items: ["是", "时", "事", "市", "十", "使"].enumerated().map { index, value in
+      items: ["是", "时", "事"].enumerated().map { index, value in
         .init(
           text: value, comment: index == 0 ? "［shì］" : "",
           page: index / 3, indexOnPage: index % 3, absoluteIndex: index,
           selectionLabel: index < 3 ? String(index + 1) : nil)
       },
-      pageSize: 3, currentPage: 0, isLastPage: false,
-      isExpanded: true, canExpand: true)
+      pageSize: 3, currentPage: 0, isLastPage: false)
     _ = panel.update(
       preedit: "ui", selRange: .empty, caretPos: 2,
       candidates: snapshot, highlighted: 1, update: true,
@@ -1929,7 +1837,7 @@ struct LinnetCandidateWindowInteractionTests {
     candidateView.displayIfNeeded()
     require(
       candidateView.detailTextView.isHidden,
-      "expanded Chinese spelling comments gave another Chinese candidate the English placeholder")
+      "Chinese spelling comments gave another Chinese candidate the English placeholder")
     panel.hide()
   }
 
@@ -1993,9 +1901,7 @@ struct LinnetCandidateWindowInteractionTests {
               },
               pageSize: values.count,
               currentPage: 0,
-              isLastPage: true,
-              isExpanded: false,
-              canExpand: false),
+              isLastPage: true),
             highlighted: 0,
             update: true,
             controller: controller)
@@ -2059,7 +1965,6 @@ struct LinnetCandidateWindowInteractionTests {
     theme.selectionStyle = sample.selectionStyle
     theme.linear = linear
     theme.vertical = false
-    theme.candidateExpansionAllowed = false
     theme.showPaging = false
     theme.linespace = LinnetCandidatePresentation.candidateRowSpacing
     theme.edgeInset = LinnetCandidatePresentation.candidateWindowInset
@@ -2138,8 +2043,7 @@ struct LinnetCandidateWindowInteractionTests {
       hilightedIndex: 0,
       preeditRange: .empty,
       highlightedPreeditRange: .empty,
-      controlMode: .paging(canPageUp: false, canPageDown: false),
-      usesGridLayout: false)
+      controlMode: .paging(canPageUp: false, canPageDown: false))
     render(view)
 
     guard let textRange = view.convert(range: ranges[0]) else {
@@ -2438,8 +2342,7 @@ struct LinnetCandidateWindowInteractionTests {
     _ = panel.update(
       preedit: "", selRange: .empty, caretPos: 0,
       candidates: .init(
-        items: [], pageSize: 9, currentPage: 0, isLastPage: true,
-        isExpanded: false, canExpand: false),
+        items: [], pageSize: 9, currentPage: 0, isLastPage: true),
       highlighted: 0, update: true,
       controller: controller)
     panel.displayIfNeeded()
@@ -2558,7 +2461,6 @@ struct LinnetCandidateWindowInteractionTests {
     theme.hilitedCornerRadius = sample.highlightedCornerRadius
     theme.selectionStyle = sample.selectionStyle
     theme.linear = false
-    theme.candidateExpansionAllowed = false
     theme.showPaging = false
     theme.linespace = LinnetCandidatePresentation.candidateRowSpacing
     theme.candidateFormat = "[label] [candidate]"
@@ -2596,9 +2498,7 @@ struct LinnetCandidateWindowInteractionTests {
       },
       pageSize: items.count,
       currentPage: 0,
-      isLastPage: true,
-      isExpanded: false,
-      canExpand: false)
+      isLastPage: true)
     _ = panel.update(
       preedit: preedit,
       selRange: NSRange(location: 0, length: preedit.utf16.count),
@@ -2919,8 +2819,7 @@ struct LinnetCandidateWindowInteractionTests {
       hilightedIndex: 0,
       preeditRange: .empty,
       highlightedPreeditRange: .empty,
-      controlMode: .paging(canPageUp: false, canPageDown: false),
-      usesGridLayout: false)
+      controlMode: .paging(canPageUp: false, canPageDown: false))
     if sample.isTranslucent {
       material.layer?.mask = view.shape
     }

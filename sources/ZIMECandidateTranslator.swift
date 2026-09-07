@@ -140,8 +140,7 @@ final class ZIMECandidateTranslator {
       }
     }
     return .init(items: items, currentPage: snapshot.currentPage, pageSize: snapshot.pageSize,
-      highlightedItemIndex: snapshot.highlightedItemIndex, isLastPage: snapshot.isLastPage,
-      canExpand: snapshot.canExpand, isExpanded: snapshot.isExpanded)
+      highlightedItemIndex: snapshot.highlightedItemIndex, isLastPage: snapshot.isLastPage)
   }
 
   private static func comment(_ translations: [String]) -> String {

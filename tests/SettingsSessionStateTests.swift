@@ -157,7 +157,6 @@ struct SettingsSessionStateTests {
     committed.fontPreset = .book
     committed.chineseCandidateLayout = .vertical
     committed.englishCandidateLayout = .vertical
-    committed.candidateBrowsingMode = .scrollingOnly
     committed.pageSize = 9
 
     var ready = SettingsConfigurationSession(
@@ -185,8 +184,6 @@ struct SettingsSessionStateTests {
         == baseline.appearance.chineseCandidateLayout,
       ready.documentBaseline?.appearance.englishCandidateLayout
         == baseline.appearance.englishCandidateLayout,
-      ready.documentBaseline?.appearance.candidateBrowsingMode
-        == baseline.appearance.candidateBrowsingMode,
       ready.documentBaseline?.appearance.pageSize == baseline.appearance.pageSize,
       ready.documentDraft == laterDraft
     else { fail("a live appearance commit changed draft or an Apply-only appearance field") }

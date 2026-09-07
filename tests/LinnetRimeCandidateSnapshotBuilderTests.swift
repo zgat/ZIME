@@ -20,8 +20,6 @@ final class SquirrelInputController {
     let pageSize: Int
     let highlightedItemIndex: Int
     let isLastPage: Bool
-    let canExpand: Bool
-    let isExpanded: Bool
   }
 }
 
@@ -61,10 +59,7 @@ struct LinnetRimeCandidateSnapshotBuilderTests {
 
     let snapshot = LinnetRimeCandidateSnapshotBuilder.build(
       context: context,
-      labels: ["123456789"],
-      expansionAnchorPage: nil,
-      session: 0,
-      rimeAPI: RimeApi_stdbool())
+      labels: ["123456789"])
     require(
       snapshot == .init(
         items: [
@@ -78,33 +73,25 @@ struct LinnetRimeCandidateSnapshotBuilderTests {
         currentPage: 0,
         pageSize: 9,
         highlightedItemIndex: 1,
-        isLastPage: true,
-        canExpand: false,
-        isExpanded: false),
+        isLastPage: true),
       "zero-input predictions lost labels or the validated highlight in the builder"
     )
 
     context.menu.page_no = 2
     let finalPageSnapshot = LinnetRimeCandidateSnapshotBuilder.build(
       context: context,
-      labels: ["123456789"],
-      expansionAnchorPage: nil,
-      session: 0,
-      rimeAPI: RimeApi_stdbool())
+      labels: ["123456789"])
     require(
       finalPageSnapshot?.items.map(\.absoluteIndex) == [18, 19] &&
-        finalPageSnapshot?.canExpand == true,
-      "a compact final page lost its absolute indices or earlier expandable pages"
+        finalPageSnapshot?.isLastPage == true,
+      "a partial final page lost its absolute indices or paging boundary"
     )
 
     context.menu.highlighted_candidate_index = 2
     require(
       LinnetRimeCandidateSnapshotBuilder.build(
         context: context,
-        labels: ["123456789"],
-        expansionAnchorPage: nil,
-        session: 0,
-        rimeAPI: RimeApi_stdbool()) == nil,
+        labels: ["123456789"]) == nil,
       "the builder accepted an out-of-range Rime highlight"
     )
   }

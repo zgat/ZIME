@@ -203,7 +203,6 @@ enum LinnetSettingsAppearancePreview {
     let isMutuallyExclusive: Bool
     let chineseCandidateLayout: LinnetSettingsDocument.CandidateLayout
     let englishCandidateLayout: LinnetSettingsDocument.CandidateLayout
-    let candidateBrowsingMode: LinnetSettingsDocument.CandidateBrowsingMode
     let pageSize: Int
     let fontPreset: LinnetSettingsDocument.FontPreset
     let candidateFontPoint: Double
@@ -212,8 +211,7 @@ enum LinnetSettingsAppearancePreview {
     let isDark: Bool
 
     func detailGeometry(
-      for language: PreviewLanguage,
-      expanded: Bool
+      for language: PreviewLanguage
     ) -> LinnetCandidatePresentation.CandidateDetailGeometry {
       let layout = language == .chinese
         ? chineseCandidateLayout : englishCandidateLayout
@@ -222,7 +220,7 @@ enum LinnetSettingsAppearancePreview {
       case .vertical: false
       }
       return LinnetCandidatePresentation.candidateDetailGeometry(
-        forLinearLayout: linear || expanded,
+        forLinearLayout: linear,
         candidateFontPoint: CGFloat(candidateFontPoint))
     }
   }
@@ -250,7 +248,6 @@ enum LinnetSettingsAppearancePreview {
       isMutuallyExclusive: false,
       chineseCandidateLayout: appearance.chineseCandidateLayout,
       englishCandidateLayout: appearance.englishCandidateLayout,
-      candidateBrowsingMode: appearance.candidateBrowsingMode,
       pageSize: appearance.pageSize,
       fontPreset: appearance.fontPreset,
       candidateFontPoint: LinnetSettingsDocument.Appearance.clampFontPoint(appearance.fontPoint),
@@ -399,10 +396,7 @@ struct LinnetSettingsAppearancePreviewView: View {
 
   private var accessibilityLabel: Text {
     switch preview {
-    case .success:
-      Text(
-        appearance.candidateBrowsingMode == .expandable
-          ? "Expanded candidate preview" : "Scrolling-only candidate preview")
+    case .success: Text("Candidate window preview")
     case .failure: Text("Preview unavailable")
     }
   }
@@ -411,13 +405,12 @@ struct LinnetSettingsAppearancePreviewView: View {
     _ preview: LinnetSettingsAppearancePreview.Presentation,
     language: LinnetSettingsAppearancePreview.PreviewLanguage
   ) -> some View {
-    let expanded = preview.candidateBrowsingMode == .expandable
     return VStack(alignment: .leading, spacing: LinnetCandidatePresentation.candidateRowSpacing) {
       previewLanguageLabel(language)
         .font(.caption.weight(.medium))
         .foregroundStyle(preview.palette.secondary.color)
       ScrollView(.horizontal, showsIndicators: false) {
-        candidateList(preview, language: language, expanded: expanded)
+        candidateList(preview, language: language)
         .fixedSize(horizontal: true, vertical: true)
       }
       .frame(maxWidth: .infinity, alignment: .leading)
@@ -446,28 +439,18 @@ private extension LinnetSettingsAppearancePreviewView {
   @ViewBuilder
   func candidateList(
     _ preview: LinnetSettingsAppearancePreview.Presentation,
-    language: LinnetSettingsAppearancePreview.PreviewLanguage,
-    expanded: Bool
+    language: LinnetSettingsAppearancePreview.PreviewLanguage
   ) -> some View {
     let layout = language == .chinese
       ? preview.chineseCandidateLayout : preview.englishCandidateLayout
     let availableValues = previewCandidateValues(language)
-    let requestedCount = expanded
-      ? min(
-        availableValues.count,
-        LinnetCandidatePresentation.expandedCandidateRange(
-          anchorPage: 0,
-          currentPage: 0,
-          pageSize: preview.pageSize)?.upperBound ?? preview.pageSize)
-      : min(availableValues.count, preview.pageSize)
+    let requestedCount = min(availableValues.count, preview.pageSize)
     let values = Array(availableValues.prefix(requestedCount))
     let flow: LinnetCandidatePresentation.CandidateFlow =
       layout == .horizontal ? .horizontal : .vertical
     let rows = LinnetCandidatePresentation.visualRows(
       candidateCount: values.count,
-      pageSize: preview.pageSize,
-      flow: flow,
-      expanded: expanded)
+      flow: flow)
     let labelFont = LinnetCandidatePresentation.platformFont(
       fontNames: preview.fontPreset.fontFamilies,
       size: CGFloat(preview.labelFontPoint))
@@ -477,34 +460,19 @@ private extension LinnetSettingsAppearancePreviewView {
     let fonts = (label: labelFont, candidate: candidateFont)
     let inlineSpacing = LinnetCandidatePresentation.inlineCandidateSeparatorWidth(
       font: candidateFont)
-    let gridColumns = expanded
-      ? LinnetCandidatePresentation.candidateGridColumns(
-        rows: rows,
-        itemWidths: values.enumerated().map { index, value in
-          LinnetSettingsAppearancePreview.candidateLine(
-            index < preview.pageSize ? String(index + 1) : "",
-            value,
-            selected: index == 0,
-            preview,
-            fonts: fonts
-          ).boundingRect(with: .zero, options: [.usesLineFragmentOrigin]).width
-        },
-        spacing: inlineSpacing)
-      : nil
     VStack(
       alignment: .leading,
       spacing: LinnetCandidatePresentation.candidateRowSpacing
     ) {
       ForEach(Array(rows.enumerated()), id: \.offset) { row in
         HStack(spacing: inlineSpacing) {
-          ForEach(Array(row.element.enumerated()), id: \.element) { column, index in
+          ForEach(row.element, id: \.self) { index in
             LinnetSettingsAppearancePreview.candidate(
-              index < preview.pageSize ? String(index + 1) : "",
+              String(index + 1),
               values[index],
               selected: index == 0,
               preview,
-              fonts: fonts,
-              width: gridColumns?.widths[column])
+              fonts: fonts)
           }
         }
       }
@@ -518,15 +486,11 @@ private extension LinnetSettingsAppearancePreviewView {
     switch language {
     case .chinese:
       [
-        "输入", "输入法", "候选", "双拼", "设置", "词库", "主题", "学习", "数据",
-        "方案", "拼音", "智能", "英文", "简体", "繁体", "符号", "短语", "预测",
-        "同步", "更新", "备份", "恢复", "导入", "导出", "用户", "语言", "外观"
+        "输入", "输入法", "候选", "双拼", "设置", "词库", "主题", "学习", "数据"
       ]
     case .english:
       [
-        "interface", "input", "method", "context", "preview", "candidate", "typing", "language", "settings",
-        "completion", "prediction", "translation", "spelling", "pronunciation", "learning", "phrase", "layout", "theme",
-        "dictionary", "update", "backup", "restore", "import", "export", "profile", "native", "glass"
+        "interface", "input", "method", "context", "preview", "candidate", "typing", "language", "settings"
       ]
     }
   }
@@ -539,8 +503,7 @@ extension LinnetSettingsAppearancePreview {
     _ value: String,
     selected: Bool,
     _ preview: LinnetSettingsAppearancePreview.Presentation,
-    fonts: (label: NSFont, candidate: NSFont),
-    width: CGFloat? = nil
+    fonts: (label: NSFont, candidate: NSFont)
   ) -> some View {
     let line = candidateLine(
       label, value, selected: selected, preview, fonts: fonts)
@@ -555,7 +518,6 @@ extension LinnetSettingsAppearancePreview {
       Text(AttributedString(line))
     }
     .fixedSize(horizontal: true, vertical: false)
-    .frame(width: width, alignment: .leading)
     .accessibilityElement(children: .ignore)
     .accessibilityLabel(Text("Candidate"))
     .accessibilityValue(Text(verbatim: value))

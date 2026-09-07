@@ -62,6 +62,7 @@ if rg -n 'URLSession|NSURLConnection|curl_easy|CFNetwork' \
 fi
 rg -Fq 'pendingCommitOverride' sources/SquirrelInputController.swift ||
   fail "translation-only commit boundary"
+bash tests/verify_zime_settings_cleanup.sh || fail "Settings cleanup contract"
 
 if [[ $# -gt 0 ]]; then
   app="$1"

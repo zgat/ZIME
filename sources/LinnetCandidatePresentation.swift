@@ -56,8 +56,6 @@ enum LinnetCandidatePresentation {
   // limit for malformed dictionary metadata, not a display budget.
   static let maximumDetailCharacterCount = 256
   static let maximumFooterDetailLineCount = 3
-  static let maximumExpandedPageCount = 3
-  static let maximumExpandedCandidateCount = 27
   static let smartEnglishDetailPrefix = "\u{001D}"
   static let structuredBilingualPrefix = "\u{001C}"
   static let reverseEnglishDetailPrefix = "\u{001E}"
@@ -446,127 +444,34 @@ extension LinnetCandidatePresentation {
     let vertical: Bool
   }
 
-  /// Projects the visible candidate geometry into librime Selector's two
-  /// layout options. Compact candidates retain the configured list behavior.
-  /// Expanded candidates use the macOS row grid regardless of compact flow:
-  /// Left/Right moves one cell and Up/Down keeps the column across pages.
+  /// Projects the current page's geometry into librime Selector options.
   static func rimeNavigationLayout(
     flow: CandidateFlow,
-    verticalText: Bool,
-    expanded: Bool
+    verticalText: Bool
   ) -> RimeNavigationLayout {
-    guard expanded else {
-      return .init(linear: flow == .horizontal, vertical: verticalText)
-    }
-    return .init(linear: true, vertical: false)
+    .init(linear: flow == .horizontal, vertical: verticalText)
   }
 
   enum CandidateControlMode: Equatable {
     case paging(canPageUp: Bool, canPageDown: Bool)
-    case disclosure(expanded: Bool)
   }
 
   enum CandidateControlAction: Equatable, Hashable {
-    case pageUp, pageDown, expand, collapse
+    case pageUp, pageDown
   }
 
-  /// Absolute candidate bounds requested from librime when the disclosure is
-  /// open. The anchor keeps the rendered grid stable while the highlighted
-  /// page remains visible; crossing an edge shifts only enough to reveal it.
-  /// The iterator remains bounded even when a translation is lazy or
-  /// effectively unbounded.
-  static func expandedCandidateRange(
-    anchorPage: Int,
-    currentPage: Int,
-    pageSize: Int
-  ) -> Range<Int>? {
-    guard anchorPage >= 0, currentPage >= 0, pageSize > 0 else { return nil }
-    let visiblePageCount = max(
-      1,
-      min(maximumExpandedPageCount, maximumExpandedCandidateCount / pageSize))
-    var firstPage = anchorPage
-    if currentPage < firstPage {
-      firstPage = currentPage
-    } else {
-      let (pageEnd, pageEndOverflow) = firstPage.addingReportingOverflow(
-        visiblePageCount)
-      if pageEndOverflow || currentPage >= pageEnd {
-        firstPage = currentPage - (visiblePageCount - 1)
-      }
-    }
-    let (start, startOverflow) = firstPage.multipliedReportingOverflow(by: pageSize)
-    guard !startOverflow else { return nil }
-    let (candidateBound, candidateBoundOverflow) =
-      pageSize.multipliedReportingOverflow(by: visiblePageCount)
-    guard !candidateBoundOverflow else { return nil }
-    let pageBound = min(maximumExpandedCandidateCount, candidateBound)
-    let (end, endOverflow) = start.addingReportingOverflow(pageBound)
-    guard !endOverflow else { return nil }
-    return start..<end
-  }
-
-  /// Maps absolute-order snapshot offsets to visual rows. Expansion always adds
-  /// one row per Rime page, matching the native macOS candidate grid and the
-  /// Selector's Left/Right cell plus Up/Down page navigation contract.
-  /// Every item offset appears exactly once, so click and accessibility indices
-  /// remain independent from the visual order.
+  /// Maps current-page offsets to horizontal or vertical visual rows.
+  /// Click and accessibility indices remain independent of layout direction.
   static func visualRows(
     candidateCount: Int,
-    pageSize: Int,
-    flow: CandidateFlow,
-    expanded: Bool
+    flow: CandidateFlow
   ) -> [[Int]] {
-    guard candidateCount > 0, pageSize > 0 else { return [] }
+    guard candidateCount > 0 else { return [] }
     let indices = Array(0..<candidateCount)
-    guard expanded else {
-      switch flow {
-      case .horizontal: return [indices]
-      case .vertical: return indices.map { [$0] }
-      }
+    switch flow {
+    case .horizontal: return [indices]
+    case .vertical: return indices.map { [$0] }
     }
-
-    return stride(from: 0, to: candidateCount, by: pageSize).map { start in
-      Array(start..<min(candidateCount, start + pageSize))
-    }
-  }
-
-  struct CandidateGridColumns: Equatable {
-    let widths: [CGFloat]
-    let leadingOffsets: [CGFloat]
-  }
-
-  /// Expanded rows share one set of column guides. Each column is only as wide
-  /// as its widest visible cell, which keeps long English candidates readable
-  /// without turning a nine-column page into nine globally equal wide cells.
-  static func candidateGridColumns(
-    rows: [[Int]],
-    itemWidths: [CGFloat],
-    spacing: CGFloat
-  ) -> CandidateGridColumns? {
-    guard spacing.isFinite, spacing >= 0,
-      itemWidths.allSatisfy({ $0.isFinite && $0 >= 0 })
-    else { return nil }
-    let columnCount = rows.map(\.count).max() ?? 0
-    guard columnCount > 0 else {
-      return CandidateGridColumns(widths: [], leadingOffsets: [])
-    }
-    var widths = [CGFloat](repeating: 0, count: columnCount)
-    var seen = Set<Int>()
-    for row in rows {
-      for (column, itemIndex) in row.enumerated() {
-        guard itemWidths.indices.contains(itemIndex), seen.insert(itemIndex).inserted
-        else { return nil }
-        widths[column] = max(widths[column], itemWidths[itemIndex])
-      }
-    }
-    guard seen.count == itemWidths.count else { return nil }
-
-    var nextOffset: CGFloat = 0
-    let leadingOffsets = widths.map { width -> CGFloat in
-      defer { nextOffset += width + spacing }
-      return nextOffset
-    }
-    return CandidateGridColumns(widths: widths, leadingOffsets: leadingOffsets)
   }
 
   enum AccessibilitySurface: Equatable {

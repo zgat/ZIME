@@ -1,5 +1,14 @@
 # Linnet product acceptance
 
+## ZIME Settings amendment — 2026-09-07
+
+ZIME 0.1.7 removes the multi-page candidate expansion feature, including its
+settings field, panel state, grid layout, Rime iterator and expansion intent.
+Historical expandable-grid acceptance criteria below no longer apply to ZIME.
+Normal per-page candidate navigation and each candidate's translation remain.
+Local Data disclosures now use a full-header button rather than a chevron-only
+hit target. See [ZIME 0.1.7 validation](ZIME-0.1.7-VALIDATION.md).
+
 ## ZIME ranking amendment — 2026-09-07
 
 ZIME 0.1.6 supersedes the older English-first collision policy recorded below.

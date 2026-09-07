@@ -8,10 +8,10 @@
 
 import Foundation
 
-/// Canonical settings document (schema v14). ZIME's bilingual layout defaults
+/// Canonical settings document (schema v15). ZIME's bilingual layout defaults
 /// are projected over the bundled Rime distribution without modifying its data.
 struct LinnetSettingsDocument: Codable, Equatable, Sendable {
-  static let currentSchemaVersion = 14
+  static let currentSchemaVersion = 15
 
   var schemaVersion: Int
   var appearance: Appearance
@@ -115,14 +115,6 @@ extension LinnetSettingsDocument {
     var selectionRadius: Double { self == .rounded ? 5 : 0 }
   }
 
-  /// Controls whether the candidate window offers its native-like disclosure
-  /// control. The current expanded/collapsed state is transient panel state;
-  /// it is deliberately not persisted in this document.
-  enum CandidateBrowsingMode: String, Codable, CaseIterable, Sendable {
-    case scrollingOnly = "scrolling_only"
-    case expandable
-  }
-
   enum TabBehavior: String, Codable, CaseIterable, Sendable {
     case pass
     case navigate
@@ -186,7 +178,6 @@ extension LinnetSettingsDocument {
     var cornerStyle: CandidateCornerStyle
     var chineseCandidateLayout: CandidateLayout
     var englishCandidateLayout: CandidateLayout
-    var candidateBrowsingMode: CandidateBrowsingMode
     var pageSize: Int
 
     static let `default` = Appearance(
@@ -195,7 +186,6 @@ extension LinnetSettingsDocument {
       chineseCandidateLayout: .vertical,
       englishCandidateLayout: .vertical,
       pageSize: defaultPageSize,
-      candidateBrowsingMode: .scrollingOnly,
       themeFamily: ThemeFamily.defaultValue,
       fontPreset: .system
     )
@@ -206,7 +196,6 @@ extension LinnetSettingsDocument {
       chineseCandidateLayout: CandidateLayout,
       englishCandidateLayout: CandidateLayout,
       pageSize: Int,
-      candidateBrowsingMode: CandidateBrowsingMode = .expandable,
       themeFamily: ThemeFamily = ThemeFamily.defaultValue,
       fontPreset: FontPreset = .system,
       selectionEffect: CandidateSelectionEffect = .fullRow,
@@ -220,7 +209,6 @@ extension LinnetSettingsDocument {
       self.cornerStyle = cornerStyle
       self.chineseCandidateLayout = chineseCandidateLayout
       self.englishCandidateLayout = englishCandidateLayout
-      self.candidateBrowsingMode = candidateBrowsingMode
       self.pageSize = pageSize
     }
 
@@ -257,9 +245,6 @@ extension LinnetSettingsDocument {
         String.self, forKey: .chineseCandidateLayout)
       let englishLayoutValue = try container.decodeIfPresent(
         String.self, forKey: .englishCandidateLayout)
-      let hadLegacyExpandedLayout =
-        chineseLayoutValue == "expanded" || englishLayoutValue == "expanded"
-
       if chineseLayoutValue == "expanded" {
         chineseCandidateLayout = .horizontal
       } else if let chineseLayoutValue {
@@ -287,24 +272,22 @@ extension LinnetSettingsDocument {
         englishCandidateLayout = .horizontal
       }
 
-      if let browsingValue = try container.decodeIfPresent(
-        String.self, forKey: .candidateBrowsingMode) {
-        guard let mode = CandidateBrowsingMode(rawValue: browsingValue) else {
-          throw DecodingError.dataCorruptedError(
-            forKey: .candidateBrowsingMode,
-            in: container,
-            debugDescription: "Unknown candidate browsing mode.")
-        }
-        candidateBrowsingMode = mode
-      } else {
-        // v9 briefly encoded `expanded` as a third layout. Preserve only its
-        // user intent (offer disclosure), while older horizontal/vertical
-        // documents keep their prior scrolling-only behavior.
-        candidateBrowsingMode = hadLegacyExpandedLayout ? .expandable : .scrollingOnly
+      // Read and validate the retired field only. Do not write it back or
+      // expose it to presentation/runtime code after migrating an old backup.
+      let legacy = try decoder.container(keyedBy: LegacyCodingKeys.self)
+      if let value = try legacy.decodeIfPresent(String.self, forKey: .candidateBrowsingMode),
+        value != "scrolling_only" && value != "expandable" {
+        throw DecodingError.dataCorruptedError(
+          forKey: .candidateBrowsingMode, in: legacy,
+          debugDescription: "Unknown legacy candidate browsing mode.")
       }
       let decodedPageSize =
         try container.decodeIfPresent(Int.self, forKey: .pageSize) ?? Self.defaultPageSize
       pageSize = Self.pageSizeOptions.contains(decodedPageSize) ? decodedPageSize : Self.defaultPageSize
+    }
+
+    private enum LegacyCodingKeys: String, CodingKey {
+      case candidateBrowsingMode
     }
 
     static func clampFontPoint(_ value: Double) -> Double {
@@ -328,7 +311,6 @@ extension LinnetSettingsDocument {
       result.pageSize = baseline.pageSize
       result.chineseCandidateLayout = baseline.chineseCandidateLayout
       result.englishCandidateLayout = baseline.englishCandidateLayout
-      result.candidateBrowsingMode = baseline.candidateBrowsingMode
       return result
     }
   }
@@ -505,7 +487,6 @@ extension LinnetSettingsDocument {
       // One-time ZIME bilingual layout migration; later explicit choices stay.
       appearance.chineseCandidateLayout = .vertical
       appearance.englishCandidateLayout = .vertical
-      appearance.candidateBrowsingMode = .scrollingOnly
     }
     if storedSchemaVersion < Self.currentSchemaVersion {
       schemaVersion = Self.currentSchemaVersion

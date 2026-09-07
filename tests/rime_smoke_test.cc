@@ -63,8 +63,6 @@ constexpr char kSentenceBoundaryProperty[] =
     "linnet/sentence_boundary_v1";
 constexpr char kModeReturnSchemaProperty[] =
     "linnet/mode_return_schema_v1";
-constexpr char kCandidateExpansionRequestProperty[] =
-    "linnet/candidate_expansion_request_v1";
 constexpr char kForcedRawCandidateType[] = "linnet_forced_raw";
 constexpr char kDefaultPinyinReversePrefix[] = "|";
 constexpr std::array<const char*, 2> kProductSchemaIDs = {
@@ -2095,20 +2093,6 @@ int CurrentCandidatePage(RimeApi_stdbool* api,
 void ExpectCandidatePagingShortcuts(RimeApi_stdbool* api,
                                     const char* schema_id,
                                     const std::string& input) {
-  const auto expect_expansion_request = [&](RimeSessionId session,
-                                             bool expected,
-                                             const std::string& reason) {
-    std::array<char, 8> value = {};
-    const bool present = api->get_property(
-        session, kCandidateExpansionRequestProperty,
-        value.data(), value.size());
-    if (present != expected || (expected && std::string(value.data()) != "1")) {
-      Fail(std::string(schema_id) + " candidate expansion request " + reason);
-    }
-    if (present) {
-      api->set_property(session, kCandidateExpansionRequestProperty, "");
-    }
-  };
   for (const auto& key_case :
        std::array<std::tuple<int, const char*, int, const char*>, 3>{{
            {XK_bracketright, "right bracket", XK_bracketleft, "left bracket"},
@@ -2137,7 +2121,6 @@ void ExpectCandidatePagingShortcuts(RimeApi_stdbool* api,
         Fail(std::string(schema_id) + " " + std::get<1>(key_case) +
              " did not move to the next candidate page");
       }
-      expect_expansion_request(session, true, "missing after accepted next paging");
     }
     if (final_page == 0) {
       Fail(std::string(schema_id) + " paging fixture has no next candidate page");
@@ -2148,12 +2131,10 @@ void ExpectCandidatePagingShortcuts(RimeApi_stdbool* api,
       Fail(std::string(schema_id) + " " + std::get<3>(key_case) +
            " did not return from the final candidate page");
     }
-    expect_expansion_request(session, true, "missing after accepted previous paging");
     while (CurrentCandidatePage(api, session, "return to first page") > 0) {
       if (!api->process_key(session, std::get<2>(key_case), 0)) {
         Fail("could not return to first candidate page");
       }
-      expect_expansion_request(session, true, "returning to first page");
     }
     for (int repeat = 0; repeat < 20; ++repeat) {
       if (!api->process_key(session, XK_minus, 0) ||
@@ -2161,7 +2142,6 @@ void ExpectCandidatePagingShortcuts(RimeApi_stdbool* api,
         Fail("minus escaped after returning to first page");
       }
       ExpectNoCommit(api, session, "minus after returning to first page");
-      expect_expansion_request(session, false, "boundary must not expand");
     }
     api->destroy_session(session);
   }
@@ -2203,7 +2183,6 @@ void ExpectCandidatePagingBoundaries(RimeApi_stdbool* api,
           api->destroy_session(session);
           Fail(std::string(schema_id) + " could not reach final paging boundary");
         }
-        api->set_property(session, kCandidateExpansionRequestProperty, "");
       }
     }
 
@@ -2243,11 +2222,6 @@ void ExpectCandidatePagingBoundaries(RimeApi_stdbool* api,
           if (after_candidates[index].text != before_candidates[index].text) {
             Fail("boundary paging changed candidate text");
           }
-        }
-        std::array<char, 8> request = {};
-        if (api->get_property(session, kCandidateExpansionRequestProperty,
-                              request.data(), request.size())) {
-          Fail("boundary no-op requested candidate expansion");
         }
       }
       api->destroy_session(session);

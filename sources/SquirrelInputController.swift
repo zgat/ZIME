@@ -527,8 +527,7 @@ extension SquirrelInputController {
         }
       }
 
-      // Update candidates. Rime owns the active page and candidate order;
-      // disclosure may only project a bounded anchored slice that contains it.
+      // Rime owns the active page and candidate order.
       var labels = [String]()
       // swiftlint:disable identifier_name
       if let select_keys = ctx.menu.select_keys {
@@ -540,14 +539,9 @@ extension SquirrelInputController {
         }
       }
       // swiftlint:enable identifier_name
-      let expansionAnchorPage =
-        NSApp.squirrelAppDelegate.panel?.candidateExpansionAnchorPage
       guard let rawCandidateSnapshot = LinnetRimeCandidateSnapshotBuilder.build(
         context: ctx,
-        labels: labels,
-        expansionAnchorPage: expansionAnchorPage,
-        session: session,
-        rimeAPI: rimeAPI)
+        labels: labels)
       else {
         _ = rimeAPI.free_context(&ctx)
         hidePalettes()
@@ -714,9 +708,7 @@ extension SquirrelInputController {
       currentPage: 0,
       pageSize: items.count,
       highlightedItemIndex: bilingualHighlightedIndex,
-      isLastPage: true,
-      canExpand: false,
-      isExpanded: false)
+      isLastPage: true)
   }
 
   func commit(string: String, to targetClient: IMKTextInput?) {

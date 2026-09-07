@@ -49,9 +49,7 @@ using namespace smart_english_domain;
 
 constexpr char kSuppressFollowingSpaceProperty[] = "linnet/suppress_following_space_v1",
                kPredictionNavigationProperty[] = "linnet/prediction_navigation_v1",
-               kModeReturnSchemaProperty[] = "linnet/mode_return_schema_v1",
-               kCandidateExpansionRequestProperty[] =
-                   "linnet/candidate_expansion_request_v1";
+               kModeReturnSchemaProperty[] = "linnet/mode_return_schema_v1";
 constexpr std::size_t kPinyinKeyLimit = 64,
                       kPinyinInputByteLimit = 96,
                       kPinyinTraversalLimit = 4096;
@@ -98,7 +96,6 @@ void ResetContinuationState(Context* context,
   context->set_property(kSpacingProperty, "");
   SetSentenceBoundary(context, false);
   context->set_property(kSuppressFollowingSpaceProperty, "");
-  context->set_property(kCandidateExpansionRequestProperty, "");
 }
 
 char ShiftedAscii(char key) {
@@ -408,7 +405,6 @@ class LinnetInteractionProcessor : public Processor {
     }
     context->Highlight(target);
     segment.tags.insert("paging");
-    context->set_property(kCandidateExpansionRequestProperty, "1");
     return kAccepted;
   }
 

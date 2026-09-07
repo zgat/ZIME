@@ -5,6 +5,38 @@
 
 import SwiftUI
 
+/// The entire disclosure header is one native button. Arrow, text and trailing
+/// whitespace share the same action, including keyboard and accessibility use.
+struct LinnetSettingsDisclosureStyle: DisclosureGroupStyle {
+  func makeBody(configuration: Configuration) -> some View {
+    VStack(alignment: .leading, spacing: 0) {
+      Button {
+        configuration.isExpanded.toggle()
+      } label: {
+        HStack(spacing: 8) {
+          Image(systemName: "chevron.right")
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(.secondary)
+            .rotationEffect(.degrees(configuration.isExpanded ? 90 : 0))
+            .frame(width: 12)
+            .accessibilityHidden(true)
+          configuration.label
+            .foregroundStyle(.primary)
+          Spacer(minLength: 0)
+        }
+        .padding(.vertical, 4)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+      }
+      .buttonStyle(.plain)
+      .accessibilityValue(Text(configuration.isExpanded ? "Expanded" : "Collapsed"))
+      if configuration.isExpanded {
+        configuration.content
+      }
+    }
+  }
+}
+
 enum LinnetSettingsLayoutMetrics {
   static let minimumWindowWidth: CGFloat = 760
   static let defaultWindowWidth: CGFloat = 960

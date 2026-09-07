@@ -400,117 +400,22 @@ ruby -ryaml -e '
   end
 ' data/linnet/linnet_zh*.schema.yaml ||
   fail "Chinese schema digit spelling returned"
-ruby -e '
-  document = [File.read(ARGV.fetch(0)), File.read(ARGV.fetch(1))].join("\n")
-  renderer = File.read(ARGV.fetch(2))
-  views = File.read(ARGV.fetch(3))
-  preview = File.read(ARGV.fetch(4))
-  layout = document[/enum CandidateLayout:.*?\n  \}/m]
-  browsing = document[/enum CandidateBrowsingMode:.*?\n  \}/m]
-  abort "candidate layout owner is missing" unless layout
-  abort "candidate layout must own only horizontal and vertical" unless
-    layout.scan(/^    case ([A-Za-z]+)/).flatten == %w[horizontal vertical]
-  abort "candidate browsing capability owner is missing" unless browsing
-  abort "candidate browsing capability must own exactly scrollingOnly and expandable" unless
-    browsing.scan(/^    case ([A-Za-z]+)/).flatten == %w[scrollingOnly expandable]
-  abort "fresh v10 settings must default to native expandable disclosure" unless
-    document.include?("candidateBrowsingMode: .expandable")
-  abort "v9 expanded layout cleanup is missing" unless
-    document.include?(%q{== "expanded"}) && document.include?(".scrollingOnly")
-  abort "Settings lost the independent global candidate-browsing control" unless
-    views.include?("candidateBrowsingMode") && views.include?("Scrolling only") &&
-      views.include?("Expandable")
-  abort "candidate preview lost the disclosure capability" unless
-    preview.include?("candidateBrowsingMode")
-  abort "Settings preview still requires a manual disclosure click" unless
-    preview.include?("let expanded = preview.candidateBrowsingMode == .expandable") &&
-      !preview.include?("DisclosureState") &&
-      !preview.include?("settings.appearance.preview.chinese.disclosure")
-  abort "Settings preview retained static expanded layout ownership" if
-    preview.include?("case .expanded") ||
-      preview.include?("LinnetCandidatePresentation.rowRanges(")
-  abort "renderer retained the retired static expanded layout" if
-    renderer.include?("case .expanded") || renderer.include?("linnet_expand_candidate_rows")
-' sources/LinnetSettings/LinnetSettingsDocument.swift sources/LinnetSettings/LinnetSettingsDocumentStore.swift \
-  sources/LinnetSettings/LinnetSettingsProjectionRenderer.swift \
-  sources/LinnetSettings/SettingsViews.swift \
-  sources/LinnetSettings/LinnetSettingsAppearancePreview.swift ||
-  fail "candidate layout and browsing capability ownership regressed"
-if rg -n 'style/linnet_expand_candidate_rows' sources data/squirrel.yaml; then
-  fail "the retired static expanded-row setting returned"
-fi
-rg -Fq 'linear || candidates.isExpanded || vertical' sources/SquirrelPanel.swift ||
-  fail "expanded candidate details stopped using the native footer geometry"
-rg -Fq 'forLinearLayout: linear || expanded' \
-  sources/LinnetSettings/LinnetSettingsAppearancePreview.swift ||
-  fail "Settings preview diverged from the expanded candidate footer"
+# ZIME retired multi-page expansion; legacy values are decode-only.
+bash tests/verify_zime_settings_cleanup.sh || fail "retired candidate expansion returned"
 rg -Fq 'let detailGeometry = LinnetCandidatePresentation.candidateDetailGeometry(' \
   sources/SquirrelPanel.swift ||
   fail "the live panel bypassed the shared candidate-detail geometry owner"
 rg -Fq 'return LinnetCandidatePresentation.candidateDetailGeometry(' \
   sources/LinnetSettings/LinnetSettingsAppearancePreview.swift ||
   fail "the Settings preview bypassed the shared candidate-detail geometry owner"
-test "$(rg -F -l 'style/linnet_candidate_expansion_allowed' \
-  sources/LinnetSettings/LinnetSettingsProjectionRenderer.swift \
-  sources/SquirrelTheme.swift | wc -l | tr -d ' ')" -eq 2 ||
-  fail "candidate expansion capability must have one projection and one Host consumer"
-rg -Fq 'linnet_candidate_expansion_allowed: true' data/squirrel.yaml ||
-  fail "fresh installs do not default to native expandable disclosure"
-rg -Fq '"style/linnet_candidate_expansion_allowed", "false"' \
-  sources/LinnetSettings/LinnetSettingsProjectionRenderer.swift ||
-  fail "scrolling-only mode lost its single global capability projection"
-rg -Fq 'candidateExpansionAllowed ?= config.getBool(' sources/SquirrelTheme.swift &&
-  rg -Fq '"style/linnet_candidate_expansion_allowed")' sources/SquirrelTheme.swift ||
-  fail "the Host stopped consuming the global disclosure capability"
-
-for iterator_contract in candidate_list_from_index candidate_list_next \
-    candidate_list_end 'select_candidate(session'; do
-  rg -Fq "${iterator_contract}" sources/SquirrelInputController.swift \
-    sources/SquirrelInputController+RimeSession.swift \
-    sources/LinnetRimeCandidateSnapshotBuilder.swift ||
-    fail "expanded candidate iteration lost ${iterator_contract}"
-done
-rg -Fq 'LinnetCandidatePresentation.expandedCandidateRange(' \
-  sources/LinnetRimeCandidateSnapshotBuilder.swift ||
-  fail "expanded candidate iteration bypassed the three-page/27-item bound"
 if rg -Fq 'select_candidate_on_current_page(session' \
     sources/SquirrelInputController.swift sources/SquirrelInputController+RimeSession.swift \
     sources/SquirrelPanel.swift sources/SquirrelPanel+CandidatePresentation.swift \
     sources/LinnetCandidateAccessibility.swift; then
   fail "candidate-window clicks regained a second page-local selection owner"
 fi
-test "$(rg -F -o 'selectCandidate(' \
-  sources/SquirrelInputController.swift sources/SquirrelInputController+RimeSession.swift \
-  sources/SquirrelPanel.swift sources/SquirrelPanel+CandidatePresentation.swift | \
-  wc -l | tr -d ' ')" -ge 2 ||
-  fail "expanded candidate clicks do not retain an absolute selection path"
-ruby -e '
-  panel = File.read(ARGV.fetch(0))
-  anchor = "candidateExpansionAnchorPage"
-  abort "Panel transient expansion anchor is missing" unless
-    panel.include?("private(set) var #{anchor}: Int?")
-  hide = panel[/  func hide\(\) \{.*?\n  \}/m]
-  update = panel[/  func update\(\n.*?\n  \}/m]
-  binding = panel[/  func bind\(.*?\n  \}/m]
-  controls = panel[/  func performControl\(.*?\n  \}/m]
-  abort "Panel hide does not reset disclosure" unless hide&.include?("#{anchor} = nil")
-  abort "new composition does not start collapsed" unless
-    update&.include?("#{anchor} = candidates.isExpanded") &&
-      binding&.include?("hide()")
-  abort "candidate disclosure actions do not own both transient transitions" unless
-    controls&.include?("case .expand") && controls.include?("#{anchor} = currentPage") &&
-      controls.include?("case .collapse") && controls.include?("#{anchor} = nil") &&
-      controls.scan("refreshCandidatePresentation(").length == 2
-  abort "keyboard paging does not enter the same Panel expansion state" unless
-    panel.include?("func requestCandidateExpansionForKeyboardPaging()") &&
-      panel.include?("candidateExpansionAllowed") &&
-      panel.scan("#{anchor} = currentPage").length >= 2
-' sources/SquirrelPanel.swift ||
-  fail "candidate disclosure is not Panel-transient"
-if rg -n 'expansionRequested:|expandedCandidateRange\([[:space:]]*page:' \
-    sources tests --glob '*.swift'; then
-  fail "the retired re-anchoring candidate disclosure path returned"
-fi
+rg -Fq 'select_candidate(session' sources/SquirrelInputController+RimeSession.swift ||
+  fail "candidate clicks lost their absolute Rime selection path"
 rg -Fq 'candidateRanges[itemIndex] =' sources/SquirrelPanel.swift ||
   fail "visual candidate reordering stopped writing geometry back by item offset"
 rg -Fq 'candidate.absoluteIndex' sources/LinnetCandidateAccessibility.swift ||
@@ -551,9 +456,6 @@ ruby -e '
   paging = owner[/ProcessResult ProcessPrintablePagingKey.*?(?=\n  void HardStop)/m]
   abort "unavailable paging can still capture normal input" unless
     paging && !paging.include?("return kRejected")
-  abort "printable paging no longer publishes one expansion intent" unless
-    owner.include?("kCandidateExpansionRequestProperty") &&
-      owner.include?(%q{set_property(kCandidateExpansionRequestProperty, "1")})
   abort "digit selection regained a mixed-entity interception path" if
     owner.include?("ProcessMixedEntityKey") ||
       owner.include?("CanExtendEntity") ||

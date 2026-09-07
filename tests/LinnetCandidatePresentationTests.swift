@@ -4,9 +4,8 @@ import Foundation
 @main
 struct LinnetCandidatePresentationTests {
   static func main() {
-    testExpandedCandidateBounds()
     testCandidateRows()
-    testExpandedNavigationLayout()
+    testNavigationLayout()
 
     require(
       LinnetCandidatePresentation.candidateWindowInset == CGSize(width: 7, height: 6) &&
@@ -555,117 +554,36 @@ struct LinnetCandidatePresentationTests {
     }
   }
 
-  /// Expansion keeps its visible page window stable while the highlight moves
-  /// inside it, then advances only far enough to reveal an out-of-window page.
-  private static func testExpandedCandidateBounds() {
-    require(
-      LinnetCandidatePresentation.maximumExpandedPageCount == 3,
-      "candidate disclosure exceeded the three-page product bound"
-    )
-    require(
-      LinnetCandidatePresentation.maximumExpandedCandidateCount == 27,
-      "candidate disclosure exceeded the 27-candidate product bound"
-    )
-    for (anchorPage, currentPage, pageSize, expected) in [
-      (0, 0, 9, 0..<27),
-      (0, 1, 9, 0..<27),
-      (0, 2, 9, 0..<27),
-      (0, 3, 9, 9..<36),
-      (1, 0, 9, 0..<27),
-      (4, 3, 5, 15..<30),
-      (3, 5, 3, 9..<18),
-    ] {
-      require(
-        LinnetCandidatePresentation.expandedCandidateRange(
-          anchorPage: anchorPage,
-          currentPage: currentPage,
-          pageSize: pageSize) == expected,
-        "expanded candidate window did not keep page \(currentPage) visible from anchor \(anchorPage), size \(pageSize)"
-      )
-    }
-  }
-
-  private static func testExpandedNavigationLayout() {
+  private static func testNavigationLayout() {
     let compactHorizontal = LinnetCandidatePresentation.rimeNavigationLayout(
-      flow: .horizontal, verticalText: false, expanded: false)
+      flow: .horizontal, verticalText: false)
     require(
       compactHorizontal.linear && !compactHorizontal.vertical,
       "compact horizontal candidates lost their stock Left/Right navigation")
 
     let compactVertical = LinnetCandidatePresentation.rimeNavigationLayout(
-      flow: .vertical, verticalText: false, expanded: false)
+      flow: .vertical, verticalText: false)
     require(
       !compactVertical.linear && !compactVertical.vertical,
       "compact vertical candidates lost their stock Up/Down navigation")
 
-    let expandedHorizontal = LinnetCandidatePresentation.rimeNavigationLayout(
-      flow: .horizontal, verticalText: true, expanded: true)
-    require(
-      expandedHorizontal.linear && !expandedHorizontal.vertical,
-      "expanded horizontal grid did not map Left/Right within rows and Up/Down across rows")
 
-    let expandedVertical = LinnetCandidatePresentation.rimeNavigationLayout(
-      flow: .vertical, verticalText: false, expanded: true)
-    require(
-      expandedVertical.linear && !expandedVertical.vertical,
-      "expanded vertical preference did not switch to the native row grid")
   }
 
   private static func testCandidateRows() {
-    for pageSize in [3, 5, 7, 9] {
-      let count = pageSize * 3
-      let compactHorizontal = LinnetCandidatePresentation.visualRows(
-        candidateCount: pageSize, pageSize: pageSize,
-        flow: .horizontal, expanded: false)
+    for count in 3...9 {
       require(
-        compactHorizontal == [Array(0..<pageSize)],
-        "compact horizontal candidates stopped using one Rime page"
-      )
-      let compactVertical = LinnetCandidatePresentation.visualRows(
-        candidateCount: pageSize, pageSize: pageSize,
-        flow: .vertical, expanded: false)
+        LinnetCandidatePresentation.visualRows(candidateCount: count, flow: .horizontal)
+          == [Array(0..<count)],
+        "horizontal candidates must use exactly the current page")
       require(
-        compactVertical == (0..<pageSize).map { [$0] },
-        "compact vertical candidates stopped using one Rime page"
-      )
-
-      let horizontal = LinnetCandidatePresentation.visualRows(
-        candidateCount: count, pageSize: pageSize,
-        flow: .horizontal, expanded: true)
-      require(
-        horizontal == (0..<3).map { page in
-          Array((page * pageSize)..<((page + 1) * pageSize))
-        },
-        "expanded horizontal candidates are not one row per Rime page"
-      )
-
-      let verticalPreference = LinnetCandidatePresentation.visualRows(
-        candidateCount: count, pageSize: pageSize,
-        flow: .vertical, expanded: true)
-      require(
-        verticalPreference == horizontal,
-        "expanded vertical preference did not use the native row grid"
-      )
-      require(
-        horizontal.flatMap { $0 }.sorted() == Array(0..<count) &&
-          verticalPreference.flatMap { $0 }.sorted() == Array(0..<count),
-        "expanded presentation lost or duplicated an absolute candidate offset"
-      )
+        LinnetCandidatePresentation.visualRows(candidateCount: count, flow: .vertical)
+          == (0..<count).map { [$0] },
+        "vertical candidates must show one translated candidate per row")
     }
-
     require(
-      LinnetCandidatePresentation.visualRows(
-        candidateCount: 0, pageSize: 9, flow: .horizontal, expanded: true).isEmpty,
-      "an empty candidate list created a visual row"
-    )
-    require(
-      LinnetCandidatePresentation.visualRows(
-        candidateCount: 14, pageSize: 5, flow: .vertical, expanded: true
-      ) == [
-        [0, 1, 2, 3, 4], [5, 6, 7, 8, 9], [10, 11, 12, 13],
-      ],
-      "a partial final candidate page lost its native row mapping"
-    )
+      LinnetCandidatePresentation.visualRows(candidateCount: 0, flow: .horizontal).isEmpty,
+      "an empty candidate list created a visual row")
   }
 
   private static func require(_ condition: @autoclosure () -> Bool, _ message: String) {

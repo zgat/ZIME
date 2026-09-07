@@ -12,6 +12,7 @@ ZIME 是一款面向 Apple Silicon、macOS 13 及以上版本的本地优先双�
   匹配较弱时让常见英文优先，Shift 切换后的英文模式保持英文排序；
 - 智能英文补全、拼写纠错、多词候选、常用缩写、IPA 和下一词预测；
 - 每行候选都显示译文，默认竖排，候选数量下拉框可选 3–9；
+- 候选固定按页显示，不再提供多页展开模式；Local Data 折叠项的整个标题行都可点击；
 - 英文候选显示中文释义，中文候选显示英文释义，内置 CC-CEDICT 中英词典；
 - 中文本地释义按地区筛选：简体为通用 + 大陆，繁体为通用 + 港澳台及新马；
 - 同义译文去重，候选行保留辨义限定，拼音引用及长篇说明放入悬停详情；
@@ -94,6 +95,7 @@ scripts/build-zime-delivery /absolute/path/to/ZIME.app /absolute/output/director
 0.1.4 的词条归属、译义去重与注释分层见 [验证记录](docs/ZIME-0.1.4-VALIDATION.md)。
 0.1.5 的配色、字重与独立外观选项见 [验证记录](docs/ZIME-0.1.5-VALIDATION.md)。
 0.1.6 的中文简拼优先与跨语言学习排序见 [验证记录](docs/ZIME-0.1.6-VALIDATION.md)。
+0.1.7 的候选展开代码清理与设置点击修复见 [验证记录](docs/ZIME-0.1.7-VALIDATION.md)。
 
 ## 上游与许可证
 

@@ -42,7 +42,6 @@ final class SquirrelView: NSView {
   var canPageUp: Bool = false
   var canPageDown: Bool = false
   private var controlMode: LinnetCandidatePresentation.CandidateControlMode = .paging(canPageUp: false, canPageDown: false)
-  var usesGridLayout = false
   var highlightedPreeditRange: NSRange = .empty
   var separatorWidth: CGFloat = 0
   var shape = LinnetCandidatePointerPresentation()
@@ -128,7 +127,7 @@ final class SquirrelView: NSView {
   // Will trigger draw(_:) after candidate text and interaction geometry change.
   func drawView(
     candidateRanges: [NSRange], detailRange: NSRange, hilightedIndex: Int, preeditRange: NSRange, highlightedPreeditRange: NSRange,
-    controlMode: LinnetCandidatePresentation.CandidateControlMode, usesGridLayout: Bool
+    controlMode: LinnetCandidatePresentation.CandidateControlMode
   ) {
     clearCandidateToolTips()
     self.candidateRanges = candidateRanges
@@ -137,16 +136,12 @@ final class SquirrelView: NSView {
     self.preeditRange = preeditRange
     self.highlightedPreeditRange = highlightedPreeditRange
     self.controlMode = controlMode
-    self.usesGridLayout = usesGridLayout
     candidateInteractionFrames = []
     candidateInteractionPaths = []
     switch controlMode {
     case .paging(let canPageUp, let canPageDown):
       self.canPageUp = canPageUp
       self.canPageDown = canPageDown
-    case .disclosure(let expanded):
-      self.canPageUp = expanded
-      self.canPageDown = !expanded
     }
     self.needsDisplay = true
   }
@@ -442,13 +437,11 @@ extension SquirrelView {
     if let nextPage = pagingLayout.nextPage, nextPage.cell.contains(clickPoint) {
       switch controlMode {
       case .paging: return .control(.pageDown)
-      case .disclosure: return .control(.expand)
       }
     }
     if let previousPage = pagingLayout.previousPage, previousPage.cell.contains(clickPoint) {
       switch controlMode {
       case .paging: return .control(.pageUp)
-      case .disclosure: return .control(.collapse)
       }
     }
     if let candidateIndex = Self.candidateIndex(at: clickPoint, paths: candidateInteractionPaths) { return .candidate(candidateIndex) }
@@ -461,8 +454,8 @@ extension SquirrelView {
     guard let action = pointerControlAction else { return nil }
     let control =
       switch action {
-      case .pageUp, .collapse: pagingLayout.previousPage
-      case .pageDown, .expand: pagingLayout.nextPage
+      case .pageUp: pagingLayout.previousPage
+      case .pageDown: pagingLayout.nextPage
       }
     guard let control else { return nil }
     let frame = control.cell.insetBy(dx: 1, dy: 1)

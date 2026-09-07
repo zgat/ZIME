@@ -294,15 +294,7 @@ final class LinnetCandidateAccessibility {
           frame: nextPageFrame))
       }
       return publications
-    case .disclosure(let expanded):
-      guard let frame = expanded ? previousPageFrame : nextPageFrame
-      else { return [] }
-      return [ControlPublication(
-        action: expanded ? .collapse : .expand,
-        label: NSLocalizedString(
-          expanded ? "Show fewer candidates" : "Show more candidates",
-          comment: "Candidate disclosure action"),
-        frame: frame)]
+
     }
   }
 

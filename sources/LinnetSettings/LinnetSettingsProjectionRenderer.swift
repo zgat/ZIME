@@ -198,9 +198,6 @@ private extension LinnetSettingsProjectionRenderer {
     if let fontFace = appearance.fontPreset.projectedFontFace {
       entries.append(("style/font_face", quoted(fontFace)))
     }
-    if appearance.candidateBrowsingMode == .expandable {
-      entries.append(("style/linnet_candidate_expansion_allowed", "true"))
-    }
     guard !entries.isEmpty else { return nil }
     return renderPatch(entries)
   }

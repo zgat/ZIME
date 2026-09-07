@@ -8,9 +8,6 @@
 import InputMethodKit
 
 extension SquirrelInputController {
-  private static let candidateExpansionRequestProperty =
-    "linnet/candidate_expansion_request_v1"
-
   struct CandidateItem: Equatable {
     let absoluteIndex: Int
     let page: Int
@@ -29,8 +26,6 @@ extension SquirrelInputController {
     let pageSize: Int
     let highlightedItemIndex: Int
     let isLastPage: Bool
-    let canExpand: Bool
-    let isExpanded: Bool
   }
 
   func selectCandidate(absoluteIndex: Int) -> Bool {
@@ -67,8 +62,8 @@ extension SquirrelInputController {
     return success
   }
 
-  /// Rebuilds the current candidate snapshot after a panel-only interaction,
-  /// such as expanding or collapsing disclosure. It never edits Rime input.
+  /// Refreshes annotations when an asynchronous translation becomes available.
+  /// It never edits Rime input.
   func refreshCandidatePresentation() {
     guard activeClient != nil else { return }
     rimeUpdate()
@@ -248,7 +243,6 @@ extension SquirrelInputController {
       session,
       Int32(effectiveKeycode),
       Int32(rimeModifiers))
-    consumeCandidateExpansionRequest()
     if handled {
       updateChordState(
         keycode: effectiveKeycode,
@@ -257,31 +251,11 @@ extension SquirrelInputController {
     return handled
   }
 
-  /// Consumes the one-shot intent published by the canonical Rime key owner.
-  /// This boundary does not infer which physical key caused the page switch.
-  private func consumeCandidateExpansionRequest() {
-    var value = [CChar](repeating: 0, count: 2)
-    let present = Self.candidateExpansionRequestProperty.withCString { property in
-      value.withUnsafeMutableBufferPointer { buffer in
-        rimeAPI.get_property(session, property, buffer.baseAddress, buffer.count)
-      }
-    }
-    guard present else { return }
-    Self.candidateExpansionRequestProperty.withCString { property in
-      "".withCString { empty in
-        rimeAPI.set_property(session, property, empty)
-      }
-    }
-    guard value.first == 49 else { return }
-    NSApp.squirrelAppDelegate.panel?.requestCandidateExpansionForKeyboardPaging()
-  }
-
   private func synchronizeCandidateLayoutOptions() {
     guard let panel = NSApp.squirrelAppDelegate.panel else { return }
     let navigationLayout = LinnetCandidatePresentation.rimeNavigationLayout(
       flow: panel.linear ? .horizontal : .vertical,
-      verticalText: panel.vertical,
-      expanded: panel.candidateExpansionRequested)
+      verticalText: panel.vertical)
     if navigationLayout.linear != rimeAPI.get_option(session, "_linear") {
       rimeAPI.set_option(session, "_linear", navigationLayout.linear)
     }

@@ -104,6 +104,9 @@ fi
 compile_run settings-page-layout -framework SwiftUI \
   sources/LinnetSettings/LinnetSettingsPage.swift \
   tests/LinnetSettingsPageLayoutTests.swift
+compile_run settings-disclosure -framework SwiftUI \
+  sources/LinnetSettings/LinnetSettingsPage.swift \
+  tests/LinnetSettingsDisclosureTests.swift
 compile_run presentation-status \
   sources/LinnetSettings/SettingsRuntimeReachability.swift \
   sources/LinnetSettings/SettingsPresentationStatus.swift \

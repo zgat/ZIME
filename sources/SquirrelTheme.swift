@@ -63,7 +63,6 @@ final class SquirrelTheme {
   private(set) var mutualExclusive = false
   private(set) var linear = false
   private(set) var vertical = false
-  private(set) var candidateExpansionAllowed = false
   private(set) var inlinePreedit = false
   private(set) var inlineCandidate = false
   private(set) var showPaging = false
@@ -204,8 +203,6 @@ final class SquirrelTheme {
   func load(config: SquirrelConfig, dark: Bool) {
     linear ?= config.getString("style/candidate_list_layout").map { $0 == "linear" }
     vertical ?= config.getString("style/text_orientation").map { $0 == "vertical" }
-    candidateExpansionAllowed ?= config.getBool(
-      "style/linnet_candidate_expansion_allowed")
     inlinePreedit ?= config.getBool("style/inline_preedit")
     inlineCandidate ?= config.getBool("style/inline_candidate")
     translucency ?= config.getBool("style/translucency")

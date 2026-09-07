@@ -1307,7 +1307,6 @@ struct SettingsDataCoordinatorTests {
       previewAppearance.themeFamily = .sidecarSlate
       previewAppearance.chineseCandidateLayout = .vertical
       previewAppearance.englishCandidateLayout = .vertical
-      previewAppearance.candidateBrowsingMode = .scrollingOnly
       let appearanceResult = try await coordinator.run(
         .publishAppearance(
           appearance: previewAppearance,
@@ -1324,8 +1323,6 @@ struct SettingsDataCoordinatorTests {
         liveDocumentBeforeAppearance.appearance.chineseCandidateLayout
       expectedPreviewAppearance.englishCandidateLayout =
         liveDocumentBeforeAppearance.appearance.englishCandidateLayout
-      expectedPreviewAppearance.candidateBrowsingMode =
-        liveDocumentBeforeAppearance.appearance.candidateBrowsingMode
       let squirrelProjection = try String(
         contentsOf: live.appending(
           path: LinnetSettingsProjectionRenderer.squirrelCustomFile),
@@ -1572,7 +1569,6 @@ struct SettingsDataCoordinatorTests {
       var transactionalDocument = liveAfterPageSizePreview
       transactionalDocument.input.traditionalChinese = true
       transactionalDocument.input.chineseLearningPolicy = .disabled
-      transactionalDocument.appearance.candidateBrowsingMode = .scrollingOnly
       requestOrder.armDelayedReload()
       let concurrentBaseDocumentRevision = try LinnetSettingsDocumentStore.snapshot(from: live).revision
       let fullApply = Task {
@@ -1621,7 +1617,6 @@ struct SettingsDataCoordinatorTests {
         liveAfterConcurrentApply.input.chineseLearningPolicy == .disabled,
         liveAfterConcurrentApply.appearance.themeFamily == .clayTiles,
         liveAfterConcurrentApply.appearance.fontPoint == 21,
-        liveAfterConcurrentApply.appearance.candidateBrowsingMode == .scrollingOnly,
         try String(
           contentsOf: live.appending(
             path: LinnetSettingsProjectionRenderer.squirrelCustomFile),

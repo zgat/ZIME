@@ -222,8 +222,7 @@ extension SquirrelPanel {
     }
     // Full definitions wrap naturally in the normal stacked candidate list;
     // do not let a large desktop stretch one dictionary note across the screen.
-    if presentationRole == .candidate, !linear, !metrics.vertical,
-      candidateSnapshot?.isExpanded != true {
+    if presentationRole == .candidate, !linear, !metrics.vertical {
       return min(maxWidth, min(480, max(300, metrics.fontPoint * 24)))
     }
     return maxWidth
@@ -263,37 +262,7 @@ extension SquirrelPanel {
     return view.detailContentRect
   }
 
-  /// Expanded browsing keeps one selected-candidate definition surface stable
-  /// while the Rime-owned highlight moves through the grid. Compact browsing
-  /// remains content-sized.
-  func selectedDetailSurfaceSize(
-    geometry: LinnetCandidatePresentation.CandidateDetailGeometry,
-    candidateSize: NSSize,
-    measuredDetailSize: NSSize,
-    theme: SquirrelTheme,
-    reservesExpandedDetail: Bool
-  ) -> NSSize {
-    guard reservesExpandedDetail else { return measuredDetailSize }
-    let detailFont = (theme.detailAttrs[.font] as? NSFont) ?? theme.font
-    let lineHeight = max(
-      1, ceil(detailFont.ascender - detailFont.descender + detailFont.leading))
-    switch geometry.placement {
-    case .footer:
-      return NSSize(
-        width: geometry.fittedDetailWidth(
-          candidateWidth: candidateSize.width,
-          detailWidth: geometry.detailColumnMaximumWidth ?? candidateSize.width),
-        height: lineHeight * CGFloat(
-          LinnetCandidatePresentation.maximumFooterDetailLineCount))
-    case .sidecar:
-      return NSSize(
-        width: geometry.detailColumnMaximumWidth ?? measuredDetailSize.width,
-        height: candidateSize.height)
-    }
-  }
-
-  // Get the window size, the windows will be the dirtyRect in
-  // SquirrelView.drawRect
+  // Get the window size, the windows will be the dirtyRect in SquirrelView.drawRect.
   // swiftlint:disable:next cyclomatic_complexity
   func show(publication: Publication) -> Bool {
     guard publicationIsCurrent(publication) else { return false }
@@ -322,7 +291,7 @@ extension SquirrelPanel {
       : screenRect.height - metrics.edgeInset.height * 2
     let detailGeometry = LinnetCandidatePresentation.candidateDetailGeometry(
       forLinearLayout:
-        linear || candidateSnapshot?.isExpanded == true || metrics.vertical,
+        linear || metrics.vertical,
       candidateFontPoint: theme.font.pointSize)
     let hasDetail = !view.detailTextView.isHidden
     let hasSidecar = hasDetail && detailGeometry.placement == .sidecar
@@ -345,14 +314,8 @@ extension SquirrelPanel {
         theme: theme,
         textContainer: detailTextContainer,
         textLayoutManager: detailTextLayoutManager)
-      let detailSize = selectedDetailSurfaceSize(
-        geometry: detailGeometry,
-        candidateSize: contentRect.size,
-        measuredDetailSize: NSSize(
-          width: ceil(detailRect.width),
-          height: ceil(detailRect.height)),
-        theme: theme,
-        reservesExpandedDetail: candidateSnapshot?.isExpanded == true)
+      let detailSize = NSSize(
+        width: ceil(detailRect.width), height: ceil(detailRect.height))
       detailFrames = detailGeometry.frames(
         candidateSize: contentRect.size,
         detailSize: detailSize,
@@ -492,8 +455,7 @@ extension SquirrelPanel {
     view.drawView(
       candidateRanges: [NSRange(location: 0, length: text.length)], detailRange: .empty,
       hilightedIndex: -1, preeditRange: .empty, highlightedPreeditRange: .empty,
-      controlMode: .paging(canPageUp: false, canPageDown: false),
-      usesGridLayout: false)
+      controlMode: .paging(canPageUp: false, canPageDown: false))
     guard publicationIsCurrent(publication) else { return }
     guard show(publication: publication) else { return }
     candidateAccessibility.publishStatus(parent: view, message: message)
@@ -504,37 +466,6 @@ extension SquirrelPanel {
       guard self.publicationIsCurrent(publication) else { return }
       self.hide()
     }
-  }
-
-  func selectedDetail(
-    theme: SquirrelTheme,
-    candidates: [SquirrelInputController.CandidateItem],
-    highlighted index: Int,
-    reservesExpandedDetail: Bool
-  ) -> NSAttributedString? {
-    guard candidates.indices.contains(index) else { return nil }
-    let selectedComment = LinnetCandidatePresentation.candidateComment(
-      candidates[index].comment.precomposedStringWithCanonicalMapping)
-    var comment = LinnetCandidatePresentation.selectedDetailText(
-      selectedComment.displayText)
-    if comment.isEmpty,
-      reservesExpandedDetail,
-      candidates.contains(where: {
-        LinnetCandidatePresentation.candidateComment($0.comment).belongsToSmartEnglish
-      }) {
-      comment = NSLocalizedString(
-        "No definition", comment: "Expanded English candidate without a definition")
-    }
-    guard !comment.isEmpty else { return nil }
-    return LinnetCandidatePresentation.candidateLine(
-      candidateFormat: "[comment]",
-      label: "",
-      candidate: "",
-      comment: comment,
-      candidateAttributes: theme.detailAttrs,
-      labelAttributes: theme.detailAttrs,
-      commentAttributes: theme.detailAttrs
-    ).attributedString
   }
 
 }

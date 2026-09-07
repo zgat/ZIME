@@ -135,21 +135,8 @@ struct AppearanceTabView: View {
         .pickerStyle(.segmented)
         .accessibilityIdentifier("settings.appearance.englishLayout")
 
-        Picker(
-          "Candidate browsing",
-          selection: $model.configuration.documentDraft.appearance.candidateBrowsingMode
-        ) {
-          Text("Scrolling only").tag(
-            LinnetSettingsDocument.CandidateBrowsingMode.scrollingOnly)
-          Text("Expandable").tag(
-            LinnetSettingsDocument.CandidateBrowsingMode.expandable)
-        }
-        .pickerStyle(.segmented)
-        .accessibilityIdentifier("settings.appearance.browsing")
         Text(
-          // Keep the complete localization key intact for String Catalog lookup.
-          // swiftlint:disable:next line_length
-          "Chinese and English keep independent horizontal or vertical layouts. Expandable browsing starts compact, then pressing [ or ] (or - or =) to switch candidate pages expands up to three pages automatically. Every new composition starts collapsed. These changes take effect after Apply Changes."
+          "Chinese and English keep independent horizontal or vertical layouts. Layout changes take effect after Apply Changes."
         )
         .font(.caption)
         .foregroundStyle(.secondary)
@@ -614,6 +601,7 @@ struct DataTabView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
       }
     }
+    .disclosureGroupStyle(LinnetSettingsDisclosureStyle())
   }
 
   private var languageDataSection: some View {

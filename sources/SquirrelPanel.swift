@@ -44,10 +44,6 @@ final class SquirrelPanel: NSPanel {
   var candidateSnapshot: SquirrelInputController.CandidateSnapshot?
   var index: Int = 0
   var candidateInteraction = LinnetCandidateInteractionState<SquirrelView.CandidateHit>()
-  private(set) var candidateExpansionAnchorPage: Int?
-  var candidateExpansionRequested: Bool {
-    candidateExpansionAnchorPage != nil
-  }
 
   init(position: NSRect) {
     self.position = position
@@ -150,7 +146,6 @@ final class SquirrelPanel: NSPanel {
     statusTimer?.invalidate()
     statusTimer = nil
     statusMessage = ""
-    candidateExpansionAnchorPage = nil
     candidateSnapshot = nil
     candidateInteraction.advancePublication()
     publishCandidatePointerFeedback()
@@ -195,31 +190,7 @@ final class SquirrelPanel: NSPanel {
       return inputController.page(up: true)
     case .pageDown:
       return inputController.page(up: false)
-    case .expand:
-      guard view.currentTheme.candidateExpansionAllowed,
-        candidateSnapshot?.canExpand == true,
-        candidateExpansionAnchorPage == nil,
-        let currentPage = candidateSnapshot?.currentPage
-      else { return false }
-      candidateExpansionAnchorPage = currentPage
-      inputController.refreshCandidatePresentation()
-      return true
-    case .collapse:
-      guard candidateExpansionAnchorPage != nil else { return false }
-      candidateExpansionAnchorPage = nil
-      inputController.refreshCandidatePresentation()
-      return true
     }
-  }
-
-  /// The Rime interaction processor has already accepted a printable paging
-  /// key. Reuse the disclosure state without reclassifying the physical key.
-  func requestCandidateExpansionForKeyboardPaging() {
-    guard view.currentTheme.candidateExpansionAllowed,
-      candidateExpansionAnchorPage == nil,
-      let currentPage = candidateSnapshot?.currentPage
-    else { return }
-    candidateExpansionAnchorPage = currentPage
   }
 }
 
@@ -248,8 +219,6 @@ extension SquirrelPanel {
       (self.preedit, self.selRange) = (preedit, selRange)
       self.caretPos = caretPos
       candidateSnapshot = candidates
-      candidateExpansionAnchorPage = candidates.isExpanded
-        ? candidates.items.first?.page : nil
       self.index = index
     } else {
       guard let publication,
@@ -304,7 +273,7 @@ extension SquirrelPanel {
       (LinnetCandidatePresentation.usesInlineComments(candidateFormat: theme.candidateFormat)
         ? "" : "  [comment]")
     let detailGeometry = LinnetCandidatePresentation.candidateDetailGeometry(
-      forLinearLayout: linear || candidates.isExpanded || vertical,
+      forLinearLayout: linear || vertical,
       candidateFontPoint: theme.font.pointSize)
     let detailRange = NSRange.empty
 
@@ -314,16 +283,12 @@ extension SquirrelPanel {
     let flow: LinnetCandidatePresentation.CandidateFlow = linear ? .horizontal : .vertical
     let visualRows = LinnetCandidatePresentation.visualRows(
       candidateCount: candidates.items.count,
-      pageSize: candidates.pageSize,
-      flow: flow,
-      expanded: candidates.isExpanded
+      flow: flow
     )
-    let usesGridLayout = candidates.isExpanded
-    let usesInlineLayout = linear || usesGridLayout
     let inlineSeparator = NSAttributedString(
       string: LinnetCandidatePresentation.inlineCandidateSeparator,
       attributes: theme.attrs)
-    view.separatorWidth = usesInlineLayout
+    view.separatorWidth = linear
       ? inlineSeparator.boundingRect(with: .zero).width : 0
     let candidateLines = candidates.items.enumerated().map { itemIndex, item in
       // Translation is an annotation, not a reason to change the user's face
@@ -343,15 +308,6 @@ extension SquirrelPanel {
         labelAttributes: labelAttrs,
         commentAttributes: commentAttrs)
     }
-    let gridColumns = usesGridLayout
-      ? LinnetCandidatePresentation.candidateGridColumns(
-        rows: visualRows,
-        itemWidths: candidateLines.map {
-          $0.attributedString.boundingRect(
-            with: .zero, options: [.usesLineFragmentOrigin]).width
-        },
-        spacing: view.separatorWidth)
-      : nil
     var isFirstCandidate = true
     for row in visualRows {
       for (column, itemIndex) in row.enumerated() {
@@ -363,24 +319,19 @@ extension SquirrelPanel {
         let paragraphStyleCandidate = NSMutableParagraphStyle()
         paragraphStyleCandidate.setParagraphStyle(
           isFirstCandidate ? theme.firstParagraphStyle : theme.paragraphStyle)
-        if usesInlineLayout {
+        if linear {
           paragraphStyleCandidate.paragraphSpacingBefore -= detailGeometry.spacing
           paragraphStyleCandidate.lineSpacing = detailGeometry.spacing
         }
-        if let gridColumns {
-          paragraphStyleCandidate.tabStops = gridColumns.leadingOffsets.dropFirst().map {
-            NSTextTab(textAlignment: .left, location: $0, options: [:])
-          }
-        }
         if !isFirstCandidate {
           let separator = column == 0
-            ? "\n" : usesGridLayout ? "\t" : LinnetCandidatePresentation.inlineCandidateSeparator
+            ? "\n" : LinnetCandidatePresentation.inlineCandidateSeparator
           var separatorAttributes = attrs
           separatorAttributes[.paragraphStyle] = paragraphStyleCandidate
           text.append(NSAttributedString(
             string: separator, attributes: separatorAttributes))
         }
-        if !usesInlineLayout, candidateLine.labelPrefix.length > 0 {
+        if !linear, candidateLine.labelPrefix.length > 0 {
           paragraphStyleCandidate.headIndent = candidateLine.labelPrefix.boundingRect(
             with: .zero, options: [.usesLineFragmentOrigin]).width
         }
@@ -404,17 +355,14 @@ extension SquirrelPanel {
     view.detailTextView.setLayoutOrientation(vertical ? .vertical : .horizontal)
     guard publicationIsCurrent(currentPublication) else { return false }
     let controlMode: LinnetCandidatePresentation.CandidateControlMode =
-      theme.candidateExpansionAllowed && (candidates.canExpand || candidates.isExpanded)
-      ? .disclosure(expanded: candidates.isExpanded)
-      : .paging(
+      .paging(
         canPageUp: candidates.currentPage > 0,
         canPageDown: !candidates.isLastPage)
     view.drawView(
       candidateRanges: candidateRanges, detailRange: detailRange,
       hilightedIndex: index, preeditRange: preeditRange,
       highlightedPreeditRange: highlightedPreeditRange,
-      controlMode: controlMode,
-      usesGridLayout: usesGridLayout)
+      controlMode: controlMode)
     guard publicationIsCurrent(currentPublication) else { return false }
     guard show(publication: currentPublication) else { return false }
     view.displayIfNeeded()

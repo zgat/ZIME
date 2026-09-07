@@ -1,4 +1,4 @@
-# ZIME 0.1.2
+# ZIME 0.1.7
 
 ZIME is a macOS 13+ Apple-silicon input method with one shared local engine and
 two system-visible modes:
@@ -13,11 +13,15 @@ switches between Chinese and Smart English.
 
 ## Bilingual candidate behavior
 
-The source candidate is the bold primary text and its local definition is gray
+The source candidate uses regular-weight primary text and its local definition is gray
 secondary text on every row, not only for the selected candidate. Chinese and
 English default to a vertical list. Settings offers every page size from 3
 through 9 in a menu. Existing pre-0.1.1 settings migrate once to vertical,
 scrolling-only lists, preserving fonts, theme, page size and learning settings.
+Candidate browsing is no longer a setting: the multi-page expansion state,
+grid rendering, iterator, preview and key-trigger code have been removed.
+Schema 15 accepts the old browsing field only for migration and omits it when
+saving. Horizontal/vertical layout, page size and ordinary paging remain.
 English input shows Chinese senses; Chinese input shows English definitions.
 
 During candidate composition, minus pages up and equal/plus pages down.
@@ -39,6 +43,9 @@ chosen definition at the client insertion boundary.
 
 ## Local data and modern input features
 
+- Local Data disclosure headers accept clicks on the arrow, label or trailing
+  blank area through a single native button. Their content remains collapsed
+  until requested, and inner actions retain their original confirmation flow.
 - Wanxiang and the existing Linnet reviewed dictionaries provide full-pinyin
   phrases, initials/abbreviations, fuzzy spelling, context ranking, emoji,
   automatic phrase formation, and native Rime learning.

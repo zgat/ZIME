@@ -15,6 +15,7 @@ struct LinnetSettingsProjectionRendererTests {
       testDefaultInteractionProjection()
       testThemeFamilyAndAppearanceMapping()
       try testIndependentSelectionAndCorners()
+      try testRetiredCandidateBrowsingMigration(in: directory)
       testFontPresetProjection()
       testCandidateLayoutMapping()
       testLightweightAppearanceProjection()
@@ -41,7 +42,7 @@ struct LinnetSettingsProjectionRendererTests {
   }
 
   private static func testThemeFamilyAndAppearanceMapping() {
-    guard LinnetSettingsDocument.currentSchemaVersion == 14,
+    guard LinnetSettingsDocument.currentSchemaVersion == 15,
       LinnetSettingsDocument.ThemeFamily.allCases.map(\.rawValue) == [
         "paper_ledger", "moon_jade", "sidecar_slate", "clay_tiles", "mist_jade",
         "native_glass", "ink_cinnabar", "macos",
@@ -163,8 +164,6 @@ struct LinnetSettingsProjectionRendererTests {
       LinnetSettingsDocument.Appearance.default.chineseCandidateLayout == .vertical,
       LinnetSettingsDocument.Appearance.default.englishCandidateLayout == .vertical,
       LinnetSettingsDocument.CandidateLayout.allCases == [.horizontal, .vertical],
-      LinnetSettingsDocument.CandidateBrowsingMode.allCases == [.scrollingOnly, .expandable],
-      LinnetSettingsDocument.Appearance.default.candidateBrowsingMode == .scrollingOnly,
       LinnetSettingsDocument.Appearance.pageSizeOptions == Array(3...9),
       LinnetSettingsDocument.Appearance.default.pageSize == 9,
       LinnetSettingsDocument.Input.default.pinyinReverseTrigger == .verticalBar
@@ -363,8 +362,7 @@ struct LinnetSettingsProjectionRendererTests {
   }
 
   /// Squirrel semantics: linear joins candidates into one row; stacked lists
-  /// one per line. Settings owns direction and one global disclosure
-  /// capability. The actual expanded/collapsed state remains Panel-transient.
+  /// one per line. Settings owns direction; candidates always use one page.
   private static func testCandidateLayoutMapping() {
     var document = LinnetSettingsDocument.default
     document.appearance.englishCandidateLayout = .horizontal
@@ -410,14 +408,46 @@ struct LinnetSettingsProjectionRendererTests {
       }
     }
 
-    document.appearance.englishCandidateLayout = .horizontal
-    document.appearance.candidateBrowsingMode = .expandable
-    projections = LinnetSettingsProjectionRenderer.renderProjections(document: document)
-    guard projections[LinnetSettingsProjectionRenderer.squirrelCustomFile]
-      == "patch:\n  \"style/linnet_candidate_expansion_allowed\": true\n"
-    else {
-      fail("the global scrolling-only capability did not project exactly once")
+  }
+
+  private static func testRetiredCandidateBrowsingMigration(in directory: URL) throws {
+    for schema in [9, 13, 14, 15] {
+      for legacyMode in ["scrolling_only", "expandable"] {
+        var expected = LinnetSettingsDocument.default
+        expected.appearance.fontPoint = 22
+        expected.appearance.pageSize = 6
+        expected.appearance.themeFamily = .nativeGlass
+        expected.appearance.selectionEffect = .underline
+        expected.appearance.cornerStyle = .square
+        if schema >= 13 { expected.appearance.chineseCandidateLayout = .horizontal }
+        var json = try JSONSerialization.jsonObject(with: JSONEncoder().encode(expected)) as! [String: Any]
+        json["schemaVersion"] = schema
+        var appearance = json["appearance"] as! [String: Any]
+        appearance["candidateBrowsingMode"] = legacyMode
+        json["appearance"] = appearance
+        let decoded = try JSONDecoder().decode(LinnetSettingsDocument.self,
+          from: JSONSerialization.data(withJSONObject: json))
+        require(decoded == expected, "removing candidate browsing changed another preference")
+        let encoded = String(decoding: try JSONEncoder().encode(decoded), as: UTF8.self)
+        require(!encoded.contains("candidateBrowsingMode"), "retired browsing field was written back")
+        require(!LinnetSettingsProjectionRenderer.renderProjections(document: decoded).values
+          .contains(where: { $0.contains("candidate_expansion") }), "legacy backup restored expansion")
+      }
     }
+    // Reconciliation removes the old generated switch without touching data.
+    let migrationDirectory = directory.appending(path: "retired-browsing-migration", directoryHint: .isDirectory)
+    try FileManager.default.createDirectory(at: migrationDirectory, withIntermediateDirectories: true)
+    let projection = migrationDirectory.appending(path: LinnetSettingsProjectionRenderer.squirrelCustomFile)
+    try "patch:\n  \"style/linnet_candidate_expansion_allowed\": true\n".write(
+      to: projection, atomically: true, encoding: .utf8)
+    _ = try LinnetSettingsProjectionRenderer.reconcile(document: .default, to: migrationDirectory)
+    require(!FileManager.default.fileExists(atPath: projection.path),
+            "stale expansion projection survived reconciliation")
+    do {
+      _ = try JSONDecoder().decode(LinnetSettingsDocument.self, from: Data(
+        "{\"schemaVersion\":14,\"appearance\":{\"candidateBrowsingMode\":\"unsupported\"}}".utf8))
+      fail("unknown legacy browsing values must still fail closed")
+    } catch DecodingError.dataCorrupted { }
   }
 
   private static func testIndependentSelectionAndCorners() throws {
@@ -467,7 +497,6 @@ struct LinnetSettingsProjectionRendererTests {
     baseline.pageSize = 5
     baseline.chineseCandidateLayout = .vertical
     baseline.englishCandidateLayout = .vertical
-    baseline.candidateBrowsingMode = .scrollingOnly
     var requested = baseline
     requested.fontPoint = 21
     requested.themeFamily = .nativeGlass
@@ -476,7 +505,6 @@ struct LinnetSettingsProjectionRendererTests {
     requested.pageSize = 9
     requested.chineseCandidateLayout = .horizontal
     requested.englishCandidateLayout = .horizontal
-    requested.candidateBrowsingMode = .expandable
 
     let projected = requested.livePanelProjection(over: baseline)
     require(projected.fontPoint == 21 && projected.themeFamily == .nativeGlass,
@@ -488,8 +516,6 @@ struct LinnetSettingsProjectionRendererTests {
     require(projected.chineseCandidateLayout == .vertical
               && projected.englishCandidateLayout == .vertical,
             "candidate layouts escaped the full Apply boundary")
-    require(projected.candidateBrowsingMode == .scrollingOnly,
-            "candidate browsing capability escaped the full Apply boundary")
   }
 
   private static func testFontPointProjection() {
@@ -773,15 +799,14 @@ struct LinnetSettingsProjectionRendererTests {
     }
 
     let v9LayoutChoices: [(String, String, LinnetSettingsDocument.CandidateLayout,
-      LinnetSettingsDocument.CandidateLayout,
-      LinnetSettingsDocument.CandidateBrowsingMode)] = [
-      ("expanded", "vertical", .vertical, .vertical, .scrollingOnly),
-      ("vertical", "expanded", .vertical, .vertical, .scrollingOnly),
-      ("expanded", "expanded", .vertical, .vertical, .scrollingOnly),
-      ("horizontal", "vertical", .vertical, .vertical, .scrollingOnly),
-      ("vertical", "horizontal", .vertical, .vertical, .scrollingOnly),
+      LinnetSettingsDocument.CandidateLayout)] = [
+      ("expanded", "vertical", .vertical, .vertical),
+      ("vertical", "expanded", .vertical, .vertical),
+      ("expanded", "expanded", .vertical, .vertical),
+      ("horizontal", "vertical", .vertical, .vertical),
+      ("vertical", "horizontal", .vertical, .vertical),
     ]
-    for (chineseRaw, englishRaw, expectedChinese, expectedEnglish, expectedBrowsing)
+    for (chineseRaw, englishRaw, expectedChinese, expectedEnglish)
       in v9LayoutChoices
     {
       let legacy = Data("""
@@ -791,16 +816,15 @@ struct LinnetSettingsProjectionRendererTests {
         let decoded = try JSONDecoder().decode(LinnetSettingsDocument.self, from: legacy)
         guard decoded.schemaVersion == LinnetSettingsDocument.currentSchemaVersion,
           decoded.appearance.chineseCandidateLayout == expectedChinese,
-          decoded.appearance.englishCandidateLayout == expectedEnglish,
-          decoded.appearance.candidateBrowsingMode == expectedBrowsing
+          decoded.appearance.englishCandidateLayout == expectedEnglish
         else {
-          fail("v9 layout did not preserve direction and migrate disclosure capability")
+          fail("v9 layout did not adopt the bilingual direction migration")
         }
         let encoded = String(decoding: try JSONEncoder().encode(decoded), as: UTF8.self)
         guard !encoded.contains("CandidateLayout\":\"expanded"),
-          encoded.contains("\"candidateBrowsingMode\":\"\(expectedBrowsing.rawValue)\"")
+          !encoded.contains("candidateBrowsingMode")
         else {
-          fail("v9 expanded layout survived outside the v10 browsing capability")
+          fail("a retired layout or browsing field survived encoding")
         }
       } catch {
         fail("v9 layout migration failed: \(error)")

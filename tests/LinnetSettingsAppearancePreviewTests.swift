@@ -192,7 +192,7 @@ struct LinnetSettingsAppearancePreviewTests {
     let catalog = canonicalCatalog()
     require(
       LinnetSettingsDocument.CandidateLayout.allCases == [.horizontal, .vertical],
-      "Settings preview regained a persisted Expanded layout instead of runtime disclosure"
+      "Settings preview regained the retired expanded layout"
     )
     for family in LinnetSettingsDocument.ThemeFamily.allCases {
       for mode in [LinnetSettingsDocument.ThemeMode.light, .dark] {
@@ -207,7 +207,7 @@ struct LinnetSettingsAppearancePreviewTests {
         }
         require(preview.palette == source.palette, "preview colors must come from the canonical scheme")
         for language in LinnetSettingsAppearancePreview.PreviewLanguage.allCases {
-          require(preview.detailGeometry(for: language, expanded: false).placement == .footer,
+          require(preview.detailGeometry(for: language).placement == .footer,
                   "a horizontal bilingual layout must keep selected detail below")
         }
         require(preview.selectionStyle == .tile,
@@ -226,18 +226,13 @@ struct LinnetSettingsAppearancePreviewTests {
         appearance.englishCandidateLayout = englishLayout
         let preview = projected(appearance, systemIsDark: false, catalog: catalog)
         require(
-          preview.detailGeometry(for: .chinese, expanded: false).placement
+          preview.detailGeometry(for: .chinese).placement
             == (chineseLayout == .vertical ? .sidecar : .footer),
           "Chinese preview detail placement diverged from its layout")
         require(
-          preview.detailGeometry(for: .english, expanded: false).placement
+          preview.detailGeometry(for: .english).placement
             == (englishLayout == .vertical ? .sidecar : .footer),
           "English preview detail placement diverged from its layout")
-        for language in LinnetSettingsAppearancePreview.PreviewLanguage.allCases {
-          require(
-            preview.detailGeometry(for: language, expanded: true).placement == .footer,
-            "expanded preview detail did not follow the native row grid")
-        }
       }
     }
 
@@ -426,7 +421,6 @@ struct LinnetSettingsAppearancePreviewTests {
     appearance.fontPoint = 22
     appearance.chineseCandidateLayout = .vertical
     appearance.englishCandidateLayout = .horizontal
-    appearance.candidateBrowsingMode = .scrollingOnly
 
     let light = projected(appearance, systemIsDark: false, catalog: catalog)
     let dark = projected(appearance, systemIsDark: true, catalog: catalog)
@@ -444,8 +438,6 @@ struct LinnetSettingsAppearancePreviewTests {
             "preview must consume the draft Chinese layout")
     require(dark.englishCandidateLayout == .horizontal,
             "preview must consume the draft English layout")
-    require(dark.candidateBrowsingMode == .scrollingOnly,
-            "preview must expose the draft disclosure capability without persisting runtime state")
 
     appearance.fontPoint = 48
     let clamped = projected(appearance, systemIsDark: true, catalog: catalog)

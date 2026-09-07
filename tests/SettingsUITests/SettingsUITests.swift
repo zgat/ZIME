@@ -229,15 +229,12 @@ final class SettingsUITests: XCTestCase {
       ["Horizontal", "Vertical"],
       identifier: "settings.appearance.englishLayout",
       in: app)
-    try selectEachSegmentedOption(
-      ["Scrolling only", "Expandable"],
-      identifier: "settings.appearance.browsing",
-      in: app)
+    XCTAssertFalse(app.descendants(matching: .any)["settings.appearance.browsing"].exists)
 
-    let preview = app.groups["Expanded candidate preview"]
+    let preview = app.groups["Candidate window preview"]
     try reveal(
       preview,
-      named: "Expanded candidate preview",
+      named: "Candidate window preview",
       in: app,
       acceptingVisiblePortion: true)
     XCTAssertTrue(preview.exists)
@@ -332,7 +329,7 @@ final class SettingsUITests: XCTestCase {
     let app = try launchSettings()
     defer { app.terminate() }
 
-    clickTab("Data & Updates", in: app)
+    clickTab("Local Data", in: app)
 
     let coreUpdate = app.descendants(matching: .any)["settings.data.coreUpdate"]
     try reveal(coreUpdate, named: "Core update", in: app)
@@ -474,19 +471,18 @@ final class SettingsUITests: XCTestCase {
     let app = try launchSettings()
     defer { app.terminate() }
 
-    clickTab("Data & Updates", in: app)
+    clickTab("Local Data", in: app)
 
     let coreUpdate = app.descendants(matching: .any)["settings.data.coreUpdate"]
     try reveal(coreUpdate, named: "Core update", in: app)
     XCTAssertTrue(coreUpdate.exists, "The version and update controls are not always present")
 
     let rows: [(group: String, hiddenControl: XCUIElement)] = [
-      ("iCloud Drive sync", app.buttons["Sync Learning Now"]),
       ("Manual recovery & transfer", app.buttons["Import Existing"]),
       ("Diagnostics", app.buttons["Copy Report"]),
     ]
     for row in rows {
-      let disclosure = app.disclosureTriangles[row.group]
+      let disclosure = app.buttons[row.group]
       try reveal(disclosure, named: row.group, in: app)
       XCTAssertFalse(
         row.hiddenControl.exists,
@@ -612,35 +608,14 @@ final class SettingsUITests: XCTestCase {
 
   @MainActor
   private func expandDisclosure(_ name: String, in app: XCUIApplication) throws {
-    let control = app.disclosureTriangles[name]
+    let control = app.buttons[name]
     try reveal(control, named: name, in: app)
-    let before = XCTAttachment(screenshot: app.screenshot())
-    before.name = "Before expanding \(name)"
-    before.lifetime = .keepAlways
-    add(before)
-    // At this fixture's fixed system font, macOS 26's AX outline frame starts
-    // 26 pt before the painted chevron (xcresult: frame x=43, arrow x=69).
-    // The label center and frame.minX + height/2 both miss the actual control.
-    let chevronInset: CGFloat = 26
-    control.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0.5))
-      .withOffset(CGVector(dx: chevronInset, dy: 0)).click()
+    control.click()
     let expanded = XCTNSPredicateExpectation(
-      predicate: NSPredicate(format: "value == 1"), object: control)
-    let result = XCTWaiter.wait(for: [expanded], timeout: 3)
-    let value = control.value
-    print("Disclosure \(name): value=\(String(describing: value)), "
-      + "type=\(value.map { String(reflecting: type(of: $0)) } ?? "nil"), "
-      + "frame=\(control.frame)")
-    if result != .completed {
-      print(app.debugDescription)
-      let after = XCTAttachment(screenshot: app.screenshot())
-      after.name = "After expanding \(name)"
-      after.lifetime = .keepAlways
-      add(after)
-    }
+      predicate: NSPredicate(format: "value == %@", "Expanded"), object: control)
     XCTAssertEqual(
-      result, .completed,
-      "Disclosure did not expand after clicking its chevron: \(name)")
+      XCTWaiter.wait(for: [expanded], timeout: 3), .completed,
+      "Disclosure did not expand after clicking its header: \(name)")
   }
 
   @MainActor
