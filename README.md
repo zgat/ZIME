@@ -8,6 +8,8 @@ ZIME 是一款面向 Apple Silicon、macOS 13 及以上版本的本地优先双�
 
 - 两个 macOS 输入源：“ZIME 简体中文”和“ZIME 繁體中文”，共用设置和学习数据；
 - 中文全拼、多字词、首字母缩写、保守模糊音与错序纠正；
+- 中文模式优先可靠中文词与已学词，简拼 `key` 默认优先“可以”；仅在中文
+  匹配较弱时让常见英文优先，Shift 切换后的英文模式保持英文排序；
 - 智能英文补全、拼写纠错、多词候选、常用缩写、IPA 和下一词预测；
 - 每行候选都显示译文，默认竖排，候选数量下拉框可选 3–9；
 - 英文候选显示中文释义，中文候选显示英文释义，内置 CC-CEDICT 中英词典；
@@ -91,6 +93,7 @@ scripts/build-zime-delivery /absolute/path/to/ZIME.app /absolute/output/director
 0.1.3 的地区释义与 macOS 配色见 [验证记录](docs/ZIME-0.1.3-VALIDATION.md)。
 0.1.4 的词条归属、译义去重与注释分层见 [验证记录](docs/ZIME-0.1.4-VALIDATION.md)。
 0.1.5 的配色、字重与独立外观选项见 [验证记录](docs/ZIME-0.1.5-VALIDATION.md)。
+0.1.6 的中文简拼优先与跨语言学习排序见 [验证记录](docs/ZIME-0.1.6-VALIDATION.md)。
 
 ## 上游与许可证
 

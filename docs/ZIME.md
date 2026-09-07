@@ -42,6 +42,11 @@ chosen definition at the client insertion boundary.
 - Wanxiang and the existing Linnet reviewed dictionaries provide full-pinyin
   phrases, initials/abbreviations, fuzzy spelling, context ranking, emoji,
   automatic phrase formation, and native Rime learning.
+- Chinese mode treats established same-span Chinese words, including initials
+  and mixed full-pinyin/initial abbreviations, as Chinese intent. Native learned
+  `user_phrase` entries outrank exact English independently of their static word
+  frequency. Only common exact English can lead weak Chinese matches; explicit
+  capitalization and the separate English mode preserve English intent.
 - Linnet's reviewed English projection provides exact words, common English
   abbreviations such as `asap`, `btw`, `brb`, and `idk`, typo correction,
   completion, IPA, Chinese definitions, and next-word prediction.

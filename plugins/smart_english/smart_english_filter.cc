@@ -29,6 +29,16 @@ namespace {
 // adjusted the candidate's presentation weight.
 constexpr double kEstablishedChinesePhraseMinimumLexicalWeight =
     -13.815510557964274;
+// Abbreviations are more ambiguous than complete syllables. Requiring ten
+// times the established lexical floor prevents rare accidental matches such
+// as cloud -> 查漏洞 from displacing common English. Learned choices bypass it.
+constexpr double kEstablishedChineseAbbreviationMinimumLexicalWeight =
+    -11.512925464970229;
+
+// Table weights use log(raw / 1e8). Only a common exact English word may
+// override weak Chinese parses in Chinese mode (raw frequency >= 1 million).
+// Explicit capitalization and the dedicated English mode retain their routes.
+constexpr double kCommonEnglishMinimumLexicalWeight = -4.605170185988091;
 
 struct MixedTextShape {
   std::size_t entity_start = std::string::npos;
@@ -284,9 +294,8 @@ an<Translation> SmartEnglishFilter::Apply(an<Translation> translation,
       item.static_rank = static_rank->second;
     }
   }
-  // Exact dictionary identity owns bilingual intent for complete words. Keep
-  // single-letter Chinese ambiguity and exact Chinese phrases ahead of weaker
-  // generated or transliterated alternatives.
+  // Chinese mode owns lowercase intent. A common English word can lead only
+  // when there is no established or learned Chinese word for the same span.
   const bool explicit_english_case = !input_word.empty() && ranking_input != input_word;
   const bool lowercase_chinese_input =
       (has_exact || has_ambiguous_english || has_mixed) &&
@@ -307,6 +316,11 @@ an<Translation> SmartEnglishFilter::Apply(an<Translation> translation,
   }
   bool has_same_span_chinese = false;
   bool has_strong_same_span_chinese = false;
+  const bool common_exact_english = std::any_of(
+      candidates.begin(), candidates.end(), [](const auto& item) {
+        const auto phrase = item.exact ? rime::As<Phrase>(item.genuine) : nullptr;
+        return phrase && phrase->weight() >= kCommonEnglishMinimumLexicalWeight;
+      });
   if (lowercase_chinese_input && bilingual_candidate != candidates.end()) {
     for (auto& item : candidates) {
       if (!item.chinese ||
@@ -318,9 +332,15 @@ an<Translation> SmartEnglishFilter::Apply(an<Translation> translation,
       const auto phrase = rime::As<Phrase>(item.genuine);
       const auto system_weight =
           phrase ? phrase->system_lexical_weight() : std::nullopt;
+      // Abbreviations such as ke+y -> 可以 are valid Chinese intent. Native
+      // user_phrase identity must win even for low-frequency words; consulting
+      // only the system weight would hide learning behind a fixed English row.
       item.strong_chinese_collision = phrase && phrase->is_exact_match() &&
-          phrase->spelling_type() < kAbbreviation && system_weight &&
-          *system_weight >= kEstablishedChinesePhraseMinimumLexicalWeight;
+          (item.genuine->type() == "user_phrase" ||
+           (phrase->spelling_type() <= kAbbreviation && system_weight &&
+            *system_weight >= (phrase->spelling_type() == kAbbreviation
+              ? kEstablishedChineseAbbreviationMinimumLexicalWeight
+              : kEstablishedChinesePhraseMinimumLexicalWeight)));
       has_strong_same_span_chinese = has_strong_same_span_chinese ||
           item.strong_chinese_collision;
     }
@@ -330,7 +350,8 @@ an<Translation> SmartEnglishFilter::Apply(an<Translation> translation,
       has_same_span_chinese;
   const bool preserve_chinese_exact =
       lowercase_chinese_exact &&
-      (single_letter_chinese_input || has_strong_same_span_chinese);
+      (single_letter_chinese_input || has_strong_same_span_chinese ||
+       (has_same_span_chinese && !common_exact_english));
   const bool preserve_chinese_ambiguous =
       has_ambiguous_english && lowercase_chinese_input &&
       has_same_span_chinese;
@@ -424,7 +445,8 @@ an<Translation> SmartEnglishFilter::Apply(an<Translation> translation,
           candidates.begin(), candidates.end(),
           [](const auto& item) { return item.exact; });
       move_same_span_chinese_first(exact, [&](const auto& item) {
-        return single_letter_chinese_input || item.strong_chinese_collision;
+        return single_letter_chinese_input || !common_exact_english ||
+               item.strong_chinese_collision;
       });
     }
   }

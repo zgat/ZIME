@@ -1,5 +1,17 @@
 # Linnet product acceptance
 
+## ZIME ranking amendment — 2026-09-07
+
+ZIME 0.1.6 supersedes the older English-first collision policy recorded below.
+Established same-span Chinese abbreviations and deliberately learned Chinese
+phrases take precedence in Chinese mode. Learned weak collisions are now a
+positive personalization case, not a negative case that must stay below English.
+Only common exact English outranks weak Chinese evidence. The native ZIME gate
+checks `key → 可以`, ordinary English exceptions, a low-frequency personal choice,
+engine and process restart, alternative Chinese learning, and explicit English.
+See [ZIME 0.1.6 validation](ZIME-0.1.6-VALIDATION.md) for the current tested scope;
+the historical eight-profile measurements below are not new ZIME claims.
+
 ## 2026-09-02 Complete transport input-source identity (candidate)
 
 Exact rejected installed candidate: version `0.1.11`, build `77`, source

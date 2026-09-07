@@ -180,6 +180,13 @@ if ! DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
 fi
 end_phase "run native candidate matrix"
 
+if [[ "${runtime_probe}" == --zime-bilingual-probe ]]; then
+  begin_phase "reopen learned ranking in a fresh process"
+  DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
+    "${scratch}/rime-smoke" "${shared}" "${user}" --zime-ranking-reopen-probe
+  end_phase "reopen learned ranking in a fresh process"
+fi
+
 if [[ -z "${runtime_probe}" || "${runtime_probe}" == --mixed-input-probe ]]; then
   begin_phase "verify mixed-input learning policy"
   mixed_learning_on_user="${scratch}/mixed-learning-on-user"

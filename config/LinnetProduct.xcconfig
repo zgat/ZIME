@@ -2,7 +2,7 @@
 // Compiler path privacy remains owned by the included boundary-specific file.
 #include "LinnetPrivacy.xcconfig"
 
-MARKETING_VERSION = 0.1.5
-CURRENT_PROJECT_VERSION = 6
+MARKETING_VERSION = 0.1.6
+CURRENT_PROJECT_VERSION = 7
 LINNET_PRODUCT_NAME = ZIME
 LINNET_BUNDLE_IDENTIFIER = com.zime.inputmethod.ZIME

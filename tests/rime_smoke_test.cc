@@ -518,6 +518,33 @@ void ExpectExactEnglishFirst(RimeApi_stdbool* api,
        input + "'");
 }
 
+void ExpectChineseModeDictionaryOrder(RimeApi_stdbool* api,
+                                      RimeSessionId session,
+                                      const std::string& schema_id,
+                                      const std::string& input,
+                                      bool common_english = true) {
+  Enter(api, session, input);
+  const auto rows = CandidateOrigins(session);
+  const auto chinese = [&](const auto& row) {
+    return row.genuine_language == "linnet_zh" && row.start == 0 && row.end == input.size();
+  };
+  const bool established = std::any_of(rows.begin(), rows.end(), [&](const auto& row) {
+    return chinese(row) && row.phrase_exact &&
+      (row.genuine_type == "user_phrase" ||
+       (row.phrase_spelling_type <= 2 && row.phrase_system_lexical_weight >=
+         (row.phrase_spelling_type == 2 ? -11.512925464970229 : -13.815510557964274)));
+  });
+  const bool has_chinese = std::any_of(rows.begin(), rows.end(), chinese);
+  if (established || (has_chinese && !common_english)) {
+    if (rows.empty() || !chinese(rows.front())) {
+      Fail(schema_id + " lost Chinese-first dictionary order for " + input);
+    }
+    ExpectEnglishTableReachable(api, session, input);
+  } else {
+    ExpectExactEnglishFirst(api, session, schema_id, input);
+  }
+}
+
 CandidateOriginView ExpectAmbiguousEnglishPreservesChinese(
     RimeApi_stdbool* api,
     RimeSessionId session,
@@ -646,7 +673,7 @@ void ExpectSpellingDerivedEnglishPreservesChinese(RimeApi_stdbool* api) {
   for (const auto& schema_id : RuntimeChineseSchemaIDs(api)) {
     const RimeSessionId session = CreateSchemaSession(api, schema_id.c_str());
     for (const char* exact : {"the", "agent"}) {
-      ExpectExactEnglishFirst(api, session, schema_id, exact);
+      ExpectChineseModeDictionaryOrder(api, session, schema_id, exact);
     }
     api->destroy_session(session);
   }
@@ -1755,6 +1782,16 @@ void ExpectZIMEBilingualCandidateContract(RimeApi_stdbool* api) {
   // adjacent-letter typo spellings.
   ExpectCandidate(api, chinese, "nh", "你好");
   ExpectCandidate(api, chinese, "nihoa", "你好");
+  for (const auto& [input, expected] : {
+      std::make_pair("xuexicsjiting", "学习CS急停"),
+      std::make_pair("liaojieaijishu", "了解AI技术"),
+      std::make_pair("shiyongcpuxingneng", "使用CPU性能")}) {
+    Enter(api, chinese, input);
+    const auto index = CandidateIndex(api, chinese, expected);
+    if (index >= 9 || !api->select_candidate(chinese, index) || TakeCommit(api, chinese) != expected) {
+      Fail("ZIME mixed Chinese/English candidate order or commit regressed");
+    }
+  }
   api->destroy_session(chinese);
 
   const RimeSessionId english = CreateSchemaSession(api, "linnet_en");
@@ -1765,6 +1802,128 @@ void ExpectZIMEBilingualCandidateContract(RimeApi_stdbool* api) {
   ExpectNormalizedCandidate(api, english, "cluod", "cloud");
   ExpectNormalizedCandidate(api, english, "earlyaccess", "early access");
   api->destroy_session(english);
+}
+
+void ExpectZIMEChineseRankingContract(RimeApi_stdbool* api) {
+  const auto inspect = [&](const std::string& label, const char* input) {
+    const auto session = CreateSchemaSession(api, "linnet_zh_pinyin");
+    api->set_option(session, "emoji", false);
+    Enter(api, session, input);
+    const auto rows = CandidateOrigins(session);
+    std::cout << "ZIME ranking " << label << " " << input << ":";
+    for (std::size_t i = 0; i < std::min<std::size_t>(rows.size(), 6); ++i) {
+      const auto& row = rows[i];
+      std::cout << " [" << row.text << ":" << row.genuine_type
+                << ":spell=" << row.phrase_spelling_type
+                << ":system=" << row.phrase_system_lexical_weight << "]";
+    }
+    std::cout << std::endl;
+    api->destroy_session(session);
+    return rows;
+  };
+  const auto initial = inspect("fresh", "key");
+  for (const auto* word : {"apple", "banana", "computer", "cloud", "interface", "email"}) {
+    const auto rows = inspect("fresh-English-exception", word);
+    if (rows.empty() || rows.front().text != word) {
+      Fail(std::string("common English word lost its weak-Chinese exception: ") + word);
+    }
+  }
+  for (const auto* word : {"hello", "what", "the", "agent", "can", "she", "you"}) {
+    const auto rows = inspect("fresh", word);
+    const bool weak_chinese = std::string(word) == "hello" || std::string(word) == "what";
+    if (rows.empty() || (weak_chinese ? rows.front().text != word
+        : rows.front().genuine_language != "linnet_zh")) {
+      Fail(std::string("Chinese-mode common/weak collision policy failed for ") + word);
+    }
+  }
+  for (int round = 0; round < 3; ++round) {
+    const auto session = CreateSchemaSession(api, "linnet_zh_pinyin");
+    api->set_option(session, "emoji", false);
+    Enter(api, session, "key");
+    const auto index = CandidateIndex(api, session, "可以");
+    if (!api->select_candidate(session, index) || TakeCommit(api, session) != "可以") {
+      Fail("key learning did not commit only 可以");
+    }
+    api->destroy_session(session);
+  }
+  const auto learned = inspect("learned", "key");
+  if (learned.empty() || learned.front().text != "可以" ||
+      learned.front().genuine_type != "user_phrase") {
+    Fail("learned 可以 must outrank exact English key in Chinese mode");
+  }
+  if (initial.empty() || initial.front().text != "可以") {
+    Fail("common Chinese abbreviation key must start with 可以 before learning");
+  }
+  // A real personal choice outranks even a common English exception and does
+  // not depend on the chosen Chinese phrase's system frequency.
+  const auto weak_learning = CreateSchemaSession(api, "linnet_zh_pinyin");
+  api->set_option(weak_learning, "emoji", false);
+  Enter(api, weak_learning, "what");
+  const auto weak_index = CandidateIndex(api, weak_learning, "我好爱他");
+  if (!api->select_candidate(weak_learning, weak_index) || TakeCommit(api, weak_learning) != "我好爱他") {
+    Fail("could not learn a low-frequency Chinese exception");
+  }
+  api->destroy_session(weak_learning);
+  const auto personalized = inspect("learned", "what");
+  if (personalized.empty() || personalized.front().text != "我好爱他" ||
+      personalized.front().genuine_type != "user_phrase") {
+    Fail("low-frequency learned Chinese must outrank common English");
+  }
+  // Drop all engine/dictionary objects and reopen the same isolated userdb.
+  api->finalize();
+  api->initialize(nullptr);
+  const auto reopened = inspect("reopened", "key");
+  if (reopened.empty() || reopened.front().text != "可以" ||
+      reopened.front().genuine_type != "user_phrase") {
+    Fail("Chinese ranking preference was not persisted across engine restart");
+  }
+  const auto weak_reopened = inspect("reopened", "what");
+  if (weak_reopened.empty() || weak_reopened.front().text != "我好爱他") {
+    Fail("personalized English exception was not persisted");
+  }
+  const auto english = CreateSchemaSession(api, "linnet_en");
+  for (const auto* word : {"key", "hello", "what", "the", "agent", "can", "she", "you"}) {
+    ExpectFirstNormalizedCandidate(api, english, word, word);
+  }
+  api->destroy_session(english);
+  const auto explicit_english = CreateSchemaSession(api, "linnet_zh_pinyin");
+  for (const auto* word : {"Key", "KEY", "What", "WHAT"}) {
+    ExpectExactEnglishFirst(api, explicit_english, "linnet_zh_pinyin", word);
+  }
+  api->destroy_session(explicit_english);
+  std::cout << "ZIME Chinese ranking and persistent learning: PASS\n";
+}
+
+void ExpectZIMERankingPersisted(RimeApi_stdbool* api) {
+  for (const auto& [input, chosen] : {
+      std::make_pair("key", "可以"), std::make_pair("what", "我好爱他")}) {
+    const auto session = CreateSchemaSession(api, "linnet_zh_pinyin");
+    api->set_option(session, "emoji", false);
+    ExpectFirstCandidate(api, session, input, chosen);
+    const auto rows = CandidateOrigins(session);
+    if (rows.front().genuine_type != "user_phrase") {
+      Fail("a fresh process lost the learned candidate identity");
+    }
+    ExpectEnglishTableReachable(api, session, input);
+    api->destroy_session(session);
+  }
+  // Learning another Chinese candidate must remain possible: this is not a
+  // hardcoded key -> 可以 shortcut or a second preference database.
+  for (int round = 0; round < 6; ++round) {
+    const auto session = CreateSchemaSession(api, "linnet_zh_pinyin");
+    api->set_option(session, "emoji", false);
+    Enter(api, session, "key");
+    if (!api->select_candidate(session, CandidateIndex(api, session, "科研")) ||
+        TakeCommit(api, session) != "科研") {
+      Fail("could not learn an alternative Chinese choice for key");
+    }
+    api->destroy_session(session);
+  }
+  const auto session = CreateSchemaSession(api, "linnet_zh_pinyin");
+  api->set_option(session, "emoji", false);
+  ExpectFirstCandidate(api, session, "key", "科研");
+  api->destroy_session(session);
+  std::cout << "ZIME new-process learning and alternative Chinese preference: PASS\n";
 }
 
 std::string AbbreviatedModeLabel(RimeApi_stdbool* api,
@@ -6960,6 +7119,8 @@ int main(int argc, char** argv) {
       argc == 4 && std::strcmp(argv[3], "--zime-bilingual-probe") == 0;
   const bool zime_paging_probe =
       argc == 4 && std::strcmp(argv[3], "--zime-paging-probe") == 0;
+  const bool zime_ranking_reopen_probe =
+      argc == 4 && std::strcmp(argv[3], "--zime-ranking-reopen-probe") == 0;
   const bool mixed_learning_on_probe =
       argc == 4 &&
       std::strcmp(argv[3], "--mixed-learning-on-probe") == 0;
@@ -6978,7 +7139,7 @@ int main(int argc, char** argv) {
       !lifecycle_raw_exit_probe &&
       !page_size_probe && !english_profile_probe &&
       !fast_config_reload_probe && !prediction_punctuation_probe &&
-      !mixed_input_probe && !zime_bilingual_probe && !zime_paging_probe &&
+      !mixed_input_probe && !zime_bilingual_probe && !zime_paging_probe && !zime_ranking_reopen_probe &&
       !mixed_learning_on_probe &&
       !mixed_learning_off_probe &&
       !mixed_latency_probe && !warm_session_probe && !cold_client_probe && !live_sync_probe) {
@@ -6989,7 +7150,7 @@ int main(int argc, char** argv) {
          "--page-size-probe EXPECTED|"
          "--english-profile-probe PROFILE CHINESE_SCHEMA CODE PREFIX|"
          "--fast-config-reload-probe|--prediction-punctuation-probe|"
-         "--mixed-input-probe|--zime-bilingual-probe|--zime-paging-probe|"
+         "--mixed-input-probe|--zime-bilingual-probe|--zime-paging-probe|--zime-ranking-reopen-probe|"
          "--mixed-learning-on-probe|"
          "--mixed-learning-off-probe|"
          "--mixed-latency-probe|--warm-session-probe|--cold-client-probe]");
@@ -7050,6 +7211,12 @@ int main(int argc, char** argv) {
   }
   ExpectFreshDefaultSchema(api, expected_fresh_schema);
 
+  if (zime_ranking_reopen_probe) {
+    ExpectZIMERankingPersisted(api);
+    api->finalize();
+    return 0;
+  }
+
   if (zime_paging_probe) {
     ExpectCandidatePagingShortcuts(api, "linnet_zh_pinyin", "shi");
     ExpectCandidatePagingBoundaries(api, "linnet_zh_pinyin", "shi");
@@ -7106,6 +7273,7 @@ int main(int argc, char** argv) {
 
   if (zime_bilingual_probe) {
     ExpectZIMEBilingualCandidateContract(api);
+    ExpectZIMEChineseRankingContract(api);
     api->finalize();
     std::cout << "rime_smoke_test: ZIME bilingual candidate contract: PASS\n";
     return 0;
@@ -7914,7 +8082,8 @@ int main(int argc, char** argv) {
       "cloud",     "algorithm", "email", "github",
   };
   for (const char* word : kChineseModeExactEnglishWords) {
-    ExpectExactEnglishFirst(api, chinese, "linnet_zh", word);
+    ExpectChineseModeDictionaryOrder(api, chinese, "linnet_zh", word,
+                                     std::string(word) != "github");
   }
   ExpectEnglishTableReachable(api, chinese, "Cloud");
   ExpectEnglishTableReachable(api, chinese, "CLOUD");
@@ -7941,7 +8110,8 @@ int main(int argc, char** argv) {
         CreateSchemaSession(api, profile.first);
     ExpectCandidate(api, profile_session, profile.second, "你好");
     for (const char* word : kChineseModeExactEnglishWords) {
-      ExpectExactEnglishFirst(api, profile_session, profile.first, word);
+      ExpectChineseModeDictionaryOrder(api, profile_session, profile.first, word,
+                                       std::string(word) != "github");
     }
     ExpectEnglishTableReachable(api, profile_session, "Cloud");
     ExpectEnglishTableReachable(api, profile_session, "CLOUD");
@@ -7986,10 +8156,8 @@ int main(int argc, char** argv) {
   // intent must be classified from that segment, not from the full historical
   // input that still contains the confirmed prefix.
   ExpectPartialSelectionRanksCurrentSegment(api);
-  // Learning changes an ordinary dictionary phrase into Rime's user_phrase
-  // candidate type. That transition must not change bilingual intent: the
-  // same static Chinese lexical evidence remains authoritative, while the
-  // English candidate stays reachable.
+  // Native user_phrase identity is explicit Chinese preference, including
+  // abbreviated or low-frequency entries. English must remain reachable.
   for (const auto& profile : kProfileAmbiguities) {
     const RimeSessionId learning_session =
         CreateSchemaSession(api, profile.schema_id);
@@ -8011,8 +8179,8 @@ int main(int argc, char** argv) {
     }
     api->destroy_session(learned_session);
   }
-  // A learned low-frequency accidental Chinese decoding still must not block
-  // an independently meaningful exact English word.
+  // A deliberate learned low-frequency Chinese choice overrides the default
+  // common-English exception, without deleting the English dictionary row.
   const RimeSessionId weak_learning_session =
       CreateSchemaSession(api, "linnet_zh");
   if (SelectNormalizedCandidate(api, weak_learning_session, "banana",
@@ -8022,7 +8190,7 @@ int main(int argc, char** argv) {
   api->destroy_session(weak_learning_session);
   const RimeSessionId learned_weak_session =
       CreateSchemaSession(api, "linnet_zh");
-  ExpectExactEnglishFirst(api, learned_weak_session, "linnet_zh", "banana");
+  ExpectAmbiguousEnglishPreservesChinese(api, learned_weak_session, "banana", "芭娜娜");
   const auto learned_weak_origins = CandidateOrigins(learned_weak_session);
   if (std::none_of(learned_weak_origins.begin(), learned_weak_origins.end(),
                    [](const auto& candidate) {
