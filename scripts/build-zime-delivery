@@ -113,10 +113,10 @@ done
   fail_delivery "offline data activation profile is missing"
 
 /bin/cp "${project_root}/scripts/install-zime" \
-  "${project_root}/scripts/uninstall-zime" "${bundle_root}/"
+  "${project_root}/scripts/uninstall-zime" "${project_root}/scripts/update-zime-app" "${bundle_root}/"
 /bin/cp "${project_root}/docs/ZIME-INSTALL.md" "${bundle_root}/安装说明.md"
 /bin/cp "${project_root}/LICENSE.txt" "${bundle_root}/LICENSE.txt"
-/bin/chmod 755 "${bundle_root}/install-zime" "${bundle_root}/uninstall-zime"
+/bin/chmod 755 "${bundle_root}/install-zime" "${bundle_root}/uninstall-zime" "${bundle_root}/update-zime-app"
 
 zip_candidate="${work_root}/${prefix}.zip"
 /usr/bin/ditto -c -k --sequesterRsrc --keepParent "${bundle_root}" "${zip_candidate}"

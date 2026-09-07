@@ -5,8 +5,8 @@
 
 set -euo pipefail
 
-if [[ $# -gt 1 || ( $# -eq 1 && "$1" != --appearance-preview ) ]]; then
-  echo "Usage: $0 [--appearance-preview]" >&2
+if [[ $# -gt 1 || ( $# -eq 1 && "$1" != --appearance-preview && "$1" != --skip-appearance-preview ) ]]; then
+  echo "Usage: $0 [--appearance-preview | --skip-appearance-preview]" >&2
   exit 2
 fi
 
@@ -95,7 +95,11 @@ compile_run projection-renderer \
   sources/LinnetSettings/LinnetSettingsDocument.swift sources/LinnetSettings/LinnetSettingsDocumentStore.swift \
   sources/LinnetSettings/LinnetSettingsProjectionRenderer.swift \
   tests/LinnetSettingsProjectionRendererTests.swift
-appearance_preview
+if [[ "${1:-}" == --skip-appearance-preview ]]; then
+  echo "SKIP: appearance-preview (explicitly requested; not a full Swift gate pass)"
+else
+  appearance_preview
+fi
 compile_run settings-page-layout -framework SwiftUI \
   sources/LinnetSettings/LinnetSettingsPage.swift \
   tests/LinnetSettingsPageLayoutTests.swift

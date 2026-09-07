@@ -136,7 +136,7 @@ struct LinnetSettingsThemeFamilyPicker: View {
     catalog: LinnetSettingsAppearancePreview.Catalog
   ) -> some View {
     let appearance = LinnetSettingsDocument.Appearance(
-      fontPoint: 13, themeMode: mode,
+      fontPoint: 16, themeMode: mode,
       chineseCandidateLayout: .horizontal, englishCandidateLayout: .horizontal,
       pageSize: 3, themeFamily: family)
     if case .success(let preview) = LinnetSettingsAppearancePreview.presentation(
@@ -151,7 +151,7 @@ struct LinnetSettingsThemeFamilyPicker: View {
           .font(.system(size: 10))
           .foregroundStyle(preview.palette.secondary.color)
           .frame(width: 12)
-        HStack(spacing: LinnetCandidatePresentation.inlineCandidateSeparatorWidth(font: fonts.candidate)) {
+        VStack(alignment: .leading, spacing: 3) {
           LinnetSettingsAppearancePreview.candidate("1", "输入", selected: true, preview, fonts: fonts)
           LinnetSettingsAppearancePreview.candidate("2", "候选", selected: false, preview, fonts: fonts)
         }

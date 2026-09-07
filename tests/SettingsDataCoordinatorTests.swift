@@ -1379,8 +1379,10 @@ struct SettingsDataCoordinatorTests {
         !squirrelProjection.contains("candidate_list_layout"),
         !squirrelProjection.contains("linnet_expand_candidate_rows"),
         !squirrelProjection.contains("linnet_candidate_expansion_allowed"),
-        chineseLayoutProjection?.contains("candidate_list_layout") != true,
-        englishLayoutProjection?.contains("candidate_list_layout") != true,
+        chineseLayoutProjection == liveFilesBeforeAppearance.contents["linnet_zh.custom.yaml"]
+          .flatMap({ String(data: $0, encoding: .utf8) }),
+        englishLayoutProjection == liveFilesBeforeAppearance.contents[LinnetSettingsProjectionRenderer.englishCustomFile]
+          .flatMap({ String(data: $0, encoding: .utf8) }),
         chineseLayoutProjection?.contains("linnet_expand_candidate_rows") != true,
         englishLayoutProjection?.contains("linnet_expand_candidate_rows") != true
       else { fail("live appearance publishing emitted a session-bound layout projection") }
@@ -1624,7 +1626,7 @@ struct SettingsDataCoordinatorTests {
           contentsOf: live.appending(
             path: LinnetSettingsProjectionRenderer.squirrelCustomFile),
           encoding: .utf8
-        ).contains("\"style/linnet_candidate_expansion_allowed\": false")
+        ).contains("style/linnet_candidate_expansion_allowed") == false
       else {
         fail("cross-process settings mutation serialization lost a confirmed update")
       }

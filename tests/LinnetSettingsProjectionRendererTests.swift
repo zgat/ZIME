@@ -40,13 +40,13 @@ struct LinnetSettingsProjectionRendererTests {
   }
 
   private static func testThemeFamilyAndAppearanceMapping() {
-    guard LinnetSettingsDocument.currentSchemaVersion == 12,
+    guard LinnetSettingsDocument.currentSchemaVersion == 13,
       LinnetSettingsDocument.ThemeFamily.allCases.map(\.rawValue) == [
         "paper_ledger", "moon_jade", "sidecar_slate", "clay_tiles", "mist_jade",
         "native_glass", "ink_cinnabar",
       ]
     else {
-      fail("the settings codec must publish exactly the seven ordered theme families in schema v12")
+      fail("the settings codec must publish exactly the seven ordered theme families in schema v13")
     }
     let families: [(LinnetSettingsDocument.ThemeFamily, String)] = [
       (.paperLedger, "linnet_paper"),
@@ -158,11 +158,12 @@ struct LinnetSettingsProjectionRendererTests {
     guard LinnetSettingsDocument.Appearance.minimumFontPoint == 12.0,
       LinnetSettingsDocument.Appearance.maximumFontPoint == 32.0,
       LinnetSettingsDocument.Appearance.fontPointStep == 1.0,
-      LinnetSettingsDocument.Appearance.default.chineseCandidateLayout == .horizontal,
-      LinnetSettingsDocument.Appearance.default.englishCandidateLayout == .horizontal,
+      LinnetSettingsDocument.Appearance.default.chineseCandidateLayout == .vertical,
+      LinnetSettingsDocument.Appearance.default.englishCandidateLayout == .vertical,
       LinnetSettingsDocument.CandidateLayout.allCases == [.horizontal, .vertical],
       LinnetSettingsDocument.CandidateBrowsingMode.allCases == [.scrollingOnly, .expandable],
-      LinnetSettingsDocument.Appearance.default.candidateBrowsingMode == .expandable,
+      LinnetSettingsDocument.Appearance.default.candidateBrowsingMode == .scrollingOnly,
+      LinnetSettingsDocument.Appearance.pageSizeOptions == Array(3...9),
       LinnetSettingsDocument.Appearance.default.pageSize == 9,
       LinnetSettingsDocument.Input.default.pinyinReverseTrigger == .verticalBar
     else {
@@ -364,6 +365,7 @@ struct LinnetSettingsProjectionRendererTests {
   /// capability. The actual expanded/collapsed state remains Panel-transient.
   private static func testCandidateLayoutMapping() {
     var document = LinnetSettingsDocument.default
+    document.appearance.englishCandidateLayout = .horizontal
     document.appearance.chineseCandidateLayout = .vertical
     var projections = LinnetSettingsProjectionRenderer.renderProjections(document: document)
     guard projections[LinnetSettingsProjectionRenderer.squirrelCustomFile] == nil else {
@@ -407,10 +409,10 @@ struct LinnetSettingsProjectionRendererTests {
     }
 
     document.appearance.englishCandidateLayout = .horizontal
-    document.appearance.candidateBrowsingMode = .scrollingOnly
+    document.appearance.candidateBrowsingMode = .expandable
     projections = LinnetSettingsProjectionRenderer.renderProjections(document: document)
     guard projections[LinnetSettingsProjectionRenderer.squirrelCustomFile]
-      == "patch:\n  \"style/linnet_candidate_expansion_allowed\": false\n"
+      == "patch:\n  \"style/linnet_candidate_expansion_allowed\": true\n"
     else {
       fail("the global scrolling-only capability did not project exactly once")
     }
@@ -654,8 +656,8 @@ struct LinnetSettingsProjectionRendererTests {
         decoded.input.chineseLearningPolicy == .enhanced,
         decoded.appearance.themeFamily == .paperLedger,
         decoded.appearance.fontPreset == .system,
-        decoded.appearance.chineseCandidateLayout == .horizontal,
-        decoded.appearance.englishCandidateLayout == .horizontal,
+        decoded.appearance.chineseCandidateLayout == .vertical,
+        decoded.appearance.englishCandidateLayout == .vertical,
         decoded.appearance.pageSize == 9,
         decoded.english.showIPA,
         decoded.english.showTranslation,
@@ -676,7 +678,7 @@ struct LinnetSettingsProjectionRendererTests {
         let decoded = try JSONDecoder().decode(
           LinnetSettingsDocument.self, from: previousDefaults)
         guard decoded.schemaVersion == LinnetSettingsDocument.currentSchemaVersion,
-          decoded.appearance.englishCandidateLayout == .horizontal,
+          decoded.appearance.englishCandidateLayout == .vertical,
           decoded.appearance.pageSize == 9,
           decoded.input.pinyinReverseTrigger == .verticalBar
         else {
@@ -713,7 +715,7 @@ struct LinnetSettingsProjectionRendererTests {
       guard decoded.schemaVersion == LinnetSettingsDocument.currentSchemaVersion,
         decoded.appearance.themeFamily == .nativeGlass,
         decoded.appearance.chineseCandidateLayout == .vertical,
-        decoded.appearance.englishCandidateLayout == .horizontal,
+        decoded.appearance.englishCandidateLayout == .vertical,
         decoded.appearance.pageSize == 7
       else {
         fail("the v8 migration changed an explicit appearance choice")
@@ -725,11 +727,11 @@ struct LinnetSettingsProjectionRendererTests {
     let v9LayoutChoices: [(String, String, LinnetSettingsDocument.CandidateLayout,
       LinnetSettingsDocument.CandidateLayout,
       LinnetSettingsDocument.CandidateBrowsingMode)] = [
-      ("expanded", "vertical", .horizontal, .vertical, .expandable),
-      ("vertical", "expanded", .vertical, .horizontal, .expandable),
-      ("expanded", "expanded", .horizontal, .horizontal, .expandable),
-      ("horizontal", "vertical", .horizontal, .vertical, .scrollingOnly),
-      ("vertical", "horizontal", .vertical, .horizontal, .scrollingOnly),
+      ("expanded", "vertical", .vertical, .vertical, .scrollingOnly),
+      ("vertical", "expanded", .vertical, .vertical, .scrollingOnly),
+      ("expanded", "expanded", .vertical, .vertical, .scrollingOnly),
+      ("horizontal", "vertical", .vertical, .vertical, .scrollingOnly),
+      ("vertical", "horizontal", .vertical, .vertical, .scrollingOnly),
     ]
     for (chineseRaw, englishRaw, expectedChinese, expectedEnglish, expectedBrowsing)
       in v9LayoutChoices

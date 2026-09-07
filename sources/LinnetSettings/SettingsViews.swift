@@ -96,7 +96,7 @@ struct AppearanceTabView: View {
             Text("\(size)").tag(size)
           }
         }
-        .pickerStyle(.segmented)
+        .pickerStyle(.menu)
         .accessibilityIdentifier("settings.appearance.pageSize")
         Text("Candidate count is applied with the schema after you press Apply Changes.")
           .font(.caption)

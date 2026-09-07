@@ -16,7 +16,7 @@ extension SquirrelInputController {
     let page: Int
     let indexOnPage: Int
     let text: String
-    let comment: String
+    var comment: String
     let selectionLabel: String?
     var sourceAbsoluteIndex: Int? = nil
     var commitOverride: String? = nil

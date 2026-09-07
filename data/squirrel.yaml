@@ -34,7 +34,7 @@ style:
   # Enable to show small arrows that indicates if paging up/down is possible
   show_paging: true
   # Linnet disclosure can temporarily show up to three candidate pages.
-  linnet_candidate_expansion_allowed: true
+  linnet_candidate_expansion_allowed: false
 
   corner_radius: 7
   hilited_corner_radius: 0
@@ -51,7 +51,7 @@ style:
   # format using %@ and %c is deprecated since 1.0, Squirrel 1.0
   # %@ is automatically expanded to "[candidate] [comment]"
   # and %c is replaced by "[label]"
-  candidate_format: '[label] [candidate]'
+  candidate_format: '[label] [candidate]  [comment]'
 
   # adjust the base line of text
   #base_offset: 0

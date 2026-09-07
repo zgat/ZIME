@@ -1,0 +1,29 @@
+#!/bin/zsh
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Core-only update: never replaces dictionaries, user learning or preferences.
+set -euo pipefail
+source_app="${1:-}"
+destination="${HOME}/Library/Input Methods/ZIME.app"
+install_root="${destination:h}"
+[[ "$#" == 1 && "${source_app}" == /* && -d "${source_app}" && ! -L "${source_app}" &&
+   -d "${destination}" && ! -L "${destination}" && ! -L "${install_root}" ]] || exit 1
+for app in "${source_app}" "${destination}"; do
+  [[ "$(/usr/bin/plutil -extract CFBundleIdentifier raw -o - "${app}/Contents/Info.plist")" == com.zime.inputmethod.ZIME ]] || exit 1
+  /usr/bin/codesign --verify --deep --strict "${app}"
+done
+[[ "$(/usr/bin/stat -f %u "${destination}")" == "$(/usr/bin/id -u)" ]] || exit 1
+[[ "$(/usr/bin/lipo -archs "${source_app}/Contents/MacOS/ZIME")" == arm64 ]] || exit 1
+stage="$(/usr/bin/mktemp -d "${install_root}/.zime-core-update.XXXXXX")"
+/usr/bin/ditto --noqtn "${source_app}" "${stage}/ZIME.app"
+/usr/bin/codesign --verify --deep --strict "${stage}/ZIME.app"
+# Retain the previous signed App for a recoverable rollback. Hidden staging is
+# not registered with Launch Services and is never launched as an IME host.
+/usr/bin/pkill -x ZIME 2>/dev/null || true
+/bin/mv "${destination}" "${stage}/previous.app"
+if ! /bin/mv "${stage}/ZIME.app" "${destination}"; then
+  /bin/mv "${stage}/previous.app" "${destination}"
+  exit 1
+fi
+"${destination}/Contents/MacOS/ZIME" --request-first-install-authorization
+print "ZIME App updated. Dictionary and learning data were not changed."
+print "Previous App retained at: ${stage}/previous.app"

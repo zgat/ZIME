@@ -8,11 +8,10 @@
 
 import Foundation
 
-/// Canonical settings document (schema v12). Every default below matches the
-/// bundled distribution defaults, so a fresh install renders an identical
-/// configuration without emitting any projection file.
+/// Canonical settings document (schema v13). ZIME's bilingual layout defaults
+/// are projected over the bundled Rime distribution without modifying its data.
 struct LinnetSettingsDocument: Codable, Equatable, Sendable {
-  static let currentSchemaVersion = 12
+  static let currentSchemaVersion = 13
 
   var schemaVersion: Int
   var appearance: Appearance
@@ -160,7 +159,7 @@ extension LinnetSettingsDocument {
     static let maximumFontPoint = 32.0
     static let fontPointStep = 1.0
     static let defaultPageSize = 9
-    static let pageSizeOptions = [3, 5, 7, 9]
+    static let pageSizeOptions = Array(3...9)
 
     var fontPoint: Double
     var themeFamily: ThemeFamily
@@ -174,10 +173,10 @@ extension LinnetSettingsDocument {
     static let `default` = Appearance(
       fontPoint: defaultFontPoint,
       themeMode: .system,
-      chineseCandidateLayout: .horizontal,
-      englishCandidateLayout: .horizontal,
+      chineseCandidateLayout: .vertical,
+      englishCandidateLayout: .vertical,
       pageSize: defaultPageSize,
-      candidateBrowsingMode: .expandable,
+      candidateBrowsingMode: .scrollingOnly,
       themeFamily: ThemeFamily.defaultValue,
       fontPreset: .system
     )
@@ -470,6 +469,12 @@ extension LinnetSettingsDocument {
       if appearance.pageSize == 5 {
         appearance.pageSize = Appearance.defaultPageSize
       }
+    }
+    if storedSchemaVersion < 13 {
+      // One-time ZIME bilingual layout migration; later explicit choices stay.
+      appearance.chineseCandidateLayout = .vertical
+      appearance.englishCandidateLayout = .vertical
+      appearance.candidateBrowsingMode = .scrollingOnly
     }
     if storedSchemaVersion < Self.currentSchemaVersion {
       schemaVersion = Self.currentSchemaVersion

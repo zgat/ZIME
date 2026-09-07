@@ -192,6 +192,8 @@ struct LinnetSettingsAppearancePreviewTests {
         var appearance = LinnetSettingsDocument.Appearance.default
         appearance.themeFamily = family
         appearance.themeMode = mode
+        appearance.chineseCandidateLayout = .horizontal
+        appearance.englishCandidateLayout = .horizontal
         let preview = projected(appearance, systemIsDark: mode == .dark, catalog: catalog)
         guard let source = catalog.scheme(for: appearance, systemIsDark: mode == .dark) else {
           fail("missing source projection for \(family) \(mode)")

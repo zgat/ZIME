@@ -205,6 +205,8 @@ struct SettingsRootView: View {
         .tabItem { Label("Appearance", systemImage: "paintbrush.pointed") }
       InputTabView(model: model)
         .tabItem { Label("Input", systemImage: "keyboard") }
+      ZIMETranslationSettingsView()
+        .tabItem { Label("翻译", systemImage: "character.bubble") }
       DictionaryTabView(model: model)
         .tabItem { Label("Dictionary", systemImage: "text.book.closed") }
       DataTabView(

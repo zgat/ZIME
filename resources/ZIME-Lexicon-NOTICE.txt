@@ -1,0 +1,18 @@
+ZIME bilingual dictionary attribution
+
+zime-cedict.sqlite3 is derived from CC-CEDICT, published by MDBG and
+maintained by the CC-CEDICT community. Source release: 2026-09-06T07:40:00Z.
+Original source: https://www.mdbg.net/chinese/dictionary?page=cc-cedict
+License: Creative Commons Attribution-ShareAlike 4.0 International
+https://creativecommons.org/licenses/by-sa/4.0/
+
+Changes by the ZIME contributors (2026): indexed simplified/traditional
+headwords; removed reference-only senses; ranked ordinary senses before
+bound forms and proper names; generated a bounded reverse English index.
+This adapted dictionary remains licensed under CC BY-SA 4.0, independently
+of the application's GPL-3.0-or-later code. Attribution and license must be
+preserved in redistributed or adapted versions. No endorsement is implied.
+
+Reproducible source and conversion script are distributed with ZIME:
+data/zime/cedict.txt.gz and scripts/build-zime-lexicon.
+Repository: https://github.com/zgat/ZIME

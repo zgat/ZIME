@@ -9,10 +9,13 @@ ZIME 是一款面向 Apple Silicon、macOS 13 及以上版本的本地优先双�
 - 两个 macOS 输入源：“ZIME 简体中文”和“ZIME 繁體中文”，共用设置和学习数据；
 - 中文全拼、多字词、首字母缩写、保守模糊音与错序纠正；
 - 智能英文补全、拼写纠错、多词候选、常用缩写、IPA 和下一词预测；
-- 英文候选显示中文释义，中文候选显示英文释义；
+- 每行候选都显示译文，默认竖排，候选数量下拉框可选 3–9；
+- 英文候选显示中文释义，中文候选显示英文释义，内置 CC-CEDICT 中英词典；
 - 本地用户词频、自动组词、上下文排序、Emoji 与本地词库缓存；
 - 轻按 Shift 切换中文/智能英文，Caps Lock 保持原始 ASCII；
 - 原生设置界面，以及给高级用户的 Rime YAML 投影。
+
+![中英文候选逐行翻译](resources/readme/bilingual-features.png)
 
 默认按 Tab 进入译文候选，按数字键或回车确认译文；再次按 Tab 或 Escape 回到
 原文候选。切换键可改为 Option-Return，译文确认键可改为空格。没有进入译文
@@ -20,10 +23,13 @@ ZIME 是一款面向 Apple Silicon、macOS 13 及以上版本的本地优先双�
 
 ## 离线与隐私
 
-中英文释义、反向索引、纠错、预测和学习均在本机完成。0.1 版只装载
-`ZIMENullCloudTranslationProvider`，候选翻译路径不包含网络客户端，也不会发送
-按键、候选、词典或学习数据。完整交付包内含四类带清单校验的离线数据包和
-万象 LTS n-gram 语法模型。
+中英文词典、反向索引、纠错、预测和学习均在本机运行。完整交付包内含
+CC-CEDICT 124,988 条源词条、四类带清单校验的离线数据包和万象 LTS 模型。
+
+0.1.1 新增独立“翻译”设置页，可接入 OpenAI 兼容接口、DeepL、百度、腾讯。
+云翻译默认关闭；只有开启并保存后，才发送当前页缺少本地译文的候选词，
+不发送剪贴板、文档上下文或输入历史。API 可能收费，密钥仅保存在本机钥匙串。
+“测试连接”按钮会明确发送固定单词 `hello`，不会自动开启云翻译。
 
 ## 安装与构建
 
@@ -34,6 +40,7 @@ ZIME 是一款面向 Apple Silicon、macOS 13 及以上版本的本地优先双�
 
 ```sh
 no_download=1 ./action-build.sh release
+./tests/verify_zime_translation.sh
 ./tests/verify_swift_units.sh
 ./tests/verify_rime_runtime.sh --zime-bilingual-probe
 ./tests/verify_english_data_projection.sh
@@ -47,6 +54,9 @@ scripts/build-zime-delivery /absolute/path/to/ZIME.app /absolute/output/director
 
 开发预览包采用可验证的 Ad-hoc App 签名，PKG 未使用 Apple Developer ID 签名，
 也未经过公证；它不能被描述为正式公证发行版。
+
+0.1.1 的验证范围、词库比较和已知限制见
+[验证记录](docs/ZIME-0.1.1-VALIDATION.md)。
 
 ## 上游与许可证
 

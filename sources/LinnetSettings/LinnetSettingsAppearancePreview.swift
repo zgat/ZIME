@@ -443,24 +443,12 @@ struct LinnetSettingsAppearancePreviewView: View {
     language: LinnetSettingsAppearancePreview.PreviewLanguage
   ) -> some View {
     let expanded = preview.candidateBrowsingMode == .expandable
-    let detailGeometry = preview.detailGeometry(
-      for: language,
-      expanded: expanded)
     return VStack(alignment: .leading, spacing: LinnetCandidatePresentation.candidateRowSpacing) {
       previewLanguageLabel(language)
         .font(.caption.weight(.medium))
         .foregroundStyle(preview.palette.secondary.color)
       ScrollView(.horizontal, showsIndicators: false) {
-        LinnetCandidateDetailSurfaceLayout(geometry: detailGeometry) {
-          candidateList(preview, language: language, expanded: expanded)
-            .fixedSize(horizontal: true, vertical: false)
-          candidateDetailDivider(preview, geometry: detailGeometry)
-            .fixedSize(horizontal: true, vertical: false)
-          candidateDetail(
-            preview,
-            language: language,
-            maximumWidth: detailGeometry.detailColumnMaximumWidth)
-        }
+        candidateList(preview, language: language, expanded: expanded)
         .fixedSize(horizontal: true, vertical: true)
       }
       .frame(maxWidth: .infinity, alignment: .leading)
@@ -633,14 +621,26 @@ extension LinnetSettingsAppearancePreview {
         placement: .inline)
     ]
     let line = LinnetCandidatePresentation.candidateLine(
-      candidateFormat: "[label] [candidate]",
+      candidateFormat: "[label] [candidate]  [comment]",
       label: label,
       candidate: value,
-      comment: "",
+      comment: previewGloss(value),
       candidateAttributes: candidateAttributes,
       labelAttributes: labelAttributes,
       commentAttributes: labelAttributes)
     return line.attributedString
+  }
+
+  private static func previewGloss(_ value: String) -> String {
+    let chinese = ["输入", "输入法", "候选", "中文", "设置", "翻译", "词典", "界面", "预览",
+      "方案", "拼音", "智能", "英文", "简体", "繁体", "符号", "短语", "预测",
+      "同步", "更新", "备份", "恢复", "导入", "导出", "用户", "语言", "外观"]
+    let english = ["input", "input method", "candidate", "Chinese", "settings", "translation", "dictionary", "interface", "preview",
+      "scheme", "pinyin", "smart", "English", "simplified", "traditional", "symbol", "phrase", "prediction",
+      "sync", "update", "backup", "restore", "import", "export", "user", "language", "appearance"]
+    if let index = chinese.firstIndex(of: value) { return english[index] }
+    if let index = english.firstIndex(of: value) { return chinese[index] }
+    return ["method": "方法", "context": "上下文", "typing": "打字", "completion": "补全", "spelling": "拼写", "pronunciation": "发音", "learning": "学习", "layout": "布局", "theme": "主题", "profile": "方案", "native": "原生", "glass": "玻璃"][value] ?? "译文"
   }
 }
 

@@ -37,6 +37,16 @@ release metadata, not this unversioned guide.
 
 ## Shipped language data
 
+ZIME additionally bundles a direct simplified/traditional Chinese-English index
+derived from [CC-CEDICT, published by MDBG](https://www.mdbg.net/chinese/dictionary?page=cc-cedict).
+This adapted dictionary is separately licensed under
+[CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/), not relicensed
+under the application's GPL. Its source snapshot, transformation script, and
+attribution are `data/zime/cedict.txt.gz`, `scripts/build-zime-lexicon`, and
+`resources/ZIME-Lexicon-NOTICE.txt`; the latter is also bundled alongside
+`zime-cedict.sqlite3` in the App. This supplement is not yet represented in
+Linnet's inherited release-inventory generator.
+
 Linnet uses selected, pinned inputs from:
 
 - [rime-ice](https://github.com/iDvel/rime-ice) for selected English, radical,

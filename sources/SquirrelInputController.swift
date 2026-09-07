@@ -26,6 +26,7 @@ final class SquirrelInputController: IMKInputController {
   var bilingualSourceSnapshot: CandidateSnapshot?
   var bilingualHighlightedIndex = -1
   var pendingCommitOverride: String?
+  private let candidateTranslator = ZIMECandidateTranslator()
   private var inlinePreedit = false
   private var inlineCandidate = false
   // for chord-typing
@@ -199,6 +200,7 @@ final class SquirrelInputController: IMKInputController {
   }
 
   override func deactivateServer(_ sender: Any!) {
+    candidateTranslator.cancel()
     guard let deactivatingClient = sender as? IMKTextInput else { return }
     inputModeIdentity = nil
     systemInputModeIdentifier = nil
@@ -215,6 +217,7 @@ final class SquirrelInputController: IMKInputController {
   }
 
   override func hidePalettes() {
+    candidateTranslator.cancel()
     NSApp.squirrelAppDelegate.panel?.hide(controller: self)
     super.hidePalettes()
   }
@@ -539,7 +542,7 @@ extension SquirrelInputController {
       // swiftlint:enable identifier_name
       let expansionAnchorPage =
         NSApp.squirrelAppDelegate.panel?.candidateExpansionAnchorPage
-      guard let sourceCandidateSnapshot = LinnetRimeCandidateSnapshotBuilder.build(
+      guard let rawCandidateSnapshot = LinnetRimeCandidateSnapshotBuilder.build(
         context: ctx,
         labels: labels,
         expansionAnchorPage: expansionAnchorPage,
@@ -550,6 +553,12 @@ extension SquirrelInputController {
         hidePalettes()
         return
       }
+      let showTranslation = NSApp.squirrelAppDelegate.activeSettingsDocument?.english.showTranslation ?? true
+      let sourceCandidateSnapshot = candidateTranslator.annotate(rawCandidateSnapshot,
+        showTranslation: showTranslation) { [weak self] in
+          guard let self, self.activeClient != nil, self.sessionIsCurrent() else { return }
+          self.refreshCandidatePresentation()
+        }
       bilingualSourceSnapshot = sourceCandidateSnapshot
       let candidateSnapshot = bilingualTranslationMode
         ? projectTranslationCandidates(from: sourceCandidateSnapshot)

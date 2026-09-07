@@ -8,9 +8,8 @@
 import AppKit
 import Foundation
 
-/// Optional remote translation boundary. ZIME 1.x installs the null provider
-/// and performs no translation network request; a future provider must be an
-/// explicit, separately consented implementation of this interface.
+/// Offline provider retained for embedders. The optional remote implementation
+/// lives in ZIMETranslationHTTP and is gated by explicit user configuration.
 protocol ZIMECloudTranslationProvider: Sendable {
   func translations(for text: String, sourceLanguage: String) async -> [String]
 }

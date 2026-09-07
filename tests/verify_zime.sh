@@ -41,6 +41,12 @@ rg -Fq 'counts.namespaces["m/en"]' tools/LinnetEnglishDataGenerator.swift ||
   fail "reverse dictionary projection"
 rg -Fq 'ZIMENullCloudTranslationProvider' sources/LinnetCandidatePresentation.swift ||
   fail "null cloud provider"
+rg -Fq 'var enabled = false' sources/ZIMETranslationProvider.swift ||
+  fail "cloud translation must default off"
+rg -Fq 'configuration.enabled' sources/ZIMECandidateTranslator.swift ||
+  fail "cloud consent gate"
+[[ -f resources/zime-cedict.sqlite3 && -f resources/ZIME-Lexicon-NOTICE.txt ]] ||
+  fail "direct bilingual dictionary and attribution"
 if rg -n 'URLSession|NSURLConnection|curl_easy|CFNetwork' \
   sources/SquirrelInputController.swift sources/LinnetCandidatePresentation.swift \
   plugins/smart_english; then

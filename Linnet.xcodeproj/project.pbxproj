@@ -117,6 +117,13 @@
 		F82000000000000000000003 /* LinnetSettingsProjectionRenderer.swift in Linnet Sources */ = {isa = PBXBuildFile; fileRef = D3000000000000000000001C /* LinnetSettingsProjectionRenderer.swift */; };
 		F70000000000000000000004 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = F70000000000000000000003 /* InfoPlist.strings */; };
 		A12E57000000000000000002 /* SettingsUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A12E57000000000000000001 /* SettingsUITests.swift */; };
+		A99000000000000000000001 /* ZIMELocalLexicon.swift in Sources */ = {isa = PBXBuildFile; fileRef = A99000000000000000000011; };
+		A99000000000000000000002 /* ZIMETranslationProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = A99000000000000000000012; };
+		A99000000000000000000003 /* ZIMECandidateTranslator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A99000000000000000000013; };
+		A99000000000000000000004 /* ZIMETranslationProvider.swift in Settings Sources */ = {isa = PBXBuildFile; fileRef = A99000000000000000000012; };
+		A99000000000000000000005 /* ZIMETranslationSettingsView.swift in Settings Sources */ = {isa = PBXBuildFile; fileRef = A99000000000000000000014; };
+		A99000000000000000000006 /* zime-cedict.sqlite3 in Resources */ = {isa = PBXBuildFile; fileRef = A99000000000000000000015; };
+		A99000000000000000000007 /* ZIME-Lexicon-NOTICE.txt in Resources */ = {isa = PBXBuildFile; fileRef = A99000000000000000000016; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -275,6 +282,12 @@
 		F70000000000000000000002 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "resources/zh-Hans.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
 		A12E57000000000000000001 /* SettingsUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsUITests.swift; sourceTree = "<group>"; };
 		A12E57000000000000000003 /* SettingsUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SettingsUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		A99000000000000000000011 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = sources/ZIMELocalLexicon.swift; sourceTree = SOURCE_ROOT; };
+		A99000000000000000000012 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = sources/ZIMETranslationProvider.swift; sourceTree = SOURCE_ROOT; };
+		A99000000000000000000013 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = sources/ZIMECandidateTranslator.swift; sourceTree = SOURCE_ROOT; };
+		A99000000000000000000014 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = sources/LinnetSettings/ZIMETranslationSettingsView.swift; sourceTree = SOURCE_ROOT; };
+		A99000000000000000000015 = {isa = PBXFileReference; lastKnownFileType = file; path = resources/zime-cedict.sqlite3; sourceTree = SOURCE_ROOT; };
+		A99000000000000000000016 = {isa = PBXFileReference; lastKnownFileType = text; path = resources/ZIME-Lexicon-NOTICE.txt; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -330,6 +343,12 @@
 				E90000000000000000000002 /* LinnetPreeditGeometry.swift */,
 				E90100000000000000000002 /* LinnetPanelGeometry.swift */,
 				E90200000000000000000002 /* LinnetCandidatePresentation.swift */,
+				A99000000000000000000011,
+				A99000000000000000000012,
+				A99000000000000000000013,
+				A99000000000000000000014,
+				A99000000000000000000015,
+				A99000000000000000000016,
 				E90300000000000000000002 /* LinnetCandidateAccessibility.swift */,
 				A70000000000000000000002 /* LinnetClientAppearance.swift */,
 				B39771222BECEA150093A49B /* MacOSKeyCodes.swift */,
@@ -637,6 +656,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				E90500000000000000000003 /* squirrel.yaml in Core Resources */,
+				A99000000000000000000006 /* zime-cedict.sqlite3 in Resources */,
+				A99000000000000000000007 /* ZIME-Lexicon-NOTICE.txt in Resources */,
 				F70000000000000000000004 /* InfoPlist.strings in Resources */,
 				446C01D71F767BD400A6C23E /* Assets.xcassets in Resources */,
 				B3EF08EA2F17125E00433A45 /* Linnet.xcassets in Resources */,
@@ -655,6 +676,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				FC1000000000000000000001 /* SettingsApplication.swift in Settings Sources */,
+				A99000000000000000000004 /* ZIMETranslationProvider.swift in Settings Sources */,
+				A99000000000000000000005 /* ZIMETranslationSettingsView.swift in Settings Sources */,
 				D30000000000000000000002 /* SettingsMain.swift in Sources */,
 				FC2000000000000000000001 /* SettingsModelPresentation.swift in Settings Sources */,
 				FC3000000000000000000001 /* SettingsModelLanguageData.swift in Settings Sources */,
@@ -715,6 +738,9 @@
 			buildActionMask = 2147483647;
 			files = (
 				B39771232BECEA150093A49B /* MacOSKeyCodes.swift in Sources */,
+				A99000000000000000000001 /* ZIMELocalLexicon.swift in Sources */,
+				A99000000000000000000002 /* ZIMETranslationProvider.swift in Sources */,
+				A99000000000000000000003 /* ZIMECandidateTranslator.swift in Sources */,
 				D50000000000000000000001 /* LinnetPackContract.swift in Linnet Sources */,
 				D60000000000000000000001 /* LinnetDataChannel.swift in Linnet Sources */,
 				D40000000000000000000001 /* LinnetDataRegistry.swift in Linnet Sources */,

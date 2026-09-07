@@ -298,17 +298,13 @@ extension SquirrelPanel {
       highlightedPreeditRange = .empty
     }
 
-    let usesInlineComments = LinnetCandidatePresentation.usesInlineComments(
-      candidateFormat: theme.candidateFormat)
+    // Every theme, including imported legacy themes, must expose each gloss.
+    let candidateFormat = theme.candidateFormat +
+      (LinnetCandidatePresentation.usesInlineComments(candidateFormat: theme.candidateFormat)
+        ? "" : "  [comment]")
     let detailGeometry = LinnetCandidatePresentation.candidateDetailGeometry(
       forLinearLayout: linear || candidates.isExpanded || vertical,
       candidateFontPoint: theme.font.pointSize)
-    let selectedDetail = usesInlineComments
-      ? nil : selectedDetail(
-        theme: theme,
-        candidates: candidates.items,
-        highlighted: index,
-        reservesExpandedDetail: candidates.isExpanded)
     let detailRange = NSRange.empty
 
     // candidates
@@ -338,10 +334,9 @@ extension SquirrelPanel {
       let commentAttrs = itemIndex == index ? theme.commentHighlightedAttrs : theme.commentAttrs
       let label = theme.candidateFormat.contains(/\[label\]/)
         ? item.selectionLabel ?? "" : ""
-      let displayedComment = usesInlineComments
-        ? LinnetCandidatePresentation.candidateComment(item.comment).displayText : ""
+      let displayedComment = LinnetCandidatePresentation.candidateComment(item.comment).displayText
       return LinnetCandidatePresentation.candidateLine(
-        candidateFormat: theme.candidateFormat,
+        candidateFormat: candidateFormat,
         label: label,
         candidate: item.text,
         comment: displayedComment,
@@ -404,7 +399,7 @@ extension SquirrelPanel {
     // text done!
     guard publicationIsCurrent(currentPublication) else { return false }
     view.textView.textContentStorage?.attributedString = text
-    view.publishSidecarDetail(selectedDetail)
+    view.publishSidecarDetail(nil)
     guard publicationIsCurrent(currentPublication) else { return false }
     view.textView.setLayoutOrientation(vertical ? .vertical : .horizontal)
     view.detailTextView.setLayoutOrientation(vertical ? .vertical : .horizontal)
