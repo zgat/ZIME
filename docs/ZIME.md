@@ -1,4 +1,4 @@
-# ZIME 0.1.11
+# ZIME 0.1.12
 
 ZIME is a macOS 13+ Apple-silicon input method with one shared local engine and
 two system-visible modes:
@@ -38,6 +38,18 @@ At the first/last page these keys are consumed without a commit or state change.
 Outside a real candidate menu, normal punctuation and raw/code input still apply.
 The extra menu-bar mode indicator defaults off; macOS's input-source menu still
 provides Settings and the current mode. Shift mode switching is unchanged.
+
+When letters are pending, a plain digit without a corresponding visible-page
+candidate joins the pending input instead of reaching the application early.
+For example, with five candidates per page, `x` followed by `7` produces one
+literal candidate `x7`; Enter commits the entire token once. Subsequent letters
+and digits remain in that same token, and Backspace restores ordinary matching
+when the last digit is removed. Valid numbered candidates still select normally
+before entering this literal state; a forced-raw-only spelling accepts all digits.
+Keypad digits follow the same rule, while idle digits and host modifier chords
+are unchanged. Explicit Unicode/calculator/reverse-lookup routes take priority.
+The Core projection installs the segmentor for both Chinese and Smart English,
+including when an update retains an older language pack.
 
 Settings → Input → Candidate shortcuts records actual keys instead of offering
 fixed shortcut menus. The three independent actions are:

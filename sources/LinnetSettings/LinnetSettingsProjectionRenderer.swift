@@ -256,7 +256,7 @@ private extension LinnetSettingsProjectionRenderer {
     input: LinnetSettingsDocument.Input,
     english: LinnetSettingsDocument.English
   ) -> String? {
-    var entries: [(String, String)] = []
+    var entries = alphanumericSegmentorProjection(chinese: true)
     appendCandidateLayout(
       appearance.chineseCandidateLayout,
       defaultLayout: .horizontal,
@@ -303,7 +303,7 @@ private extension LinnetSettingsProjectionRenderer {
     input: LinnetSettingsDocument.Input,
     english: LinnetSettingsDocument.English
   ) -> String? {
-    var entries: [(String, String)] = []
+    var entries = alphanumericSegmentorProjection(chinese: false)
     appendCandidateLayout(
       appearance.englishCandidateLayout,
       defaultLayout: .horizontal,
@@ -367,6 +367,16 @@ private extension LinnetSettingsProjectionRenderer {
     entries.append(("\(translator)/user_dict", quoted(userDictionary)))
     entries.append(("\(translator)/enable_user_dict", enabled ? "true" : "false"))
     entries.append(("linnet_english_interaction/learning_enabled", enabled ? "true" : "false"))
+  }
+
+  /// Core-only upgrades retain old language packs. Publish the complete
+  /// canonical list so the new segmentor is installed exactly once, while
+  /// Matcher and the Chinese reverse-lookup affixes keep their precedence.
+  private static func alphanumericSegmentorProjection(chinese: Bool) -> [(String, String)] {
+    var names = ["matcher", "zime_alphanumeric_segmentor"]
+    if chinese { names += ["affix_segmentor@linnet_pinyin", "affix_segmentor@radical_lookup"] }
+    names += ["ascii_segmentor", "abc_segmentor", "punct_segmentor", "fallback_segmentor"]
+    return [("engine/segmentors", "[" + names.map(quoted).joined(separator: ", ") + "]")]
   }
 
   /// The bundled schema owns the enhanced default. Settings emits only the

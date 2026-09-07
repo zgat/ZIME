@@ -138,6 +138,7 @@ engine:
     - express_editor
   segmentors:
     - matcher
+    - zime_alphanumeric_segmentor
     - affix_segmentor@linnet_pinyin
     - affix_segmentor@radical_lookup
     - ascii_segmentor

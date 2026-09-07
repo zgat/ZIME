@@ -39,6 +39,7 @@ engine:
     - express_editor
   segmentors:
     - matcher
+    - zime_alphanumeric_segmentor
     - ascii_segmentor
     - abc_segmentor
     - punct_segmentor

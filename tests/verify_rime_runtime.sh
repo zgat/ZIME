@@ -11,6 +11,7 @@ cd "${repo_root}"
 
 runtime_probe="${1:-}"
 if [[ "${1:-}" == --zime-bilingual-probe ||
+      "${1:-}" == --zime-alphanumeric-probe ||
       "${1:-}" == --zime-case-probe ||
       "${1:-}" == --zime-shortcuts-probe ||
       "${1:-}" == --zime-paging-probe ||
@@ -23,7 +24,7 @@ if [[ "${1:-}" == --zime-bilingual-probe ||
       "${1:-}" == --live-sync-probe ]]; then
   :
 elif [[ $# -ne 0 ]]; then
-  echo "usage: $0 [--zime-bilingual-probe|--zime-case-probe|--zime-shortcuts-probe|--zime-paging-probe|--mixed-input-probe|--mixed-latency-probe|--warm-session-probe|--cold-client-probe|--profile-key-matrix-probe|--fast-config-reload-probe|--live-sync-probe]" >&2
+  echo "usage: $0 [--zime-bilingual-probe|--zime-alphanumeric-probe|--zime-case-probe|--zime-shortcuts-probe|--zime-paging-probe|--mixed-input-probe|--mixed-latency-probe|--warm-session-probe|--cold-client-probe|--profile-key-matrix-probe|--fast-config-reload-probe|--live-sync-probe]" >&2
   exit 64
 fi
 
@@ -63,6 +64,16 @@ for schema in data/linnet/*.schema.yaml; do
   cp "${schema}" "${shared}/$(basename "${schema}")"
 done
 cp data/linnet/default.yaml "${shared}/default.yaml"
+# Reproduce a retained pre-0.1.12 language pack. Core projections must install
+# the new segmentor once, without needing a dictionary-pack replacement.
+/usr/bin/ruby -e '
+  ARGV.each do |path|
+    source = File.binread(path)
+    line = "    - zime_alphanumeric_segmentor\n"
+    abort "new segmentor missing from canonical schema" unless source.scan(line).length == 1
+    File.binwrite(path, source.sub(line, ""))
+  end
+' "${shared}/linnet_zh.schema.yaml" "${shared}/linnet_en.schema.yaml"
 # An installed pre-0.1.8 language pack disables English learning in Chinese
 # mode. Only the new Core projection may repair that retained pack.
 ruby -e '

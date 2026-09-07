@@ -20,6 +20,7 @@
 #include <rime/registry.h>
 #include <rime/schema.h>
 #include <rime/segmentation.h>
+#include <rime/segmentor.h>
 #include <rime/translation.h>
 #include <rime/translator.h>
 #include <rime_api.h>
@@ -225,6 +226,37 @@ bool IsAsciiLetterKey(int keycode) {
          (keycode >= 'A' && keycode <= 'Z');
 }
 
+bool IsAlphanumericSpelling(const string& text, bool require_digit) {
+  bool letter = false, digit = false;
+  if (text.empty()) return false;
+  for (const unsigned char byte : text) {
+    if (IsAsciiLetterKey(byte)) letter = true;
+    else if (byte >= '0' && byte <= '9') digit = true;
+    else return false;
+  }
+  return letter && (!require_digit || digit);
+}
+
+// Runs after Matcher: explicit Unicode/calculator/reverse-lookup commands
+// retain priority. A digit admitted by the interaction owner becomes one raw
+// segment instead of splitting the pending letters from an immediate digit.
+class AlphanumericSegmentor : public Segmentor {
+ public:
+  explicit AlphanumericSegmentor(const Ticket& ticket) : Segmentor(ticket) {}
+  bool Proceed(Segmentation* segments) override {
+    if (!segments) return true;
+    const auto start = segments->GetCurrentStartPosition();
+    const auto& input = segments->input();
+    if (start >= input.size() || !IsAlphanumericSpelling(input.substr(start), true)) return true;
+    if (!segments->empty() && segments->back().end == input.size() &&
+        !segments->back().tags.empty()) return true;
+    Segment literal(start, input.size());
+    literal.tags.insert("zz_code_token");
+    segments->AddSegment(literal);
+    return false;
+  }
+};
+
 bool ContinuesPredictionContext(int keycode) {
   return IsAsciiLetterKey(keycode) || keycode == XK_apostrophe ||
          keycode == XK_slash || keycode == XK_semicolon ||
@@ -286,6 +318,8 @@ class LinnetInteractionProcessor : public Processor {
         context->composition().back().HasTag("prediction")) {
       return ProcessPrediction(context, key);
     }
+    const ProcessResult alphanumeric = ProcessAlphanumericDigit(context, key);
+    if (alphanumeric != kNoop) return alphanumeric;
     const ProcessResult printable_paging =
         ProcessPrintablePagingKey(context, key);
     if (printable_paging != kNoop) return printable_paging;
@@ -335,6 +369,29 @@ class LinnetInteractionProcessor : public Processor {
 
  private:
   enum class PostCommitPrediction { kPreserve, kDismiss };
+
+  ProcessResult ProcessAlphanumericDigit(Context* context, const KeyEvent& key) const {
+    if (!IsPlainKey(key) || context->get_option("ascii_mode") ||
+        context->composition().empty() || context->input().empty()) return kNoop;
+    int digit = key.keycode();
+    if (digit >= XK_KP_0 && digit <= XK_KP_9) digit = '0' + digit - XK_KP_0;
+    if (digit < '0' || digit > '9') return kNoop;
+    Segment& segment = context->composition().back();
+    const string spelling = context->input().substr(segment.start);
+    if (!IsAlphanumericSpelling(spelling, false)) return kNoop;
+    // An established literal token keeps every subsequent digit as text.
+    // Otherwise retain real, visible numbered selections; an unavailable
+    // index (including 0) must never escape past pending input to the client.
+    if (!IsAlphanumericSpelling(spelling, true) && !IsForcedRawOnlySegment(segment)) {
+      const int local_index = SelectionIndex(key);
+      const int page_size = engine_->schema()->page_size();
+      if (local_index >= 0 && page_size > 0 && local_index < page_size && segment.menu) {
+        const size_t page_start = segment.selected_index / page_size * page_size;
+        if (segment.menu->GetCandidateAt(page_start + local_index)) return kNoop;
+      }
+    }
+    return context->PushInput(static_cast<char>(digit)) ? kAccepted : kRejected;
+  }
 
   ProcessResult CommitSpaceSelection(
       Context* context, PostCommitPrediction prediction) const {
@@ -1144,6 +1201,7 @@ class DisabledWordsFilter : public Filter {
 static void rime_smart_english_initialize() {
   rime::Registry::instance().Register("linnet_mode_switch_processor", new rime::Component<linnet::ModeSwitchProcessor>);
   rime::Registry::instance().Register("linnet_interaction_processor", new rime::Component<linnet::LinnetInteractionProcessor>);
+  rime::Registry::instance().Register("zime_alphanumeric_segmentor", new rime::Component<linnet::AlphanumericSegmentor>);
   rime::Registry::instance().Register("linnet_english_translator", new rime::Component<linnet::SmartEnglishTranslator>);
   rime::Registry::instance().Register("linnet_english_filter", new rime::Component<linnet::SmartEnglishFilter>);
   rime::Registry::instance().Register("linnet_disabled_filter", new rime::Component<linnet::DisabledWordsFilter>);

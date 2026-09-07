@@ -3879,62 +3879,104 @@ void ExpectRawLikeArrowEditing(RimeApi_stdbool* api) {
   }
 }
 
-void ExpectInvalidActiveSelectionKeysPassThrough(RimeApi_stdbool* api) {
-  // The macOS transport owner normalizes composing keypad digits to their
-  // number-row equivalents before Rime sees them. MacOSKeyCodesTests covers
-  // that boundary; exercise the resulting Rime contract here only once.
-  {
-    constexpr const char* kReason = "number-row zero";
-    const RimeSessionId session = CreateSchemaSession(api, "linnet_en");
-    Enter(api, session, "a");
-    const auto candidates = CandidateOrigins(session);
-    if (candidates.size() < 10) {
-      Fail(std::string(kReason) + " fixture has fewer than ten candidates");
+void ExpectAlphanumericComposition(RimeApi_stdbool* api) {
+  const auto literal = [&](RimeSessionId session, const std::string& expected) {
+    const auto rows = Candidates(api, session);
+    if (std::string(api->get_input(session)) != expected || rows.size() != 1 || rows.front().text != expected)
+      Fail("alphanumeric spelling was split or replaced: " + expected + ", input=" + api->get_input(session));
+    ExpectNoCommit(api, session, "alphanumeric preedit " + expected);
+  };
+  for (const char* schema : {"linnet_zh_pinyin", "linnet_en"}) {
+    // Keep the shared config alive while constructing fresh sessions at each
+    // page size; Schema caches page_size on construction, unlike booleans.
+    const auto owner = CreateSchemaSession(api, schema);
+    const auto old_page_size = rime::Service::instance().GetSession(owner)->schema()->page_size();
+    for (int page_size = 3; page_size <= 9; ++page_size) {
+      SetSchemaString(api, schema, "menu/page_size", std::to_string(page_size).c_str());
+      for (int digit = 0; digit <= 9; ++digit) {
+        if (digit != 0 && digit <= page_size) continue;
+        const auto session = CreateSchemaSession(api, schema);
+        Enter(api, session, "x");
+        if (!api->process_key(session, '0' + digit, 0)) Fail("unavailable digit escaped to the application");
+        std::string text = "x" + std::to_string(digit);
+        literal(session, text);
+        for (char ch : std::string("1a09")) {
+          if (!api->process_key(session, ch, 0)) Fail("literal continuation escaped to the application");
+          text += ch;
+          literal(session, text);
+        }
+        if (!api->select_candidate(session, 0) || TakeCommit(api, session) != text)
+          Fail("explicit confirmation changed alphanumeric order");
+        ExpectNoCommit(api, session, "duplicate literal commit");
+        api->destroy_session(session);
+      }
+      const auto numbered = CreateSchemaSession(api, schema);
+      Enter(api, numbered, std::string(schema) == "linnet_en" ? "a" : "shi");
+      const auto rows = Candidates(api, numbered);
+      if (rows.size() < static_cast<size_t>(page_size)) Fail("numbered candidate fixture too short");
+      const auto selected = rows[page_size - 1].text;
+      if (!api->process_key(numbered, '0' + page_size, 0) || TakeCommit(api, numbered) != selected)
+        Fail("a valid visible numbered candidate stopped selecting");
+      api->destroy_session(numbered);
     }
-    const auto expected = candidates.front().text;
-    if (api->process_key(session, XK_0, 0)) {
-      Fail(std::string(kReason) +
-           " selected the hidden tenth candidate instead of reaching the host");
+    SetSchemaString(api, schema, "menu/page_size", "5");
+    for (int key : std::array<int, 4>{{'7', XK_KP_7, '0', XK_KP_0}}) {
+      const auto session = CreateSchemaSession(api, schema);
+      Enter(api, session, "x");
+      if (!api->process_key(session, key, 0)) Fail("keypad/number row digit escaped");
+      const auto text = (key == '7' || key == XK_KP_7) ? "x7" : "x0";
+      literal(session, text);
+      if (!api->process_key(session, XK_Return, 0) || TakeCommit(api, session) != text)
+        Fail("Return did not commit one complete literal token");
+      api->destroy_session(session);
     }
-    if (TakeCommit(api, session, kReason) != expected) {
-      Fail(std::string(kReason) +
-           " did not commit the current candidate before host insertion");
-    }
-    ExpectNoCommit(api, session,
-                   std::string("duplicate ") + kReason + " commit");
-    const char* input = api->get_input(session);
-    if ((input && *input) || !Candidates(api, session).empty()) {
-      Fail(std::string(kReason) +
-           " retained composition after returning the digit to the host");
-    }
-    api->destroy_session(session);
+    const auto edited = CreateSchemaSession(api, schema);
+    Enter(api, edited, "x7");
+    literal(edited, "x7");
+    if (!api->process_key(edited, XK_BackSpace, 0) || std::string(api->get_input(edited)) != "x")
+      Fail("Backspace did not remove only the digit");
+    const auto restored = Candidates(api, edited);
+    if (restored.empty()) Fail("deleting the last digit did not restore letter candidates");
+    ExpectNoCommit(api, edited, "delete last digit");
+    if (!api->process_key(edited, '8', 0)) Fail("could not re-enter literal input after deletion");
+    literal(edited, "x8");
+    if (!api->process_key(edited, XK_Escape, 0) || !std::string(api->get_input(edited)).empty())
+      Fail("Escape did not cancel the literal token");
+    ExpectNoCommit(api, edited, "cancel literal");
+    Enter(api, edited, "x70a");
+    api->set_caret_pos(edited, 1);
+    if (!api->process_key(edited, '8', 0) || std::string(api->get_input(edited)) != "x870a")
+      Fail("interior digit insertion changed token order");
+    api->set_caret_pos(edited, 5);
+    literal(edited, "x870a");
+    const auto before_chord = ReadCompositionEditingState(edited, "literal chord");
+    if (api->process_key(edited, '7', kControlMask)) Fail("host digit chord was consumed");
+    const auto after_chord = ReadCompositionEditingState(edited, "literal chord");
+    if (before_chord.input != after_chord.input || before_chord.caret_position != after_chord.caret_position)
+      Fail("host digit chord edited the literal token");
+    ExpectNoCommit(api, edited, "host digit chord");
+    api->destroy_session(edited);
+    const auto idle = CreateSchemaSession(api, schema);
+    const bool handled = api->process_key(idle, '7', 0);
+    const auto commit = TakeOptionalCommit(api, idle);
+    if ((handled ? commit : commit + "7") != "7" || !std::string(api->get_input(idle)).empty())
+      Fail("idle digit no longer inserts normally");
+    api->destroy_session(idle);
+    SetSchemaString(api, schema, "menu/page_size", std::to_string(old_page_size).c_str());
+    api->destroy_session(owner);
   }
-
-  for (int index = 2; index <= 9; ++index) {
-    const RimeSessionId session = CreateSchemaSession(api, "linnet_en");
-    Enter(api, session, "bdbdbdbd");
-    const auto candidates = CandidateOrigins(session);
-    if (candidates.size() != 1 ||
-        (candidates.front().type != kForcedRawCandidateType &&
-         candidates.front().genuine_type != kForcedRawCandidateType)) {
-      Fail("invalid selection fixture is not one forced-raw candidate");
-    }
-    const auto before = ReadCompositionEditingState(
-        session, "invalid active selection key");
-    if (api->process_key(session, XK_0 + index, 0)) {
-      Fail("invalid selection index " + std::to_string(index) +
-           " was consumed without a target candidate");
-    }
-    const auto after = ReadCompositionEditingState(
-        session, "invalid active selection key");
-    if (after.input != before.input ||
-        after.caret_position != before.caret_position ||
-        CandidateOrigins(session).size() != candidates.size()) {
-      Fail("invalid active selection key changed the active composition");
-    }
-    ExpectNoCommit(api, session, "invalid active selection key");
-    api->destroy_session(session);
+  const auto unknown = CreateSchemaSession(api, "linnet_en");
+  for (int digit = 0; digit <= 9; ++digit) {
+    Enter(api, unknown, "bdbdbdbd");
+    if (!api->process_key(unknown, '0' + digit, 0)) Fail("forced-raw spelling digit escaped");
+    literal(unknown, "bdbdbdbd" + std::to_string(digit));
   }
+  api->destroy_session(unknown);
+  const auto chinese = CreateSchemaSession(api, "linnet_zh_pinyin");
+  Enter(api, chinese, "U4e2d");
+  ExpectCompositionTag(chinese, "unicode", "alphanumeric segmentor must preserve explicit Unicode lookup");
+  api->destroy_session(chinese);
+  std::cout << "ZIME alphanumeric composition: page sizes 3-9, missing digits, continuation, keypad, editing, cancellation, valid selections and explicit commands: PASS\n";
 }
 
 void ExpectNonFormalPunctuationBoundaries(RimeApi_stdbool* api) {
@@ -7391,6 +7433,8 @@ int main(int argc, char** argv) {
       argc == 4 && std::strcmp(argv[3], "--zime-paging-probe") == 0;
   const bool zime_shortcuts_probe =
       argc == 4 && std::strcmp(argv[3], "--zime-shortcuts-probe") == 0;
+  const bool zime_alphanumeric_probe =
+      argc == 4 && std::strcmp(argv[3], "--zime-alphanumeric-probe") == 0;
   const bool zime_case_probe =
       argc == 4 && std::strcmp(argv[3], "--zime-case-probe") == 0;
   const bool zime_ranking_reopen_probe =
@@ -7420,7 +7464,7 @@ int main(int argc, char** argv) {
       !page_size_probe && !english_profile_probe &&
       !fast_config_reload_probe && !prediction_punctuation_probe &&
       !mixed_input_probe && !zime_bilingual_probe && !zime_paging_probe && !zime_ranking_reopen_probe &&
-      !zime_shortcuts_probe && !zime_case_probe &&
+      !zime_shortcuts_probe && !zime_case_probe && !zime_alphanumeric_probe &&
       !zime_english_ranking_reopen_probe && !zime_english_learning_off_probe && !zime_chinese_learning_off_probe &&
       !mixed_learning_on_probe &&
       !mixed_learning_off_probe &&
@@ -7433,7 +7477,7 @@ int main(int argc, char** argv) {
          "--english-profile-probe PROFILE CHINESE_SCHEMA CODE PREFIX|"
          "--fast-config-reload-probe|--prediction-punctuation-probe|"
          "--mixed-input-probe|--zime-bilingual-probe|--zime-paging-probe|--zime-ranking-reopen-probe|"
-         "--zime-shortcuts-probe|--zime-case-probe|"
+         "--zime-shortcuts-probe|--zime-case-probe|--zime-alphanumeric-probe|"
          "--zime-english-ranking-reopen-probe|--zime-english-learning-off-probe|"
          "--zime-chinese-learning-off-probe|"
          "--mixed-learning-on-probe|"
@@ -7508,6 +7552,11 @@ int main(int argc, char** argv) {
     return 0;
   }
 
+  if (zime_alphanumeric_probe) {
+    ExpectAlphanumericComposition(api);
+    api->finalize();
+    return 0;
+  }
   if (zime_case_probe) {
     ExpectZIMECaseInsensitiveDefinitions(api);
     api->finalize();
@@ -7867,7 +7916,7 @@ int main(int argc, char** argv) {
   ExpectPassivePredictionTabContracts(api);
   ExpectPredictionPunctuationExitContract(api);
   ExpectRawLikeArrowEditing(api);
-  ExpectInvalidActiveSelectionKeysPassThrough(api);
+  ExpectAlphanumericComposition(api);
   ExpectNonFormalPunctuationBoundaries(api);
   ExpectStatefulChinesePunctuation(api);
   ExpectHostModifierPassThrough(api);

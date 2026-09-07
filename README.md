@@ -11,6 +11,7 @@ ZIME 是一款面向 Apple Silicon、macOS 13 及以上版本的本地优先双�
 - 中文模式优先可靠中文词与已学词，简拼 `key` 默认优先“可以”；仅在中文
   匹配较弱时让常见英文优先，Shift 切换后的英文模式保持英文排序；
 - 智能英文补全、拼写纠错、多词候选、常用缩写、IPA 和下一词预测；
+- 字母后接没有对应候选序号的数字时，作为完整原文留在候选框，例如 `x7`；
 - 每行候选都显示译文，默认竖排，候选数量下拉框可选 3–9；
 - 候选固定按页显示，不再提供多页展开模式；Local Data 折叠项的整个标题行都可点击；
 - 英文候选显示中文释义，中文候选显示英文释义，内置 CC-CEDICT 中英词典；
@@ -27,9 +28,9 @@ ZIME 是一款面向 Apple Silicon、macOS 13 及以上版本的本地优先双�
 
 ![中英文候选逐行翻译](resources/readme/bilingual-features.png)
 
-默认按 Tab 进入译文候选，按数字键或回车确认译文；再次按 Tab 或 Escape 回到
-原文候选。切换键可改为 Option-Return，译文确认键可改为空格。没有进入译文
-候选状态时，翻译仅用于展示，不会自动附加到输入内容。
+默认按 Tab 切换原文／译文，Enter 确认当前候选，Option-Tab 智能补全。
+三项快捷键均可在设置中直接录入；数字键可选择当前页对应候选。没有进入
+译文候选状态时，翻译仅用于展示，不会自动附加到输入内容。
 
 ![地区释义与澄蓝配色](resources/readme/regional-glosses.png)
 
@@ -76,6 +77,7 @@ no_download=1 ./action-build.sh release
 ./tests/verify_zime_translation.sh
 ./tests/verify_swift_units.sh
 ./tests/verify_rime_runtime.sh --zime-bilingual-probe
+./tests/verify_rime_runtime.sh --zime-alphanumeric-probe
 ./tests/verify_english_data_projection.sh
 ```
 
@@ -102,6 +104,8 @@ scripts/build-zime-delivery /absolute/path/to/ZIME.app /absolute/output/director
 0.1.10 将候选快捷键改为按键录入：Tab 切换原文／译文，Enter 确认当前候选，Option-Tab 智能补全待输入内容。三项独立配置并检查冲突，移除旧的仅译文上屏和 Tab 行为下拉设置。见 [验证记录](docs/ZIME-0.1.10-VALIDATION.md)。
 
 0.1.11 为整个英文释义词表自动生成大小写查询索引，覆盖普通词、缩写和 `GraphQL / AppImage / DoH` 等混合大小写词头；例如 `ime / Ime / IME / iMe` 均显示“输入法编辑器”。原样输入候选和中文词库中的英文缩写也能显示释义，不改变候选原有大小写或上屏内容。见 [验证记录](docs/ZIME-0.1.11-VALIDATION.md)。
+
+0.1.12 修复字母后数字提前上屏导致顺序颠倒：每页 5 个候选时输入 `x7`，首位且唯一候选就是完整的 `x7`，回车一起上屏；继续输入数字或字母仍保留为同一原文。当前页有效的数字选词保持不变。Core-only 更新也适用于已安装的旧词库。见 [验证记录](docs/ZIME-0.1.12-VALIDATION.md)。
 
 ## 上游与许可证
 

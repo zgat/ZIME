@@ -13,6 +13,7 @@ struct LinnetSettingsProjectionRendererTests {
     do {
       try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
       testDefaultInteractionProjection()
+      testAlphanumericSegmentorProjection()
       testThemeFamilyAndAppearanceMapping()
       try testIndependentSelectionAndCorners()
       try testRetiredCandidateBrowsingMigration(in: directory)
@@ -38,6 +39,18 @@ struct LinnetSettingsProjectionRendererTests {
       print("LinnetSettingsProjectionRendererTests: PASS")
     } catch {
       fail("unexpected error: \(error)")
+    }
+  }
+
+  private static func testAlphanumericSegmentorProjection() {
+    let projections = LinnetSettingsProjectionRenderer.renderProjections(document: .default)
+    for name in LinnetSettingsProjectionRenderer.chineseCustomFiles + [LinnetSettingsProjectionRenderer.englishCustomFile] {
+      guard let text = projections[name],
+        text.contains("\"engine/segmentors\": [\"matcher\", \"zime_alphanumeric_segmentor\","),
+        text.components(separatedBy: "zime_alphanumeric_segmentor").count == 2,
+        text.contains("affix_segmentor@linnet_pinyin") == (name != LinnetSettingsProjectionRenderer.englishCustomFile),
+        text.contains("affix_segmentor@radical_lookup") == (name != LinnetSettingsProjectionRenderer.englishCustomFile)
+      else { fail("Core-only alphanumeric segmentor projection changed command precedence or duplicated the component") }
     }
   }
 
