@@ -336,6 +336,7 @@ extension SettingsModel {
       case .disabledWords: chinese ? "禁用词" : "Disabled words"
       case .textExpander: chinese ? "文本展开" : "Text Expander"
       case .chineseLearning: chinese ? "中文学习" : "Chinese learning"
+      case .chineseModeEnglishLearning: chinese ? "中文模式内的英文学习" : "English words learned in Chinese mode"
       case .englishLearning: chinese ? "英文学习" : "English learning"
       }
     }.joined(separator: chinese ? "、" : ", ")

@@ -1,4 +1,4 @@
-# ZIME 0.1.8
+# ZIME 0.1.9
 
 ZIME is a macOS 13+ Apple-silicon input method with one shared local engine and
 two system-visible modes:
@@ -57,8 +57,13 @@ chosen definition at the client insertion boundary.
   learned exact English word pass less-used same-span Chinese words, while
   equally or more-used Chinese words retain priority. Native Chinese relative
   order and partial/custom candidate boundaries are preserved. Choosing Chinese
-  again can reverse the preference. Both modes share the persistent `linnet_en`
-  user dictionary, and the English learning switch controls both routes.
+  again can reverse the preference. The Chinese mixed menu uses `linnet_zh`
+  for Chinese entries and `linnet_zh_english` for English entries, under one
+  mixed ranking policy and the Chinese learning strategy. Independent Smart
+  English uses `linnet_en` and its own learning switch. Training in either mode
+  never changes the other mode's counts. Clear Chinese Learning covers both
+  Chinese-mode dictionaries; Clear English Learning affects Smart English only.
+  Backup, portable import/export and restore preserve their separate identities.
 - Linnet's reviewed English projection provides exact words, common English
   abbreviations such as `asap`, `btw`, `brb`, and `idk`, typo correction,
   completion, IPA, Chinese definitions, and next-word prediction.

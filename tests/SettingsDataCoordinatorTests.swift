@@ -1764,10 +1764,28 @@ struct SettingsDataCoordinatorTests {
         "linnet_en", expected: unselectedEnglish, directory: live, operation: "repeated partial import")
 
       let beforeClearChinese = try rawDictionaryState("linnet_zh", directory: live)
+      let chineseEnglishURL = fixtureRoot.appending(path: "chinese-english.linnet-data")
+      try LinnetBackupStore.encodePortable(
+        personalData: .empty,
+        learning: ["linnet_zh_english": "# Rime user dictionary export\nkey\tkey\t13\n"],
+        categories: [.chineseModeEnglishLearning], createdAt: Date(),
+        appVersion: "0.1.9", dataVersion: "fixture"
+      ).write(to: chineseEnglishURL)
+      let chineseEnglishCandidate = try await coordinator.inspectPortable(chineseEnglishURL)
+      _ = try await coordinator.run(.importPortable(
+        chineseEnglishCandidate, baseRevision: secondImport.personalSnapshot.revision))
+      try verifyRawDictionary(
+        "linnet_en", expected: unselectedEnglish, directory: live, operation: "import Chinese-mode English")
+      let beforeClearChineseEnglish = try rawDictionaryState("linnet_zh_english", directory: live)
+      guard try exportContains(
+        "linnet_zh_english", row: "key\tkey", directory: live, fixtureRoot: fixtureRoot)
+      else { fail("Chinese-mode English import did not reach its separate native dictionary") }
       let clearChinese = try await coordinator.run(.clearLearning([.chinese]))
       try verifyRawDictionary(
         "linnet_en", expected: unselectedEnglish, directory: live, operation: "clear Chinese")
       guard let clearBackup = clearChinese.backupDirectory,
+        try !exportContains(
+          "linnet_zh_english", row: "key\tkey", directory: live, fixtureRoot: fixtureRoot),
         try !exportContains(
           "linnet_zh", row: "你好\tni hao", directory: live, fixtureRoot: fixtureRoot
         ),
@@ -1785,6 +1803,9 @@ struct SettingsDataCoordinatorTests {
         options: .atomic
       )
       let restored = try await coordinator.run(.restoreBackup(clearBackup))
+      try verifyRawDictionary(
+        "linnet_zh_english", expected: beforeClearChineseEnglish, directory: live,
+        operation: "restore Chinese-mode English")
       try verifyRawDictionary(
         "linnet_zh", expected: beforeClearChinese, directory: live, operation: "restore Chinese")
       try verifyRawDictionary(

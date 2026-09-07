@@ -45,10 +45,10 @@ actor SettingsDataCoordinator {
     case chinese
     case english
 
-    var schema: String {
+    var schemas: Set<String> {
       switch self {
-      case .chinese: RimeUserDataBridge.chineseSchema
-      case .english: RimeUserDataBridge.englishSchema
+      case .chinese: [RimeUserDataBridge.chineseSchema, RimeUserDataBridge.chineseModeEnglishSchema]
+      case .english: [RimeUserDataBridge.englishSchema]
       }
     }
   }

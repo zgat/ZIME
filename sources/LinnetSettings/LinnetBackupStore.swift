@@ -28,11 +28,13 @@ enum LinnetBackupStore {
     case disabledWords
     case textExpander
     case chineseLearning
+    case chineseModeEnglishLearning
     case englishLearning
 
     var learningSchema: String? {
       switch self {
       case .chineseLearning: "linnet_zh"
+      case .chineseModeEnglishLearning: "linnet_zh_english"
       case .englishLearning: "linnet_en"
       default: nil
       }
@@ -268,7 +270,7 @@ enum LinnetBackupStore {
         personal.expansions = artifact.rows.map {
           .init(value: $0.value, trigger: $0.key ?? "")
         }
-      case .chineseLearning, .englishLearning:
+      case .chineseLearning, .chineseModeEnglishLearning, .englishLearning:
         throw Failure.invalidCategory(artifact.category.rawValue)
       }
     }

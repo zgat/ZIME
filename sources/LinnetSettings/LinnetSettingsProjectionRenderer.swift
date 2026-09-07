@@ -277,7 +277,9 @@ private extension LinnetSettingsProjectionRenderer {
     appendPinyinReverseTrigger(input.pinyinReverseTrigger, to: &entries)
     appendChineseLearningPolicy(input.chineseLearningPolicy, to: &entries)
     appendEnglishMetadataOptions(english, to: &entries)
-    appendEnglishLearningOptions(english, translator: "linnet_english_words", to: &entries)
+    appendEnglishLearningOptions(
+      enabled: input.chineseLearningPolicy != .disabled,
+      translator: "linnet_english_words", userDictionary: "linnet_zh_english", to: &entries)
     guard !entries.isEmpty else { return nil }
     return renderPatch(entries)
   }
@@ -318,7 +320,9 @@ private extension LinnetSettingsProjectionRenderer {
     if !english.predictionEnabled {
       entries.append(("switches/@\(englishPredictionSwitchIndex)/reset", "0"))
     }
-    appendEnglishLearningOptions(english, translator: "translator", to: &entries)
+    appendEnglishLearningOptions(
+      enabled: english.learnFromSelections,
+      translator: "translator", userDictionary: "linnet_en", to: &entries)
     guard !entries.isEmpty else { return nil }
     return renderPatch(entries)
   }
@@ -350,16 +354,19 @@ private extension LinnetSettingsProjectionRenderer {
   }
 
   private static func appendEnglishLearningOptions(
-    _ english: LinnetSettingsDocument.English,
+    enabled: Bool,
     translator: String,
+    userDictionary: String,
     to entries: inout [(String, String)]
   ) {
     // Core updates keep the installed language pack. Explicit projections
     // repair older packs that disabled English word learning in Chinese mode.
-    // Both modes share Rime's English user dictionary, not a second store.
-    entries.append(("\(translator)/user_dict", quoted("linnet_en")))
-    entries.append(("\(translator)/enable_user_dict", english.learnFromSelections ? "true" : "false"))
-    entries.append(("linnet_english_interaction/learning_enabled", english.learnFromSelections ? "true" : "false"))
+    // Chinese-mode English participates in the Chinese mixed ranking, with
+    // its own native user dictionary and Chinese-mode learning policy.
+    // Independent English training must never change that ranking.
+    entries.append(("\(translator)/user_dict", quoted(userDictionary)))
+    entries.append(("\(translator)/enable_user_dict", enabled ? "true" : "false"))
+    entries.append(("linnet_english_interaction/learning_enabled", enabled ? "true" : "false"))
   }
 
   /// The bundled schema owns the enhanced default. Settings emits only the

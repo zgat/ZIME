@@ -14,6 +14,7 @@ struct LinnetBackupStoreTests {
       try testUnchangedWriters(root: root)
       try testCloneIsolation(root: root)
       try testPortableCodec()
+      try testModeLocalLearningCodec()
       try testCloudRecoveryArchive(root: root.appending(path: "cloud-recovery", directoryHint: .isDirectory))
       try testBackupHistory(root: root)
       try testLegacyV3Compatibility(root: root.appending(path: "legacy-v3", directoryHint: .isDirectory))
@@ -229,6 +230,27 @@ struct LinnetBackupStoreTests {
     guard repaired.kind == LinnetCloudRecoveryArchive.Outcome.Kind.uploaded else {
       fail("confirmed cloud repair did not publish a base")
     }
+  }
+
+  private static func testModeLocalLearningCodec() throws {
+    let learning = [
+      "linnet_zh": "可以\tke yi\t3\n",
+      "linnet_zh_english": "key\tkey\t13\n",
+      "linnet_en": "key\tkey\t20\n",
+    ]
+    for category: LinnetBackupStore.Category in [.chineseLearning, .chineseModeEnglishLearning, .englishLearning] {
+      let encoded = try LinnetBackupStore.encodePortable(
+        personalData: .empty, learning: learning, categories: [category],
+        createdAt: Date(timeIntervalSince1970: 0), appVersion: "0.1.9", dataVersion: "fixture")
+      let decoded = try LinnetBackupStore.decodePortable(encoded)
+      let restored = try LinnetBackupStore.replacement(currentPersonalData: .empty, archive: decoded)
+      guard let schema = category.learningSchema,
+        decoded.categories == [category], restored.learning == [schema: learning[schema]!]
+      else { fail("mode-local learning export merged or replaced another mode") }
+    }
+    guard LinnetBackupStore.learningDirectories.contains("linnet_zh_english.userdb"),
+      LinnetBackupStore.learningFiles.contains("linnet_zh_english.txt")
+    else { fail("Chinese-mode English learning was excluded from backup or recovery") }
   }
 
   private static func testPortableCodec() throws {

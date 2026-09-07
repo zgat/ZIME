@@ -417,6 +417,8 @@ extension SettingsDataCoordinator {
         schema = RimeUserDataBridge.chineseSchema
       case "\(RimeUserDataBridge.englishSchema).txt":
         schema = RimeUserDataBridge.englishSchema
+      case "\(RimeUserDataBridge.chineseModeEnglishSchema).txt":
+        schema = RimeUserDataBridge.chineseModeEnglishSchema
       default:
         throw Failure.invalidOperation("restore learning schema")
       }

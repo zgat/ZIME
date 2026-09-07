@@ -14,7 +14,7 @@ extension LinnetBackupStore {
     LinnetPersonalDataStore.expansionsFile
   ])
   static let stableFiles = Set(["installation.yaml", "user.yaml"])
-  static let learningFiles = Set(["linnet_zh.txt", "linnet_en.txt"])
+  static let learningFiles = Set(["linnet_zh.txt", "linnet_zh_english.txt", "linnet_en.txt"])
   static let learningDirectories = Set(Category.allCases.compactMap(\.learningSchema).map { "\($0).userdb" })
   // LevelDB moves superseded recovery fragments here. They are not part of
   // the live database state and must never be traversed or copied into a
@@ -179,7 +179,7 @@ extension LinnetBackupStore {
       rows = data.disabledWords.map { .init(value: $0.value, key: nil) }
     case .textExpander:
       rows = data.expansions.map { .init(value: $0.value, key: $0.trigger) }
-    case .chineseLearning, .englishLearning:
+    case .chineseLearning, .chineseModeEnglishLearning, .englishLearning:
       throw Failure.invalidCategory(category.rawValue)
     }
     try validateRows(rows, category: category)
@@ -287,7 +287,7 @@ extension LinnetBackupStore {
         candidate.expansions = artifact.rows.map {
           .init(value: $0.value, trigger: $0.key ?? "")
         }
-      case .chineseLearning, .englishLearning:
+      case .chineseLearning, .chineseModeEnglishLearning, .englishLearning:
         throw Failure.invalidCategory(artifact.category.rawValue)
       }
     }
@@ -314,7 +314,7 @@ extension LinnetBackupStore {
         guard row.key == nil else { throw Failure.invalidDocument(category.rawValue) }
       case .customWords, .textExpander:
         guard row.key != nil else { throw Failure.invalidDocument(category.rawValue) }
-      case .chineseLearning, .englishLearning:
+      case .chineseLearning, .chineseModeEnglishLearning, .englishLearning:
         throw Failure.invalidCategory(category.rawValue)
       }
     }

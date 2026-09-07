@@ -411,7 +411,7 @@ extension SettingsDataCoordinator {
         imports = try legacyBackupLearningImports(from: learning, manifest: verified)
       }
     case .clear(let domains):
-      try removeCandidateLearning(Set(domains.map(\.schema)), from: candidate)
+      try removeCandidateLearning(Set(domains.flatMap(\.schemas)), from: candidate)
     case .removeBackup:
       throw Failure.invalidOperation("backup removal mutation")
     case .export:

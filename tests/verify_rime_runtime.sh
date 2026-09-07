@@ -66,7 +66,7 @@ cp data/linnet/default.yaml "${shared}/default.yaml"
 ruby -e '
   path = ARGV.fetch(0)
   source = File.binread(path)
-  current = "linnet_english_words:\n  dictionary: linnet_en\n  user_dict: linnet_en\n  enable_completion: false\n  enable_sentence: false\n  enable_user_dict: true\n"
+  current = "linnet_english_words:\n  dictionary: linnet_en\n  user_dict: linnet_zh_english\n  enable_completion: false\n  enable_sentence: false\n  enable_user_dict: true\n"
   stale = "linnet_english_words:\n  dictionary: linnet_en\n  enable_completion: false\n  enable_sentence: false\n  enable_user_dict: false\n"
   abort "current Chinese-mode English learner is missing" unless source.scan(current).length == 1
   File.binwrite(path, source.sub(current, stale))
@@ -203,6 +203,12 @@ if [[ "${runtime_probe}" == --zime-bilingual-probe ]]; then
     bin/rime_deployer --build "${user}" "${shared}" "${user}/build" >/dev/null
   DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
     "${scratch}/rime-smoke" "${shared}" "${user}" --zime-english-learning-off-probe
+  "${scratch}/projection-fixture" default "${user}"
+  "${scratch}/projection-fixture" chinese-learning disabled "${user}"
+  DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
+    bin/rime_deployer --build "${user}" "${shared}" "${user}/build" >/dev/null
+  DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
+    "${scratch}/rime-smoke" "${shared}" "${user}" --zime-chinese-learning-off-probe
   "${scratch}/projection-fixture" default "${user}"
   DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
     bin/rime_deployer --build "${user}" "${shared}" "${user}/build" >/dev/null

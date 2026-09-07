@@ -7,7 +7,8 @@ import Foundation
 struct RimeUserDataBridge {
   static let chineseSchema = "linnet_zh"
   static let englishSchema = "linnet_en"
-  static let learningSchemas = Set([chineseSchema, englishSchema])
+  static let chineseModeEnglishSchema = "linnet_zh_english"
+  static let learningSchemas = Set([chineseSchema, chineseModeEnglishSchema, englishSchema])
   enum PersonalDictionary: String, CaseIterable, Hashable, Sendable {
     case customWords = "linnet_custom_words"
     case textExpander = "linnet_text_expander"

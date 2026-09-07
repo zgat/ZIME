@@ -300,6 +300,8 @@ struct InputTabView: View {
         Text(chineseLearningPolicyDescription(model.configuration.documentDraft.input.chineseLearningPolicy))
           .font(.callout)
           .foregroundStyle(.secondary)
+        Text("Chinese mode learns Chinese and English candidates together. Smart English keeps separate learning history.")
+          .font(.caption).foregroundStyle(.secondary)
 
         if model.configuration.documentDraft.input.chineseLearningPolicy
           != model.configuration.documentBaseline?.input.chineseLearningPolicy {
@@ -383,6 +385,8 @@ struct InputTabView: View {
         "Learn from English selections",
         isOn: $model.configuration.documentDraft.english.learnFromSelections
       )
+      Text("This switch affects Smart English only. Chinese-mode candidates follow the Chinese learning strategy.")
+        .font(.caption).foregroundStyle(.secondary)
       Toggle(
         "Add a trailing space when Space accepts a candidate",
         isOn: $model.configuration.documentDraft.english.spaceAddsTrailingSpace
@@ -758,6 +762,7 @@ func categoryName(_ category: LinnetBackupStore.Category) -> LocalizedStringKey 
   case .disabledWords: "Disabled words"
   case .textExpander: "Text Expander"
   case .chineseLearning: "Chinese learning"
+  case .chineseModeEnglishLearning: "English words learned in Chinese mode"
   case .englishLearning: "English learning"
   }
 }

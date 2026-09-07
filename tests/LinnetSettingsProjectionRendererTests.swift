@@ -588,6 +588,7 @@ struct LinnetSettingsProjectionRendererTests {
     for file in LinnetSettingsProjectionRenderer.chineseCustomFiles {
       guard let contents = projections[file],
         contents.contains("\"auto_phrase/enable\": false"),
+        contents.contains("\"linnet_english_words/enable_user_dict\": true"),
         !contents.contains("translator/enable_user_dict")
       else {
         fail("standard Chinese learning did not disable only the Linnet enhancement in \(file)")
@@ -599,7 +600,9 @@ struct LinnetSettingsProjectionRendererTests {
     for file in LinnetSettingsProjectionRenderer.chineseCustomFiles {
       guard let contents = projections[file],
         contents.contains("\"auto_phrase/enable\": false"),
-        contents.contains("\"translator/enable_user_dict\": false")
+        contents.contains("\"translator/enable_user_dict\": false"),
+        contents.contains("\"linnet_english_words/enable_user_dict\": false"),
+        contents.contains("\"linnet_english_interaction/learning_enabled\": false")
       else {
         fail("disabled Chinese learning did not close both learning paths in \(file)")
       }
@@ -607,6 +610,7 @@ struct LinnetSettingsProjectionRendererTests {
     guard let english = projections[LinnetSettingsProjectionRenderer.englishCustomFile],
       english.contains("\"linnet_english_interaction/sentence_capitalization\": false"),
       english.contains("\"linnet_english_interaction/tab_behavior\": \"smart_complete\""),
+      english.contains("\"translator/enable_user_dict\": true"),
       projections[LinnetSettingsProjectionRenderer.squirrelCustomFile] == nil
     else {
       fail("the Chinese learning policy leaked into English or global appearance")
@@ -683,12 +687,12 @@ struct LinnetSettingsProjectionRendererTests {
       }
       for file in LinnetSettingsProjectionRenderer.chineseCustomFiles {
         guard let contents = projections[file],
-          contents.contains("\"linnet_english_words/user_dict\": \"linnet_en\""),
-          contents.contains("\"linnet_english_words/enable_user_dict\": false"),
-          contents.contains("\"linnet_english_interaction/learning_enabled\": false"),
+          contents.contains("\"linnet_english_words/user_dict\": \"linnet_zh_english\""),
+          contents.contains("\"linnet_english_words/enable_user_dict\": true"),
+          contents.contains("\"linnet_english_interaction/learning_enabled\": true"),
           !contents.contains("translator/enable_user_dict")
         else {
-          fail("English session learning did not close independently in \(file)")
+          fail("disabling independent English learning changed Chinese mode in \(file)")
         }
       }
     } catch {
@@ -704,11 +708,11 @@ struct LinnetSettingsProjectionRendererTests {
       let projections = LinnetSettingsProjectionRenderer.renderProjections(document: document)
       for file in LinnetSettingsProjectionRenderer.chineseCustomFiles {
         guard let contents = projections[file],
-          contents.contains("\"linnet_english_words/user_dict\": \"linnet_en\""),
+          contents.contains("\"linnet_english_words/user_dict\": \"linnet_zh_english\""),
           contents.contains("\"linnet_english_words/enable_user_dict\": true"),
           contents.contains("\"linnet_english_interaction/learning_enabled\": true"),
           !contents.contains("translator/enable_user_dict")
-        else { fail("a Core-only update must explicitly enable shared English learning in \(file)") }
+        else { fail("a Core-only update must explicitly isolate Chinese-mode English learning in \(file)") }
       }
       guard let englishProjection = projections[LinnetSettingsProjectionRenderer.englishCustomFile],
         englishProjection.contains("\"translator/user_dict\": \"linnet_en\""),

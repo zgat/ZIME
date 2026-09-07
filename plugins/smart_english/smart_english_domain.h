@@ -32,6 +32,7 @@ inline constexpr char kSpacingProperty[] = "linnet/spacing_v1";
 inline constexpr char kSentenceBoundaryProperty[] =
     "linnet/sentence_boundary_v1";
 inline constexpr char kSmartEnglishSchema[] = "linnet_en";
+inline constexpr char kChineseModeEnglishLanguage[] = "linnet_zh_english";
 inline constexpr char kDefinitionCommentPrefix = '\x1d';
 inline constexpr char kReverseDefinitionCommentPrefix = '\x1e';
 inline constexpr char kDefinitionAlternativeSeparator = '\x1f';
@@ -196,7 +197,8 @@ inline std::string ApplyCase(std::string value,
 inline bool IsLinnetEnglishPhrase(const rime::an<rime::Candidate>& candidate) {
   const auto phrase = rime::As<rime::Phrase>(candidate);
   return phrase && phrase->language() &&
-         phrase->language()->name() == "linnet_en";
+         (phrase->language()->name() == kSmartEnglishSchema ||
+          phrase->language()->name() == kChineseModeEnglishLanguage);
 }
 
 inline bool IsCustomPhrase(const rime::an<rime::Candidate>& candidate) {
