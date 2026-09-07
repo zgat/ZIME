@@ -1,0 +1,58 @@
+#!/bin/zsh
+
+set -euo pipefail
+
+# This package supports only the currentUserHome domain. Registration must run
+# as that user in their login session, never as root or against a guessed home.
+user_home="${HOME:-}"
+current_uid="$(/usr/bin/id -u)"
+script_root="${0:A:h}"
+app="${user_home}/Library/Input Methods/ZIME.app"
+executable="${app}/Contents/MacOS/ZIME"
+inspector="${script_root}/input-source-registration-inspector"
+bundle_id="com.zime.inputmethod.ZIME"
+source_id="${bundle_id}.Hans"
+
+fail_registration() {
+  print -u2 "ZIME postinstall: $1"
+  print -u2 'Run ~/Library/Input\ Methods/ZIME.app/Contents/MacOS/ZIME --request-first-install-authorization from your login session, then add ZIME in Keyboard settings.'
+  exit 1
+}
+
+[[ "${current_uid}" != 0 && "${user_home}" == /* && "${user_home}" != / &&
+   -d "${app}" && ! -L "${app}" && -x "${executable}" && ! -L "${executable}" &&
+   -x "${inspector}" && ! -L "${inspector}" ]] ||
+  fail_registration "the per-user installation or registration inspector is unavailable"
+[[ "$(/usr/bin/stat -f %u "${app}")" == "${current_uid}" ]] ||
+  fail_registration "the installed App belongs to a different user"
+[[ "$(/usr/bin/plutil -extract CFBundleIdentifier raw -o - "${app}/Contents/Info.plist")" == "${bundle_id}" ]] ||
+  fail_registration "the installed App has an unexpected identity"
+/usr/bin/codesign --verify --deep --strict "${app}" ||
+  fail_registration "the installed App signature is invalid"
+
+inspect_registration() {
+  "${inspector}" "${bundle_id}" "${source_id}"
+}
+
+registration_state="$(inspect_registration)" ||
+  fail_registration "could not inspect the installed input source"
+case "${registration_state}" in
+  missing|registered:enablement-required:path-unknown)
+    "${executable}" --request-first-install-authorization ||
+      fail_registration "macOS could not complete the input-source registration request"
+    ;;
+  registered:enabled-observation:selectable:path-unknown|registered:selected-observation:selectable:path-unknown)
+    # Reinstalling an already enabled input source preserves the user's choice.
+    ;;
+  *) fail_registration "unexpected input-source state: ${registration_state}" ;;
+esac
+
+registration_state="$(inspect_registration)" ||
+  fail_registration "could not verify input-source registration"
+case "${registration_state}" in
+  registered:enablement-required:path-unknown|registered:enabled-observation:selectable:path-unknown|registered:selected-observation:selectable:path-unknown)
+    print "ZIME input source registered: ${source_id} (${registration_state})."
+    print 'Add ZIME 简体中文 or ZIME 繁體中文 in System Settings > Keyboard > Input Sources.'
+    ;;
+  *) fail_registration "the input source is still unavailable: ${registration_state}" ;;
+esac

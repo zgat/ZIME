@@ -36,6 +36,10 @@ build="$(/usr/bin/plutil -extract CFBundleVersion raw -o - "${info}")"
 pack_tool="${project_root}/build/linnet-pack"
 [[ -x "${pack_tool}" && ! -L "${pack_tool}" ]] ||
   fail_delivery "the verified local language-pack tool is missing"
+# The registration observer is built from the same checkout and understands
+# ZIME's Hans/Hant input modes rather than a mode-less keyboard input method.
+/usr/bin/make -C "${project_root}" input-source-registration-inspector
+registration_inspector="${project_root}/build/input-source-registration-inspector"
 
 prefix="ZIME-${version}-arm64"
 zip_output="${output_dir}/${prefix}.zip"
@@ -128,9 +132,15 @@ payload_root="${work_root}/payload"
 /usr/bin/ditto --noqtn "${data_root}" \
   "${payload_root}/Library/Application Support/ZIME"
 component_pkg="${work_root}/ZIME-component.pkg"
+installer_scripts="${work_root}/installer-scripts"
+/bin/mkdir -p "${installer_scripts}"
+/bin/cp "${project_root}/package/zime-installer-scripts/postinstall" \
+  "${registration_inspector}" "${installer_scripts}/"
+/bin/chmod 755 "${installer_scripts}/postinstall" \
+  "${installer_scripts}/input-source-registration-inspector"
 /usr/bin/pkgbuild --root "${payload_root}" \
   --identifier "com.zime.inputmethod.ZIME.pkg" --version "${version}" \
-  --install-location / "${component_pkg}"
+  --scripts "${installer_scripts}" --install-location / "${component_pkg}"
 
 distribution="${work_root}/Distribution.xml"
 DIST_PATH="${distribution}" DIST_VERSION="${version}" /usr/bin/ruby -e '
@@ -162,6 +172,14 @@ expanded_app="$(/usr/bin/find "${expanded_pkg}" -type d -path '*/Payload/Library
 /usr/bin/codesign --verify --deep --strict "${expanded_app}"
 expanded_data="$(/usr/bin/find "${expanded_pkg}" -type f -path '*/Payload/Library/Application Support/ZIME/Runtime/Active/activation.json' -print -quit)"
 [[ -n "${expanded_data}" ]] || fail_delivery "expanded package does not contain offline data"
+expanded_scripts="${expanded_pkg}/ZIME-component.pkg/Scripts"
+for script in postinstall input-source-registration-inspector; do
+  [[ -x "${expanded_scripts}/${script}" ]] ||
+    fail_delivery "expanded package is missing the executable ${script}"
+  /usr/bin/cmp "${installer_scripts}/${script}" "${expanded_scripts}/${script}" ||
+    fail_delivery "expanded package changed ${script}"
+done
+/bin/zsh -n "${expanded_scripts}/postinstall"
 
 /bin/mv "${zip_candidate}" "${zip_output}"
 /bin/mv "${pkg_candidate}" "${pkg_output}"

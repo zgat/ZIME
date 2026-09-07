@@ -1,3 +1,4 @@
+import Carbon
 import Darwin
 import Foundation
 
@@ -5,14 +6,19 @@ import Foundation
 struct LinnetInputSourceRegistrationInspector {
   static func main() {
     let arguments = CommandLine.arguments
-    guard arguments.count == 2,
-      !arguments[1].isEmpty,
-      !arguments[1].contains("\n")
+    guard (2...3).contains(arguments.count),
+      arguments.dropFirst().allSatisfy({ !$0.isEmpty && !$0.contains("\n") })
     else {
       FileHandle.standardError.write(
-        Data("usage: input-source-registration-inspector BUNDLE_IDENTIFIER\n".utf8))
+        Data("usage: input-source-registration-inspector BUNDLE_IDENTIFIER [MODE_IDENTIFIER]\n".utf8))
       exit(EX_USAGE)
     }
-    print(LinnetInputSourceRegistration.state(identifier: arguments[1]).wireValue)
+    if arguments.count == 3 {
+      print(LinnetInputSourceRegistration.state(
+        identifier: arguments[2], bundleIdentifier: arguments[1],
+        type: kTISTypeKeyboardInputMode as String).wireValue)
+    } else {
+      print(LinnetInputSourceRegistration.state(identifier: arguments[1]).wireValue)
+    }
   }
 }
