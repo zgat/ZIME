@@ -12,6 +12,10 @@ bound forms and proper names; generated a bounded reverse English index.
 The runtime additionally filters explicit regional usage labels and projects
 the mixed Mainland/Taiwan note for 你/妳 into region-specific definitions.
 These projected definition strings also remain under CC BY-SA 4.0.
+Index revision 2 preserves traditional/simplified headword identity and source
+pronunciation. Candidate annotations coalesce duplicate displayed glosses and
+separate explanatory notes/references from distinguishing usage qualifiers;
+the original regional definitions remain available in details.
 This adapted dictionary remains licensed under CC BY-SA 4.0, independently
 of the application's GPL-3.0-or-later code. Attribution and license must be
 preserved in redistributed or adapted versions. No endorsement is implied.

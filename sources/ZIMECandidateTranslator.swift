@@ -56,6 +56,7 @@ final class ZIMECandidateTranslator {
       let chinese = ZIMELocalLexicon.containsHan(item.text)
       let allSenses = localLexicon.translations(for: item.text)
       let exact = localLexicon.translations(for: item.text, region: region)
+      let annotation = chinese ? localLexicon.annotation(for: item.text, region: region) : nil
       let excludedByRegion = chinese && !allSenses.isEmpty && exact.isEmpty
       let originalTranslations = chinese
         ? ZIMELocalLexicon.regionalTranslations(original.translations, for: item.text, region: region)
@@ -72,7 +73,12 @@ final class ZIMECandidateTranslator {
       var comment = item.comment
       if showTranslation {
         if !translations.isEmpty {
-          comment = !chinese && !original.translations.isEmpty ? item.comment : Self.comment(translations)
+          if let annotation, !annotation.translations.isEmpty {
+            comment = LinnetCandidatePresentation.bilingualComment(displayText: annotation.displayText,
+              translations: annotation.translations, detailText: annotation.detailText)
+          } else {
+            comment = !chinese && !original.translations.isEmpty ? item.comment : Self.comment(translations)
+          }
         } else if !excludedByRegion, let cached, !cached.isEmpty {
           comment = Self.comment([cached])
         } else {

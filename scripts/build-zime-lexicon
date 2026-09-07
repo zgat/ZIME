@@ -11,6 +11,7 @@ abort 'usage: build-zime-lexicon CEDICT.txt.gz OUTPUT.sqlite3' unless ARGV.lengt
 input, output = ARGV
 abort 'refusing to overwrite output' if File.exist?(output)
 entries = Hash.new { |h, k| h[k] = [] }
+source_rows = []
 source_count = 0
 Zlib::GzipReader.open(input) do |gzip|
   gzip.each_line do |line|
@@ -24,12 +25,9 @@ Zlib::GzipReader.open(input) do |gzip|
       sense.match?(/\A(?:CL:|variant of |old variant of |see |also written )/)
     end
     priority = pinyin.match?(/\A[A-Z]/) ? 1 : 0
-    [simplified, traditional].uniq.each do |word|
-      senses.each do |sense|
-        rank = priority + (sense.start_with?('(bound form)') ? 2 : 0)
-        entries["zh\t#{word}"] << [rank, sense]
-      end
-    end
+    # Preserve the source identity. A shared simplified spelling does not make
+    # two traditional headwords the same entry (e.g. 你/妳 and 發/髮).
+    source_rows << [source_count, traditional, simplified, pinyin, priority, JSON.generate(senses)]
     senses.each do |sense|
       # Reverse only complete short English glosses, never fragments of a
       # definition or romanized Chinese references.
@@ -39,24 +37,32 @@ Zlib::GzipReader.open(input) do |gzip|
   end
 end
 Tempfile.create(['zime-lexicon-', '.tsv']) do |tsv|
-  entries.keys.sort.each do |key|
-    values = entries.fetch(key).sort_by { |priority, _| priority }.map(&:last).uniq.first(6)
-    tsv.puts "#{key}\t#{JSON.generate(values)}"
+  Tempfile.create(['zime-source-entries-', '.tsv']) do |source_tsv|
+    source_rows.each { |row| source_tsv.puts row.join("\t") }
+    source_tsv.flush
+    entries.keys.sort.each do |key|
+      values = entries.fetch(key).sort_by { |priority, _| priority }.map(&:last).uniq.first(6)
+      tsv.puts "#{key}\t#{JSON.generate(values)}"
+    end
+    tsv.flush
+    sql = <<~SQL
+      .bail on
+      PRAGMA journal_mode=OFF;
+      CREATE TABLE entries(language TEXT NOT NULL, term TEXT NOT NULL, senses TEXT NOT NULL, PRIMARY KEY(language, term)) WITHOUT ROWID;
+      .mode tabs
+      .import "#{tsv.path}" entries
+      CREATE TABLE source_entries(id INTEGER PRIMARY KEY, traditional TEXT NOT NULL, simplified TEXT NOT NULL, pinyin TEXT NOT NULL, priority INTEGER NOT NULL, senses TEXT NOT NULL);
+      .import "#{source_tsv.path}" source_entries
+      CREATE INDEX source_traditional ON source_entries(traditional);
+      CREATE INDEX source_simplified ON source_entries(simplified);
+      CREATE TABLE metadata(key TEXT PRIMARY KEY, value TEXT NOT NULL) WITHOUT ROWID;
+      INSERT INTO metadata VALUES('source_entries','#{source_count}'),('source_sha256','#{Digest::SHA256.file(input).hexdigest}'),('license','CC-BY-SA-4.0');
+      PRAGMA user_version=2;
+      VACUUM;
+      PRAGMA integrity_check;
+    SQL
+    stdout, stderr, status = Open3.capture3('/usr/bin/sqlite3', output, stdin_data: sql)
+    abort stderr unless status.success? && stdout.lines.last&.strip == 'ok'
   end
-  tsv.flush
-  sql = <<~SQL
-    .bail on
-    PRAGMA journal_mode=OFF;
-    CREATE TABLE entries(language TEXT NOT NULL, term TEXT NOT NULL, senses TEXT NOT NULL, PRIMARY KEY(language, term)) WITHOUT ROWID;
-    .mode tabs
-    .import "#{tsv.path}" entries
-    CREATE TABLE metadata(key TEXT PRIMARY KEY, value TEXT NOT NULL) WITHOUT ROWID;
-    INSERT INTO metadata VALUES('source_entries','#{source_count}'),('source_sha256','#{Digest::SHA256.file(input).hexdigest}'),('license','CC-BY-SA-4.0');
-    PRAGMA user_version=1;
-    VACUUM;
-    PRAGMA integrity_check;
-  SQL
-  stdout, stderr, status = Open3.capture3('/usr/bin/sqlite3', output, stdin_data: sql)
-  abort stderr unless status.success? && stdout.lines.last&.strip == 'ok'
 end
-puts "CC-CEDICT: #{source_count} source entries, #{entries.count} indexed heads; #{output}"
+puts "CC-CEDICT v2 index: #{source_count} distinct source entries, #{entries.count} reverse English heads; #{output}"

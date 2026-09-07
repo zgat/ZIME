@@ -1,6 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
+/usr/bin/ruby tests/verify_zime_lexicon.rb
 mkdir -p build/zime-tests/module-cache
 /usr/bin/xcrun swiftc -warnings-as-errors -parse-as-library \
   -module-cache-path build/zime-tests/module-cache \

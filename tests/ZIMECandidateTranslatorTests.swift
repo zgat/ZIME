@@ -58,6 +58,12 @@ struct ZIMECandidateTranslatorTests {
       let regional = translator.annotate(regionalSnapshot, showTranslation: true, region: region) {}
       precondition(regional.items.map(\.text) == ["你", "土豆", "德士"])
       precondition(regional.items.allSatisfy { $0.commitOverride == nil })
+      let ni = LinnetCandidatePresentation.candidateComment(regional.items[0].comment)
+      precondition(ni.displayText == "you (informal)" && ni.translations.count == 1,
+        "annotation transport lost deduplication or exposed the detail payload")
+      let niDetail = LinnetCandidatePresentation.fullCandidateComment(regional.items[0].comment)
+      precondition(niDetail.contains("您[nin2]") && niDetail.contains("妳") == (region == .mainland),
+        "full notes lost or leaked across headwords")
       let potato = LinnetCandidatePresentation.candidateComment(regional.items[1].comment).translations
       precondition(potato.contains { $0.contains("peanut") } == (region == .traditionalRegions))
       if region == .mainland {

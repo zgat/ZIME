@@ -47,6 +47,8 @@ rg -Fq 'configuration.enabled' sources/ZIMECandidateTranslator.swift ||
   fail "cloud consent gate"
 [[ -f resources/zime-cedict.sqlite3 && -f resources/ZIME-Lexicon-NOTICE.txt ]] ||
   fail "direct bilingual dictionary and attribution"
+[[ "$(/usr/bin/sqlite3 resources/zime-cedict.sqlite3 'PRAGMA user_version')" == 2 ]] ||
+  fail "dictionary must preserve source headword identity"
 ruby -ryaml -e 'abort unless YAML.load_file("data/squirrel.yaml").dig("status_icon", "show") == false' ||
   fail "duplicate menu-bar indicator must default off"
 rg -Fq 'var showStatusIcon = false' sources/SquirrelApplicationDelegate.swift ||
@@ -65,6 +67,8 @@ if [[ $# -gt 0 ]]; then
   app="$1"
   [[ -d "${app}" && ! -L "${app}" ]] || fail "missing app: ${app}"
   built_info="${app}/Contents/Info.plist"
+  /usr/bin/cmp resources/zime-cedict.sqlite3 "${app}/Contents/Resources/zime-cedict.sqlite3" ||
+    fail "App contains a stale bilingual dictionary"
   [[ "$(/usr/bin/plutil -extract CFBundleIdentifier raw -o - "${built_info}")" == com.zime.inputmethod.ZIME ]] ||
     fail "built bundle identity"
   [[ "$(/usr/bin/plutil -extract CFBundleDisplayName raw -o - "${built_info}")" == ZIME ]] ||

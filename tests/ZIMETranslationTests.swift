@@ -25,14 +25,43 @@ struct ZIMETranslationTests {
       require(lexicon.translations(for: "德士", region: .mainland).isEmpty, "Singapore/Malaysia sense leaked into Mainland group")
       require(lexicon.translations(for: "德士", region: .traditionalRegions).first?.contains("taxi") == true, "Singapore/Malaysia group missing")
     }
-    for term in ["你", "妳"] {
-      let mainland = lexicon.translations(for: term, region: .mainland).joined(separator: " / ")
-      let traditional = lexicon.translations(for: term, region: .traditionalRegions).joined(separator: " / ")
-      require(mainland.contains("both males and females") && !mainland.contains("Taiwan"), "mixed pronoun note not split for Mainland")
-      require(traditional.contains("Taiwan") && !traditional.contains("Mainland") && !traditional.contains("mainland"), "mixed pronoun note not split for Taiwan")
+    let mainlandNi = lexicon.annotation(for: "你", region: .mainland)
+    let traditionalNi = lexicon.annotation(for: "你", region: .traditionalRegions)
+    let traditionalFemaleNi = lexicon.annotation(for: "妳", region: .traditionalRegions)
+    require(mainlandNi.displayText == "you (informal)" && mainlandNi.translations.count == 1,
+      "Mainland 你 must coalesce explanatory you without dropping the informal qualifier")
+    require(mainlandNi.detailText.contains("both males and females") && mainlandNi.detailText.contains("您[nin2]")
+      && !mainlandNi.detailText.contains("Taiwan"), "Mainland full regional notes lost")
+    require(traditionalNi.displayText == "you (informal)" && !traditionalNi.detailText.contains("妳"),
+      "Traditional 你 must not inherit the 妳 headword's female-address notes")
+    require(traditionalFemaleNi.displayText == "you (female)" && traditionalFemaleNi.detailText.contains("Taiwan"),
+      "妳 must retain its distinguishing female-address sense")
+    require(lexicon.translations(for: "妳", region: .mainland).isEmpty, "strict simplified lookup must not guess a traditional spelling")
+    require(lexicon.sourceEntries(for: "你").map(\.traditional) == ["你", "妳"], "original headword identity lost")
+    require(lexicon.sourceEntries(for: "你", region: .traditionalRegions).map(\.traditional) == ["你"], "traditional lookup reused simplified alias")
+    let simplifiedFa = lexicon.annotation(for: "发", region: .mainland)
+    require(simplifiedFa.displayText.contains("hair") && simplifiedFa.displayText.contains("to send out"),
+      "simplified 發/髮 must expose both distinct meanings, not discard one as a duplicate")
+    require(lexicon.annotation(for: "髮", region: .traditionalRegions).displayText == "hair", "髮 inherited 發 meanings or pronunciation-only candidate")
+    require(lexicon.annotation(for: "髮", region: .traditionalRegions).detailText.contains("Taiwan pr."), "moved pronunciation note lost from detail")
+    require(!lexicon.annotation(for: "發", region: .traditionalRegions).detailText.contains("hair"), "發 inherited 髮")
+    for term in ["你", "妳", "发", "髮", "土豆"] {
+      let first = lexicon.annotation(for: term, region: .mainland)
+      _ = lexicon.annotation(for: term, region: .traditionalRegions)
+      require(lexicon.annotation(for: term, region: .mainland) == first, "annotation cache crossed a region boundary")
     }
+    for definition in ["capital (city)", "capital (finance)", "(bound form) other; another",
+      "(used after an attribute when it modifies a noun)", "not (positive)",
+      "a (nested (essential) condition)", "you (unclosed note"] {
+      require(ZIMELocalLexicon.inlineDefinition(definition, headword: "fixture").text == definition,
+        "necessary or unclassified qualification was removed: \(definition)")
+    }
+    require(ZIMELocalLexicon.inlineDefinition("you (informal, as opposed to courteous 您[nin2])", headword: "你").text == "you (informal)", "comparison not moved to detail")
+    require(ZIMELocalLexicon.inlineDefinition("test (Note: example (nested))", headword: "fixture").text == "test", "balanced explanatory note not separated")
+    require(ZIMELocalLexicon.inlineDefinition("(Note: no standalone gloss)", headword: "fixture").text == "(Note: no standalone gloss)", "note-only entry became blank")
+    require(ZIMELocalLexicon.inlineDefinition("reference 您[nin2] [x] [1]", headword: "fixture").text == "reference 您 [x] [1]", "pinyin removal changed other bracket content")
     let originalNi = lexicon.translations(for: "你").first!
-    require(lexicon.translations(for: "你", region: .mainland).first == originalNi,
+    require(lexicon.translations(for: "你", region: .mainland).first == originalNi && mainlandNi.translations.first == originalNi,
       "general informal/polite distinction must not be summarized away")
     let regionalFixture = ["(HK) regional sense", "(Macau) local usage", "(PRC) mainland usage",
       "(Singapore, Malaysia) taxi", "a company in Taiwan and mainland China",

@@ -19,6 +19,11 @@ struct ZIMENullCloudTranslationProvider: ZIMECloudTranslationProvider {
 }
 
 enum LinnetCandidatePresentation {
+  private struct BilingualAnnotation: Codable {
+    let displayText: String
+    let translations: [String]
+    let detailText: String
+  }
   struct CandidateComment: Equatable {
     let displayText: String
     let belongsToSmartEnglish: Bool
@@ -54,6 +59,7 @@ enum LinnetCandidatePresentation {
   static let maximumExpandedPageCount = 3
   static let maximumExpandedCandidateCount = 27
   static let smartEnglishDetailPrefix = "\u{001D}"
+  static let structuredBilingualPrefix = "\u{001C}"
   static let reverseEnglishDetailPrefix = "\u{001E}"
   static let translationAlternativeSeparator = "\u{001F}"
 
@@ -72,6 +78,13 @@ enum LinnetCandidatePresentation {
   /// The presentation boundary removes its one-byte marker before any text is
   /// drawn or announced; ordinary Chinese spelling comments remain unmarked.
   static func candidateComment(_ rawComment: String) -> CandidateComment {
+    if rawComment.hasPrefix(structuredBilingualPrefix) {
+      guard let annotation = decodeBilingualAnnotation(rawComment) else {
+        return .init(displayText: "", belongsToSmartEnglish: false)
+      }
+      return .init(displayText: annotation.displayText, belongsToSmartEnglish: false,
+        translations: Array(annotation.translations.prefix(3)))
+    }
     if rawComment.hasPrefix(reverseEnglishDetailPrefix) {
       let alternatives = String(rawComment.dropFirst())
         .components(separatedBy: translationAlternativeSeparator)
@@ -96,12 +109,29 @@ enum LinnetCandidatePresentation {
   /// Full regional definitions for native tooltips/AX help; independent of
   /// line wrapping and the existing three explicit translation alternatives.
   static func fullCandidateComment(_ rawComment: String) -> String {
+    if rawComment.hasPrefix(structuredBilingualPrefix) {
+      return decodeBilingualAnnotation(rawComment)?.detailText ?? ""
+    }
     if rawComment.hasPrefix(reverseEnglishDetailPrefix) {
       return String(rawComment.dropFirst())
         .components(separatedBy: translationAlternativeSeparator)
         .filter { !$0.isEmpty }.joined(separator: "\n")
     }
     return candidateComment(rawComment).displayText
+  }
+
+  /// The local dictionary owns parsing and deduplication. JSON preserves all
+  /// punctuation, quotes and legacy delimiter characters in source notes.
+  static func bilingualComment(displayText: String, translations: [String], detailText: String) -> String {
+    let value = BilingualAnnotation(displayText: displayText,
+      translations: Array(translations.prefix(3)), detailText: detailText)
+    guard let data = try? JSONEncoder().encode(value) else { return "" }
+    return structuredBilingualPrefix + String(decoding: data, as: UTF8.self)
+  }
+
+  private static func decodeBilingualAnnotation(_ rawComment: String) -> BilingualAnnotation? {
+    guard rawComment.utf8.count <= 131_072 else { return nil }
+    return try? JSONDecoder().decode(BilingualAnnotation.self, from: Data(rawComment.dropFirst().utf8))
   }
 
   private static func chineseTranslationAlternatives(in detail: String) -> [String] {

@@ -29,6 +29,16 @@ struct LinnetCandidatePresentationTests {
     testIdleMenuPresentationState()
     testHighlightedCandidateBounds()
     testCandidateSelectionLabels()
+    let annotation = LinnetCandidatePresentation.bilingualComment(displayText: "you (informal)",
+      translations: ["you (informal, as opposed to courteous 您[nin2])"],
+      detailText: "你 [ni3]\nFull note with \"quotes\" and \u{001F} delimiter")
+    require(LinnetCandidatePresentation.candidateComment(annotation).displayText == "you (informal)", "structured comment lost display text")
+    require(LinnetCandidatePresentation.candidateComment(annotation).translations == ["you (informal, as opposed to courteous 您[nin2])"], "display optimization changed explicit translation commit text")
+    require(LinnetCandidatePresentation.fullCandidateComment(annotation) == "你 [ni3]\nFull note with \"quotes\" and \u{001F} delimiter", "structured detail was not lossless")
+    for malformed in ["\u{001C}not JSON", "\u{001C}{}", "\u{001C}" + String(repeating: "x", count: 140000)] {
+      require(LinnetCandidatePresentation.candidateComment(malformed).displayText.isEmpty &&
+        LinnetCandidatePresentation.fullCandidateComment(malformed).isEmpty, "malformed comment leaked internal payload into UI")
+    }
 
     var accessibilitySurface =
       LinnetCandidatePresentation.AccessibilitySurface.candidates

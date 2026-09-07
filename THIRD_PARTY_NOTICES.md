@@ -49,6 +49,10 @@ Linnet's inherited release-inventory generator.
 The region-specific definition strings in `sources/ZIMELocalLexicon.swift`
 are also adaptations of that snapshot under CC BY-SA 4.0. They split the
 mixed regional note for 你/妳 without replacing its meaning with a summary.
+Index revision 2 retains each source headword pair and reading. The display
+projection separates explanatory notes from glosses and coalesces duplicate
+glosses; full regional definitions remain in the detail surface. These data
+adaptations remain under CC BY-SA 4.0 as described in the bundled notice.
 
 Linnet uses selected, pinned inputs from:
 

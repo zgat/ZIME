@@ -166,6 +166,7 @@ struct LinnetCandidateWindowInteractionTests {
     testKeyboardPagingRequestsExpansion()
     testDefaultNineCandidateNaturalSize()
     testEveryCandidateShowsTranslation()
+    testStructuredLocalGlosses()
     testRegionalDefinitionsWrapWithoutSummarization()
     testExpandedChineseCommentsDoNotCreateEnglishPlaceholder()
     testThemeLayoutMatrix()
@@ -321,6 +322,55 @@ struct LinnetCandidateWindowInteractionTests {
         } else { failures.append("wrapped candidate has no AX element") }
         panel.hide()
         require(view.candidateToolTipTexts.isEmpty, "hidden panel retained old tooltips")
+      }
+    }
+  }
+
+  private static func testStructuredLocalGlosses() {
+    guard let yaml = try? String(contentsOfFile: "data/squirrel.yaml", encoding: .utf8),
+      let sample = parseThemeSamples(yaml)["linnet_macos_light"] else { return }
+    let lexicon = ZIMELocalLexicon(url: URL(fileURLWithPath: "resources/zime-cedict.sqlite3"))
+    for region in [ZIMELocalLexicon.RegionProfile.mainland, .traditionalRegions] {
+      let words = region == .mainland
+        ? ["你", "发", "帅", "朋友", "工作", "学习", "你好", "天气", "下班"]
+        : ["你", "妳", "發", "髮", "帥", "朋友", "工作", "學習", "你好"]
+      let annotations = words.map { lexicon.annotation(for: $0, region: region) }
+      for point in [CGFloat(12), 16, 32] {
+        for count in 3...9 {
+          let panel = SquirrelPanel(position: NSRect(x: 260, y: 420, width: 2, height: 20))
+          let controller = SquirrelInputController()
+          panel.bind(controller: controller)
+          let view = panel.view
+          configureThemeLayout(view.lightTheme, sample: sample, point: point, linear: false)
+          let items = (0..<count).map { index in
+            let annotation = annotations[index]
+            return SquirrelInputController.CandidateItem(text: words[index],
+              comment: LinnetCandidatePresentation.bilingualComment(displayText: annotation.displayText,
+                translations: annotation.translations, detailText: annotation.detailText),
+              page: 0, indexOnPage: index, absoluteIndex: index, selectionLabel: String(index + 1))
+          }
+          _ = panel.update(preedit: "ni", selRange: .empty, caretPos: 2,
+            candidates: .init(items: items, pageSize: count, currentPage: 0, isLastPage: true, isExpanded: false, canExpand: false),
+            highlighted: 0, update: true, controller: controller)
+          render(view)
+          if let text = view.textView.textContentStorage?.attributedString {
+            let ni = text.attributedSubstring(from: view.candidateRanges[0]).string
+            require(ni.contains("you (informal)") && !ni.contains("nin2") && !ni.contains("Mainland") && !ni.contains(" / you"),
+              "structured 你 retained redundant / explanatory suffixes")
+            for index in 0..<count {
+              let row = text.attributedSubstring(from: view.candidateRanges[index]).string
+              require(row.contains(annotations[index].displayText), "candidate lost its own structured gloss")
+            }
+          } else { failures.append("structured candidate text missing") }
+          require(view.candidateToolTipTexts.first?.description == annotations[0].detailText,
+            "structured full definitions were not delivered to native tooltip")
+          if let first = view.accessibilityChildren()?.first as? LinnetCandidateAccessibilityElement {
+            require(first.accessibilityHelp()?.contains("您[nin2]") == true, "AX lost original comparison note")
+            require(first.accessibilityPerformPress() && controller.selectedCandidateIndices == [0], "structured annotation changed commit selection")
+          } else { failures.append("structured candidate has no AX element") }
+          panel.hide()
+          require(view.candidateToolTipTexts.isEmpty, "stale structured tooltip survived hiding")
+        }
       }
     }
   }
@@ -2355,7 +2405,7 @@ struct LinnetCandidateWindowInteractionTests {
     NSColor(srgbRed: 0.96, green: 0.96, blue: 0.97, alpha: 1).setFill()
     NSRect(origin: .zero, size: size).fill()
     let ink = NSColor(srgbRed: 0.12, green: 0.12, blue: 0.13, alpha: 1)
-    ("按地区保留释义，不提炼、不改写通用词义" as NSString).draw(at: NSPoint(x: 52, y: 675),
+    ("词义与注释分层，保留简繁词条的归属" as NSString).draw(at: NSPoint(x: 52, y: 675),
       withAttributes: [.font: NSFont.systemFont(ofSize: 36, weight: .semibold), .foregroundColor: ink])
     ("macOS 浅色 / 深色 · 当前候选窗渲染 · 20 pt" as NSString).draw(at: NSPoint(x: 54, y: 632),
       withAttributes: [.font: NSFont.systemFont(ofSize: 22), .foregroundColor: NSColor.darkGray])
@@ -2366,9 +2416,14 @@ struct LinnetCandidateWindowInteractionTests {
     ]
     for (index, variant) in variants.enumerated() {
       let x = CGFloat(54 + index * 660)
-      let note = "\u{001E}" + lexicon.translations(for: "你", region: variant.2).joined(separator: "\u{001F}")
+      let words = index == 0 ? ["你", "发", "帅"] : ["你", "妳", "髮"]
+      let items = words.map { word in
+        let annotation = lexicon.annotation(for: word, region: variant.2)
+        return (word, LinnetCandidatePresentation.bilingualComment(displayText: annotation.displayText,
+          translations: annotation.translations, detailText: annotation.detailText))
+      }
       guard let sample = samples[variant.0], let panel = renderProductCandidatePanel(sample: sample,
-        preedit: "ni", items: [("你", note), (index == 0 ? "拟" : "擬", "to plan; to draft"), ("泥", "mud; clay")]) else {
+        preedit: "", items: items) else {
         failures.append("regional gallery could not render \(variant.0)")
         continue
       }
@@ -2379,7 +2434,7 @@ struct LinnetCandidateWindowInteractionTests {
       let height = CGFloat(panel.pixelsHigh) * scale
       drawBitmap(panel, in: NSRect(x: x, y: 510 - height, width: width, height: height))
     }
-    ("用法说明原样保留 · 长释义自动换行 · 悬停查看当前地区完整释义 · 原文默认上屏" as NSString)
+    ("词条展示样例 · 相同译义合并 · 辨义限定保留 · 拼音引用和长说明在悬停详情中" as NSString)
       .draw(at: NSPoint(x: 54, y: 80), withAttributes: [.font: NSFont.systemFont(ofSize: 23), .foregroundColor: ink])
     NSGraphicsContext.restoreGraphicsState()
     writeReadmeBitmap(bitmap, outputPath: outputPath, label: "README regional glossary gallery")
