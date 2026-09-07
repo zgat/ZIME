@@ -55,7 +55,7 @@ struct LinnetSettingsProjectionRendererTests {
   }
 
   private static func testThemeFamilyAndAppearanceMapping() {
-    guard LinnetSettingsDocument.currentSchemaVersion == 16,
+    guard LinnetSettingsDocument.currentSchemaVersion == 17,
       LinnetSettingsDocument.ThemeFamily.allCases.map(\.rawValue) == [
         "paper_ledger", "moon_jade", "sidecar_slate", "clay_tiles", "mist_jade",
         "native_glass", "ink_cinnabar", "macos",

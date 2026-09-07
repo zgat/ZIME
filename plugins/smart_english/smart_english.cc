@@ -314,6 +314,21 @@ class LinnetInteractionProcessor : public Processor {
       return kRejected;
     }
 
+    if (IsPlainKey(key) && !context->get_option("ascii_mode") &&
+        (key.keycode() == XK_Return || key.keycode() == XK_KP_Enter ||
+         key.keycode() == XK_space)) {
+      const bool add_space = key.keycode() == XK_space &&
+          (schema_id_ != kSmartEnglishSchema || options_.space_adds_trailing_space);
+      // The same core owner is used by IMK's explicit raw-input shortcut.
+      // It preserves already-selected prefixes, never learns a highlighted
+      // candidate, and dismisses zero-input predictions without committing them.
+      const bool committed = context->CommitRawInput();
+      HardStop(context);
+      if (!committed) return kRejected;
+      if (add_space) engine_->CommitText(" ");
+      return kAccepted;
+    }
+
     if (!context->composition().empty() &&
         context->composition().back().HasTag("prediction")) {
       return ProcessPrediction(context, key);
@@ -348,19 +363,6 @@ class LinnetInteractionProcessor : public Processor {
       }
     }
 
-    if (schema_id_ == kSmartEnglishSchema &&
-        key.keycode() == XK_space &&
-        IsPlainKey(key)) {
-      return CommitSpaceSelection(context, PostCommitPrediction::kPreserve);
-    }
-    if (schema_id_ == kSmartEnglishSchema &&
-        key.keycode() == XK_Return && IsPlainKey(key)) {
-      return CommitCurrentSelection(context, PostCommitPrediction::kDismiss,
-                                    false)
-                 ? kAccepted
-                 : kRejected;
-    }
-
     if (IsEditBoundary(key.keycode())) {
       SetSentenceBoundary(context, false);
     }
@@ -391,20 +393,6 @@ class LinnetInteractionProcessor : public Processor {
       }
     }
     return context->PushInput(static_cast<char>(digit)) ? kAccepted : kRejected;
-  }
-
-  ProcessResult CommitSpaceSelection(
-      Context* context, PostCommitPrediction prediction) const {
-    if (!CommitCurrentSelection(context, prediction,
-                                options_.space_adds_trailing_space)) {
-      return kRejected;
-    }
-    if (options_.space_adds_trailing_space) {
-      // Session::OnCommit concatenates both sink writes from this key event,
-      // so the client receives the selected candidate and its boundary now.
-      engine_->CommitText(" ");
-    }
-    return kAccepted;
   }
 
   bool IsPlainKey(const KeyEvent& key) const {
@@ -478,19 +466,6 @@ class LinnetInteractionProcessor : public Processor {
   }
 
   ProcessResult ProcessPrediction(Context* context, const KeyEvent& key) {
-    const bool focused =
-        context->get_property(kPredictionNavigationProperty) == "1";
-    if (focused && IsPlainKey(key) && key.keycode() == XK_space) {
-      context->set_property(kPredictionNavigationProperty, "");
-      return CommitSpaceSelection(context, PostCommitPrediction::kPreserve);
-    }
-    if (focused && IsPlainKey(key) && key.keycode() == XK_Return) {
-      context->set_property(kPredictionNavigationProperty, "");
-      return CommitCurrentSelection(context, PostCommitPrediction::kDismiss,
-                                    false)
-                 ? kAccepted
-                 : kRejected;
-    }
     if (key.keycode() == XK_Tab) return ProcessTab(context, key);
     const int selection_index = SelectionIndex(key);
     if (selection_index >= 0) {

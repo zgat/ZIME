@@ -8,10 +8,10 @@
 
 import Foundation
 
-/// Canonical settings document (schema v16). ZIME's bilingual layout defaults
+/// Canonical settings document (schema v17). ZIME's bilingual layout defaults
 /// are projected over the bundled Rime distribution without modifying its data.
 struct LinnetSettingsDocument: Codable, Equatable, Sendable {
-  static let currentSchemaVersion = 16
+  static let currentSchemaVersion = 17
 
   var schemaVersion: Int
   var appearance: Appearance
@@ -187,25 +187,48 @@ extension LinnetSettingsDocument {
 
   struct Shortcuts: Codable, Equatable, Sendable {
     enum Action: String, CaseIterable, Sendable {
-      case switchSourceTranslation, commitCandidate, smartComplete
+      case switchSourceTranslation, commitRawInput, smartComplete
     }
     var switchSourceTranslation: Shortcut = .tab
-    var commitCandidate: Shortcut = .enter
+    var commitRawInput: Shortcut = .enter
     var smartComplete: Shortcut? = .optionTab
     static let `default` = Shortcuts()
+
+    private enum CodingKeys: String, CodingKey {
+      case switchSourceTranslation, commitRawInput, smartComplete, commitCandidate
+    }
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+      let values = try decoder.container(keyedBy: CodingKeys.self)
+      switchSourceTranslation = try values.decodeIfPresent(Shortcut.self, forKey: .switchSourceTranslation) ?? .tab
+      // Retain the recorded key, but retire candidate-confirmation semantics.
+      commitRawInput = try values.decodeIfPresent(Shortcut.self, forKey: .commitRawInput)
+        ?? values.decodeIfPresent(Shortcut.self, forKey: .commitCandidate) ?? .enter
+      smartComplete = values.contains(.smartComplete)
+        ? try values.decodeIfPresent(Shortcut.self, forKey: .smartComplete) : .optionTab
+    }
+
+    func encode(to encoder: Encoder) throws {
+      var values = encoder.container(keyedBy: CodingKeys.self)
+      try values.encode(switchSourceTranslation, forKey: .switchSourceTranslation)
+      try values.encode(commitRawInput, forKey: .commitRawInput)
+      try values.encode(smartComplete, forKey: .smartComplete)
+    }
 
     subscript(action: Action) -> Shortcut? {
       get {
         switch action {
         case .switchSourceTranslation: switchSourceTranslation
-        case .commitCandidate: commitCandidate
+        case .commitRawInput: commitRawInput
         case .smartComplete: smartComplete
         }
       }
       set {
         switch action {
         case .switchSourceTranslation: if let newValue { switchSourceTranslation = newValue }
-        case .commitCandidate: if let newValue { commitCandidate = newValue }
+        case .commitRawInput: if let newValue { commitRawInput = newValue }
         case .smartComplete: smartComplete = newValue
         }
       }
@@ -555,7 +578,7 @@ extension LinnetSettingsDocument {
       if legacy.translationToggleKey == "option_return" {
         shortcuts.switchSourceTranslation = .init(keyCode: 36, modifiers: Shortcut.option)
       }
-      if legacy.translationCommitKey == "space" { shortcuts.commitCandidate = .init(keyCode: 49) }
+      if legacy.translationCommitKey == "space" { shortcuts.commitRawInput = .init(keyCode: 49) }
       if ["pass", "navigate"].contains(legacy.tabBehavior ?? "") { shortcuts.smartComplete = nil }
     }
     guard shortcuts.isValid else {

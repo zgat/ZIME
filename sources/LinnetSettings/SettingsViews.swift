@@ -393,7 +393,7 @@ struct InputTabView: View {
       Text("This switch affects Smart English only. Chinese-mode candidates follow the Chinese learning strategy.")
         .font(.caption).foregroundStyle(.secondary)
       Toggle(
-        "Add a trailing space when Space accepts a candidate",
+        "Add a trailing space when Space submits original input",
         isOn: $model.configuration.documentDraft.english.spaceAddsTrailingSpace
       )
       Text(

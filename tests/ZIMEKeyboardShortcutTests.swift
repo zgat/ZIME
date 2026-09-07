@@ -12,8 +12,8 @@ struct ZIMEKeyboardShortcutTests {
     let defaults = Bindings.default
     require(defaults.isValid, "defaults conflict")
     require(defaults.action(keyCode: 48, modifiers: 0) == .switchSourceTranslation, "Tab must only switch sides")
-    require(defaults.action(keyCode: 36, modifiers: 0) == .commitCandidate, "Return must confirm either side")
-    require(defaults.action(keyCode: 76, modifiers: 0) == .commitCandidate, "keypad Enter must also confirm")
+    require(defaults.action(keyCode: 36, modifiers: 0) == .commitRawInput, "Return must submit original input on either side")
+    require(defaults.action(keyCode: 76, modifiers: 0) == .commitRawInput, "keypad Enter must also submit original input")
     require(defaults.action(keyCode: 48, modifiers: Shortcut.option) == .smartComplete, "completion must have a separate binding")
     require(defaults.action(keyCode: 48, modifiers: Shortcut.shift) == nil, "Shift-Tab is not implicitly stolen")
     require(defaults.action(keyCode: 48, modifiers: 1 << 16) == .switchSourceTranslation, "Caps Lock must not change shortcut identity")
@@ -28,33 +28,43 @@ struct ZIMEKeyboardShortcutTests {
       require(!value.isValid, "reserved or unknown shortcut was accepted")
     }
     var custom = defaults
-    custom.commitCandidate = .init(keyCode: 40, modifiers: Shortcut.control | Shortcut.option)
-    require(custom.isValid && custom.action(keyCode: 40, modifiers: Shortcut.control | Shortcut.option) == .commitCandidate,
+    custom.commitRawInput = .init(keyCode: 40, modifiers: Shortcut.control | Shortcut.option)
+    require(custom.isValid && custom.action(keyCode: 40, modifiers: Shortcut.control | Shortcut.option) == .commitRawInput,
       "recorded modifier chord did not route")
-    custom.smartComplete = custom.commitCandidate
+    custom.smartComplete = custom.commitRawInput
     require(!custom.isValid && custom.action(keyCode: 40, modifiers: Shortcut.control | Shortcut.option) == nil,
       "conflicting bindings did not fail closed")
 
     let legacy = Data(#"{"schemaVersion":15,"english":{"tabBehavior":"smart_complete","translationToggleKey":"tab","translationCommitKey":"enter"}}"#.utf8)
     let migrated = try JSONDecoder().decode(LinnetSettingsDocument.self, from: legacy)
-    require(migrated.schemaVersion == 16 && migrated.shortcuts == .default, "old conflicting Tab defaults did not migrate")
+    require(migrated.schemaVersion == 17 && migrated.shortcuts == .default, "old conflicting Tab defaults did not migrate")
     let customized = Data(#"{"schemaVersion":14,"english":{"tabBehavior":"pass","translationToggleKey":"option_return","translationCommitKey":"space"}}"#.utf8)
     let migratedCustom = try JSONDecoder().decode(LinnetSettingsDocument.self, from: customized)
     require(migratedCustom.shortcuts.switchSourceTranslation == .init(keyCode: 36, modifiers: Shortcut.option)
-      && migratedCustom.shortcuts.commitCandidate == .init(keyCode: 49)
+      && migratedCustom.shortcuts.commitRawInput == .init(keyCode: 49)
       && migratedCustom.shortcuts.smartComplete == nil, "explicit legacy choices were lost")
     let encoded = try JSONEncoder().encode(migratedCustom)
     let text = String(decoding: encoded, as: UTF8.self)
-    require(!text.contains("tabBehavior") && !text.contains("translationCommitKey") && !text.contains("translationToggleKey"),
+    require(!text.contains("tabBehavior") && !text.contains("translationCommitKey") && !text.contains("translationToggleKey") && !text.contains("commitCandidate"),
       "retired shortcut fields were written back")
     require(try JSONDecoder().decode(LinnetSettingsDocument.self, from: encoded) == migratedCustom, "recorded bindings did not round-trip")
     var invalid = migrated
-    invalid.shortcuts.commitCandidate = .tab
+    invalid.shortcuts.commitRawInput = .tab
     do { _ = try JSONEncoder().encode(invalid); fatalError("conflicting settings encoded") }
     catch is EncodingError { }
     let duplicate = Data(#"{"shortcuts":{"switchSourceTranslation":{"keyCode":36,"modifiers":0},"commitCandidate":{"keyCode":76,"modifiers":0}}}"#.utf8)
     do { _ = try JSONDecoder().decode(LinnetSettingsDocument.self, from: duplicate); fatalError("conflicting JSON decoded") }
     catch is DecodingError { }
+
+    let previous = Data(#"{"schemaVersion":16,"shortcuts":{"switchSourceTranslation":{"keyCode":48,"modifiers":0},"commitCandidate":{"keyCode":76,"modifiers":0},"smartComplete":null}}"#.utf8)
+    let upgraded = try JSONDecoder().decode(LinnetSettingsDocument.self, from: previous)
+    require(upgraded.schemaVersion == 17 && upgraded.shortcuts.commitRawInput == .enter
+      && upgraded.shortcuts.smartComplete == nil, "v16 recording or disabled completion was lost")
+    let upgradedText = String(decoding: try JSONEncoder().encode(upgraded), as: UTF8.self)
+    require(upgradedText.contains("commitRawInput") && !upgradedText.contains("commitCandidate"),
+      "candidate confirmation survived v17 serialization")
+    require(try JSONDecoder().decode(LinnetSettingsDocument.self, from: Data(upgradedText.utf8)) == upgraded,
+      "disabled completion did not survive v17 round-trip")
 
     let window = NSPanel(contentRect: .init(x: -10000, y: -10000, width: 320, height: 100),
       styleMask: .nonactivatingPanel, backing: .buffered, defer: false)

@@ -7397,6 +7397,96 @@ void ExpectLiveUserDataSync(RimeApi_stdbool* api) {
   api->destroy_session(english);
 }
 
+void ExpectZIMENumericAndRawCommit(RimeApi_stdbool* api) {
+  for (const char* schema : {"linnet_zh_pinyin", "linnet_en"}) {
+    for (const char* input : {"key", "nihao", "shuru", "iMe", "Cluod", "x70"}) {
+      for (const int key : {0, XK_Return, XK_KP_Enter, XK_space}) {
+        const auto session = CreateSchemaSession(api, schema);
+        if (!api->set_input(session, input)) Fail("raw commit fixture could not set input");
+        const auto before = CandidateOrigins(session);
+        if (before.empty()) Fail("raw commit fixture has no candidates");
+        api->highlight_candidate_on_current_page(session, 1);
+        ExpectNoCommit(api, session, "highlight before original input");
+        const bool handled = key == 0 ? api->commit_raw_input(session) : api->process_key(session, key, 0);
+        const std::string expected = std::string(input) + (key == XK_space ? " " : "");
+        if (!handled || TakeCommit(api, session) != expected)
+          Fail("Return/Space/API selected a candidate instead of raw input: " + std::string(schema) + "/" + input);
+        ExpectNoCommit(api, session, "duplicate raw commit");
+        ExpectMenuEmpty(api, session, "raw commit must not retain predictions");
+        if (!std::string(api->get_input(session)).empty()) Fail("raw commit retained input");
+        api->set_input(session, input);
+        const auto after = CandidateOrigins(session);
+        for (const auto& previous : before) {
+          const auto row = std::find_if(after.begin(), after.end(), [&](const auto& value) {
+            return value.text == previous.text && value.genuine_language == previous.genuine_language;
+          });
+          if (row != after.end() && row->commit_count != previous.commit_count)
+            Fail("raw input trained an unselected candidate");
+        }
+        api->destroy_session(session);
+      }
+    }
+    for (int digit = 1; digit <= 9; ++digit) {
+      const auto owner = CreateSchemaSession(api, schema);
+      const int old_size = rime::Service::instance().GetSession(owner)->schema()->page_size();
+      SetSchemaString(api, schema, "menu/page_size", "9");
+      const auto session = CreateSchemaSession(api, schema);
+      Enter(api, session, std::string(schema) == "linnet_en" ? "a" : "shi");
+      const auto candidates = Candidates(api, session);
+      if (candidates.size() < 9) Fail("numeric fixture has fewer than nine candidates");
+      const auto expected = candidates[digit - 1].text;
+      if (!api->process_key(session, '0' + digit, 0) || TakeCommit(api, session) != expected)
+        Fail("numeric candidate selection changed");
+      api->destroy_session(session);
+      SetSchemaString(api, schema, "menu/page_size", std::to_string(old_size).c_str());
+      api->destroy_session(owner);
+    }
+    const auto edited = CreateSchemaSession(api, schema);
+    api->set_input(edited, "abcdef");
+    api->set_caret_pos(edited, 2);
+    if (!api->process_key(edited, XK_Return, 0) || TakeCommit(api, edited) != "abcdef")
+      Fail("Return discarded raw input after an interior caret");
+    api->destroy_session(edited);
+    const auto idle = CreateSchemaSession(api, schema);
+    for (const int key : {XK_Return, XK_KP_Enter, XK_space}) {
+      if (api->process_key(idle, key, 0)) Fail("idle whitespace was consumed");
+      ExpectNoCommit(api, idle, "idle raw key");
+    }
+    api->destroy_session(idle);
+  }
+  for (const int key : {XK_Return, XK_KP_Enter, XK_space}) {
+    const auto partial = CreateSchemaSession(api, "linnet_zh_pinyin");
+    Enter(api, partial, "xiazhouni");
+    api->set_caret_pos(partial, 7);
+    const auto partial_rows = CandidateOrigins(partial);
+    const auto prefix = std::find_if(partial_rows.begin(), partial_rows.end(), [](const auto& row) {
+      return row.text == "下周" && row.start == 0 && row.end == 7;
+    });
+    if (prefix == partial_rows.end() ||
+        !api->select_candidate(partial, static_cast<size_t>(prefix - partial_rows.begin())))
+      Fail("full-pinyin fixture could not explicitly select its prefix");
+    if (!api->process_key(partial, key, 0) ||
+        TakeCommit(api, partial) != std::string("下周ni") + (key == XK_space ? " " : ""))
+      Fail("raw submission changed a previously selected Chinese prefix");
+    api->destroy_session(partial);
+    const auto prediction = CreatePassivePrediction(api, "raw key prediction exit");
+    api->process_key(prediction, XK_Right, 0);
+    if (api->process_key(prediction, key, 0)) Fail("raw key selected a zero-input prediction");
+    ExpectPassivePredictionExit(api, prediction, "raw key prediction exit");
+    api->destroy_session(prediction);
+  }
+  const auto owner = CreateSchemaSession(api, "linnet_en");
+  SetSchemaBool(api, "linnet_en", "linnet_english_interaction/space_adds_trailing_space", false);
+  const auto no_space = CreateSchemaSession(api, "linnet_en");
+  Enter(api, no_space, "cluod");
+  if (!api->process_key(no_space, XK_space, 0) || TakeCommit(api, no_space) != "cluod")
+    Fail("Space trailing-space preference was lost");
+  api->destroy_session(no_space);
+  SetSchemaBool(api, "linnet_en", "linnet_english_interaction/space_adds_trailing_space", true);
+  api->destroy_session(owner);
+  std::cout << "ZIME numeric selection and original-input submission: Return/keypad/API/Space, raw casing, no learning, caret, partial prefix, idle and prediction: PASS\n";
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -7564,6 +7654,7 @@ int main(int argc, char** argv) {
   }
   if (zime_shortcuts_probe) {
     ExpectZIMERecordedShortcutBridge(api);
+    ExpectZIMENumericAndRawCommit(api);
     api->finalize();
     return 0;
   }

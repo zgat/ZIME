@@ -63,6 +63,7 @@ fi
 rg -Fq 'pendingCommitOverride' sources/SquirrelInputController.swift ||
   fail "translation-only commit boundary"
 bash tests/verify_zime_settings_cleanup.sh || fail "Settings cleanup contract"
+bash tests/verify_zime_commit_contract.sh || fail "original-input commit contract"
 
 if [[ $# -gt 0 ]]; then
   app="$1"

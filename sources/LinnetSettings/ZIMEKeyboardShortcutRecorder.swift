@@ -129,9 +129,9 @@ struct ZIMEKeyboardShortcutSettings: View {
         }
       }
       if let error { Text(error).font(.caption).foregroundStyle(.red) }
-      Text("Click a shortcut and press the keys you want. The confirm shortcut accepts the current row on either side; number keys 1–9 select the corresponding row.")
+      Text("Number keys 1–9 select candidates. Return submits the original input, even on the translation side. Click a shortcut to record a different binding.")
         .font(.caption).foregroundStyle(.secondary)
-      Text("Smart completion fills the selected English suggestion into marked input. Confirm to insert; completion never switches translation sides.")
+      Text("Smart completion fills the selected English suggestion into marked input. Return submits that input; completion never switches translation sides.")
         .font(.caption).foregroundStyle(.secondary)
       Button("Reset candidate shortcuts") { shortcuts = .default; error = nil }
         .font(.caption)
@@ -141,7 +141,7 @@ struct ZIMEKeyboardShortcutSettings: View {
   private func title(_ action: Action) -> String {
     switch action {
     case .switchSourceTranslation: String(localized: "Switch source / translation")
-    case .commitCandidate: String(localized: "Confirm current candidate")
+    case .commitRawInput: String(localized: "Submit original input")
     case .smartComplete: String(localized: "Smart completion")
     }
   }

@@ -599,8 +599,8 @@ extension SquirrelInputController {
     }
   }
 
-  /// Candidate actions are state-independent: the same confirmation binding
-  /// accepts the visible source or translation row. Idle/client keys stay local.
+  /// Numeric keys select candidates; the raw-input binding bypasses both the
+  /// source and translation highlight. Idle/client keys stay local.
   private func handleBilingualKeyDown(
     _ event: NSEvent,
     modifiers: NSEvent.ModifierFlags
@@ -634,12 +634,15 @@ extension SquirrelInputController {
     }
 
     let presented = NSApp.squirrelAppDelegate.panel?.candidateSnapshot
-    if action == .commitCandidate {
-      guard hasPendingRimeInput || bilingualTranslationMode,
-        let presented, !presented.items.isEmpty else { return nil }
-      let selected = bilingualTranslationMode ? bilingualHighlightedIndex : presented.highlightedItemIndex
-      guard presented.items.indices.contains(selected) else { return true }
-      return selectCandidate(absoluteIndex: presented.items[selected].absoluteIndex)
+    if action == .commitRawInput {
+      guard hasPendingRimeInput, let targetClient = activeClient else { return nil }
+      candidateTranslator.cancel()
+      bilingualTranslationMode = false
+      bilingualSourceSnapshot = nil
+      bilingualHighlightedIndex = -1
+      pendingCommitOverride = nil
+      commitActiveComposition(to: targetClient)
+      return true
     }
     if action == .smartComplete {
       if bilingualTranslationMode { return true }
@@ -651,7 +654,7 @@ extension SquirrelInputController {
           input: input, candidates: source.items.map(\.text), highlighted: source.highlightedItemIndex)
       else { return true }
       // Replace marked input only. No selection notifier, user-learning write
-      // or client insertText occurs until the explicit confirmation action.
+      // or client insertText occurs until numeric selection or raw submission.
       _ = completed.withCString { rimeAPI.set_input(session, $0) }
       rimeUpdate()
       return true
@@ -671,10 +674,15 @@ extension SquirrelInputController {
       presented.items.indices.contains(digit - 1) {
       return selectCandidate(absoluteIndex: presented.items[digit - 1].absoluteIndex)
     }
-    // An unbound commit-like key must not dismiss translations and commit a
-    // different, hidden source candidate via Rime's raw/space fallback.
+    // The native raw-input owner handles an unbound Return or Space. Leave
+    // translation mode first so no hidden source/translation is selected.
     if [UInt16(kVK_Return), UInt16(kVK_ANSI_KeypadEnter), UInt16(kVK_Space)].contains(event.keyCode),
-      shortcutModifiers.isEmpty { return true }
+      shortcutModifiers.isEmpty {
+      bilingualTranslationMode = false
+      bilingualHighlightedIndex = -1
+      pendingCommitOverride = nil
+      return nil
+    }
     if [UInt16(kVK_LeftArrow), UInt16(kVK_UpArrow)].contains(event.keyCode) {
       guard let presented, !presented.items.isEmpty else { return true }
       bilingualHighlightedIndex = max(0, bilingualHighlightedIndex - 1)

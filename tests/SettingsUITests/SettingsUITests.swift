@@ -285,11 +285,11 @@ final class SettingsUITests: XCTestCase {
       "Show Smart English context suggestions",
       "Capitalize sentence starts",
       "Learn from English selections",
-      "Add a trailing space when Space accepts a candidate",
+      "Add a trailing space when Space submits original input",
     ] {
       try clickCheckBox(label, in: app)
     }
-    for action in ["switchSourceTranslation", "commitCandidate", "smartComplete"] {
+    for action in ["switchSourceTranslation", "commitRawInput", "smartComplete"] {
       XCTAssertTrue(app.buttons["settings.shortcuts.\(action)"].exists)
     }
     XCTAssertFalse(app.popUpButtons["Tab key"].exists)
