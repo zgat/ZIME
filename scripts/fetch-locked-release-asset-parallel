@@ -96,6 +96,7 @@ for ((index = 0; index < parts; index += 1)); do
   expected_part_bytes="$((end - start + 1))"
   (
     curl --fail --silent --show-error --proto '=https' --connect-timeout 30 --max-time 900 \
+      --retry 3 --retry-delay 2 --retry-all-errors \
       -H 'User-Agent: ZIME-locked-release-asset' --range "${start}-${end}" \
       --output "${part}" "${location}"
     [[ "$(stat -f %z "${part}")" == "${expected_part_bytes}" ]]

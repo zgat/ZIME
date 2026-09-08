@@ -146,6 +146,7 @@ runtime_license_specs = {
     static_dependencies.dig("glog", "license_sha256"),
   "librime-BSD-3-Clause.txt" => librime.fetch("license_sha256"),
   "librime-lua-BSD-3-Clause.txt" => lua_plugin.fetch("license_sha256"),
+  "librime-octagram-BSD-3-Clause.txt" => octagram_plugin.fetch("license_sha256"),
   "librime-lua-embedded-MIT.txt" =>
     lua_plugin.dig("embedded_mit_notice", "sha256"),
   "librime-predict-BSD-3-Clause.txt" => predict_plugin.fetch("license_sha256"),
@@ -166,8 +167,6 @@ end
 
 root_gpl = File.join(source_root, squirrel.fetch("license_path"))
 verify_locked_file(root_gpl, squirrel.fetch("license_sha256"), "App GPL text")
-fail_release("Squirrel and librime-octagram GPL texts diverged") unless
-  squirrel.fetch("license_sha256") == octagram_plugin.fetch("license_sha256")
 [rime_ice, hallelujah].each do |source|
   license = File.join(
     source_root, source.fetch("submodule_path"), source.fetch("license_path")
@@ -187,9 +186,9 @@ notice = <<~NOTICE
   This file and `SBOM.spdx.json` are generated from the release lock, the exact
   librime gitlinks and the runtime license projection used by this build. The
   App-level `LICENSE.txt` supplies the GNU GPL version 3 terms for Linnet,
-  Squirrel, the shipped librime-octagram plugin and the selected rime-ice and
-  Hallelujah inputs. It is byte-identical to the Squirrel and octagram license
-  texts; the other locked GPL source texts are verified during generation.
+  Squirrel and the selected rime-ice and Hallelujah inputs. It is byte-identical
+  to the Squirrel license; other locked GPL texts are verified during generation.
+  The updated librime-octagram plugin uses its own BSD-3-Clause license.
   Other shipped license texts are under `LICENSES/`.
 
   ## Shipped frontend and Rime runtime

@@ -86,9 +86,8 @@ octagram_license_path="$(lock_value sources.rime_octagram_data.license_path)"
 octagram_license_sha="$(lock_value sources.rime_octagram_data.license_sha256)"
 lmdg_model_name="$(lock_value sources.rime_lmdg_grammar.asset)"
 lmdg_asset_download_url="$(lock_value sources.rime_lmdg_grammar.asset_download_url)"
-lmdg_pack_name="$(lock_value sources.rime_lmdg_grammar.linnet_pack.asset)"
-lmdg_pack_download_url="$(
-    lock_value sources.rime_lmdg_grammar.linnet_pack.asset_download_url)"
+lmdg_mirror_download_url="$(
+    lock_value sources.rime_lmdg_grammar.mirror.asset_download_url)"
 product_version="$(sed -n \
     's/^MARKETING_VERSION = \([^[:space:]]*\)$/\1/p' \
     config/LinnetProduct.xcconfig | LC_ALL=C sort -u)"
@@ -180,72 +179,37 @@ verify_git_snapshot \
 verify_git_snapshot \
     "${octagram_data_path}" "${octagram_data_git_commit}" "${octagram_data_git_tree}"
 
-# The accepted upstream digest owns the product grammar content. Linnet's
-# fixed same-repository data pack is its sole build transport, so an upstream
+# The accepted upstream digest owns the product grammar content. ZIME's
+# fixed release mirror is its sole build transport, so an upstream
 # release asset replaced in place cannot alter or strand cold builds.
 # The separate octagram-data checkout remains a pinned development/runtime-test
 # fixture only.
 build_stage 2 "fetch and verify the locked grammar model"
 fetch_grammar_model() (
     local target="$1"
-    local download_dir="" pack_file="" pack_tool="" extracted_dir=""
-    local extracted_model="" inventory="" expected_inventory=""
-    local cleanup_status=0 status
-
+    local download_dir model_file
+    download_dir="$(mktemp -d "${project_root}/build/linnet-grammar.XXXXXX")"
+    model_file="${download_dir}/${lmdg_model_name}"
     cleanup_grammar_download() {
-        status=$?
+        local status=$?
         trap - EXIT INT TERM
-        if [[ -n "${download_dir}" ]]; then
-            if [[ "${download_dir}" != \
-                  "${project_root}/build/linnet-grammar."?????? ]]; then
-                echo "Refusing unsafe grammar download cleanup: ${download_dir}" >&2
-                cleanup_status=1
-            elif [[ -d "${download_dir}" && ! -L "${download_dir}" ]]; then
-                chmod -R u+w "${download_dir}" || cleanup_status=$?
-                find "${download_dir}" -depth -delete || cleanup_status=$?
-            elif [[ -e "${download_dir}" || -L "${download_dir}" ]]; then
-                echo "Refusing non-directory grammar download cleanup: ${download_dir}" >&2
-                cleanup_status=1
-            fi
-        fi
-        if [[ "${status}" -eq 0 && "${cleanup_status}" -ne 0 ]]; then
-            status="${cleanup_status}"
+        if [[ "${download_dir}" == "${project_root}/build/linnet-grammar."?????? &&
+              -d "${download_dir}" && ! -L "${download_dir}" ]]; then
+            chmod -R u+w "${download_dir}"
+            find "${download_dir}" -depth -delete
         fi
         exit "${status}"
     }
     trap cleanup_grammar_download EXIT INT TERM
-
-    mkdir -p "${project_root}/build"
-    download_dir="$(mktemp -d "${project_root}/build/linnet-grammar.XXXXXX")"
-    pack_file="${download_dir}/${lmdg_pack_name}"
-    pack_tool="${project_root}/build/linnet-pack"
-    extracted_dir="${download_dir}/extracted"
-    extracted_model="${extracted_dir}/${lmdg_model_name}"
-    echo "Restoring the locked Wanxiang LTS grammar from Linnet data:" >&2
-    echo "  ${lmdg_pack_download_url}" >&2
+    # A versioned ZIME release retains the exact upstream bytes even after
+    # RIME-LMDG replaces its mutable LTS attachment. No foreign app pack is used.
     scripts/fetch-locked-release-asset \
-        "${lock_file}" rime_lmdg_grammar.linnet_pack "${pack_file}"
-    make -C "${project_root}" --no-print-directory linnet-pack-tool
-    "${pack_tool}" extract \
-        --pack "${pack_file}" \
-        --core-version "${product_version}" \
-        --output "${extracted_dir}" >/dev/null
-    inventory="$(cd "${extracted_dir}" &&
-        find . -mindepth 1 -print | LC_ALL=C sort)"
-    expected_inventory="$(printf '%s\n' \
-        "./${lmdg_model_name}" ./manifest.json | LC_ALL=C sort)"
-    [[ "${inventory}" == "${expected_inventory}" &&
-       -f "${extracted_model}" && ! -L "${extracted_model}" ]] || {
-        echo "Locked Linnet LTS pack inventory is unexpected." >&2
-        exit 1
-    }
-    scripts/verify-linnet-grammar-model "${extracted_model}" >/dev/null
-    chmod u+w "${extracted_dir}"
-    chmod 600 "${extracted_model}"
+        "${lock_file}" rime_lmdg_grammar.mirror "${model_file}"
+    scripts/verify-linnet-grammar-model "${model_file}" >/dev/null
+    chmod 600 "${model_file}"
     mkdir -p "$(dirname "${target}")"
-    mv -f "${extracted_model}" "${target}"
+    mv -f "${model_file}" "${target}"
 )
-
 grammar_model="${project_root}/data/chinese/grammar/${lmdg_model_name}"
 octagram_license="${octagram_data_path}/${octagram_license_path}"
 if [[ (-e "${grammar_model}" || -L "${grammar_model}") &&
@@ -256,7 +220,7 @@ fi
 if ! scripts/verify-linnet-grammar-model "${grammar_model}" >/dev/null 2>&1; then
     if [[ -n "${no_download:-}" ]]; then
         echo "Missing or stale Rime grammar model in offline mode: ${grammar_model}" >&2
-        echo "Restore it from ${lmdg_pack_download_url}." >&2
+        echo "Restore it from ${lmdg_mirror_download_url}." >&2
         echo "The reviewed upstream identity is ${lmdg_asset_download_url}." >&2
         exit 1
     fi

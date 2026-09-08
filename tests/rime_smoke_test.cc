@@ -76,6 +76,9 @@ constexpr std::array<const char*, 7> kDoublePinyinSchemaIDs = {
     "linnet_zh_sogou", "linnet_zh_abc",    "linnet_zh_ziguang",
     "linnet_zh_jiajia",
 };
+// Only --profile-key-matrix-probe deploys the inherited layout fixture. All
+// production probes continue to require exactly full pinyin + English.
+bool inherited_profile_fixture = false;
 struct ShiftKeyCase {
   int keycode;
   const char* name;
@@ -169,7 +172,11 @@ std::vector<std::string> RuntimeChineseSchemaIDs(RimeApi_stdbool* api) {
     }
     result.push_back(schema_id);
   }
-  if (result != std::vector<std::string>{"linnet_zh_pinyin"}) {
+  auto expected = std::vector<std::string>{"linnet_zh_pinyin"};
+  if (inherited_profile_fixture) {
+    expected.insert(expected.end(), kDoublePinyinSchemaIDs.begin(), kDoublePinyinSchemaIDs.end());
+  }
+  if (result != expected) {
     Fail("ZIME must expose exactly its full-pinyin Chinese profile");
   }
   return result;
@@ -896,7 +903,9 @@ void ExpectNaturalSingleKeyDefaultRanking(RimeApi_stdbool* api) {
   const auto candidates = CandidateOrigins(session);
   if (candidates.empty() || BaseText(candidates.front().text) != "啊" ||
       candidates.front().genuine_language != "linnet_zh") {
-    std::cerr << "Natural-code candidates for single key 'a':";
+    std::cerr << "Natural-code candidates for single key 'a' (ascii_mode="
+              << api->get_option(session, "ascii_mode") << ", input="
+              << (api->get_input(session) ? api->get_input(session) : "") << "):";
     for (const auto& candidate : candidates) {
       std::cerr << " [" << candidate.text << ":" << candidate.type << ":"
                 << candidate.genuine_type << ":"
@@ -2709,16 +2718,19 @@ void ExpectColdClientFirstKeyLatency(RimeApi_stdbool* api) {
   api->destroy_session(warm);
 }
 
-void ExpectSchemaList(RimeApi_stdbool* api) {
+void ExpectSchemaList(RimeApi_stdbool* api, bool inherited_profile_fixture) {
   std::vector<std::string> actual = RuntimeProductSchemaIDs(api);
-  bool valid = actual.size() == kProductSchemaIDs.size();
   std::vector<std::string> expected(kProductSchemaIDs.begin(),
                                     kProductSchemaIDs.end());
+  if (inherited_profile_fixture) {
+    expected.insert(expected.end(), kDoublePinyinSchemaIDs.begin(),
+                    kDoublePinyinSchemaIDs.end());
+  }
   std::sort(actual.begin(), actual.end());
   std::sort(expected.begin(), expected.end());
-  valid = valid && actual == expected;
-  if (!valid) {
-    Fail("product schema list is not the exact ZIME full-pinyin set");
+  if (actual != expected) {
+    Fail(inherited_profile_fixture ? "inherited profile fixture schema set differs"
+                                  : "product schema list is not the exact ZIME full-pinyin set");
   }
 }
 
@@ -7737,7 +7749,8 @@ int main(int argc, char** argv) {
     api->finalize();
     Fail("octagram module was not loaded");
   }
-  ExpectSchemaList(api);
+  inherited_profile_fixture = profile_key_matrix_probe;
+  ExpectSchemaList(api, inherited_profile_fixture);
   if (live_sync_probe) {
     ExpectLiveUserDataSync(api);
     api->finalize();

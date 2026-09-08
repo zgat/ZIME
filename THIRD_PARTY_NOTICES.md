@@ -1,4 +1,9 @@
-# Linnet third-party notices
+# ZIME third-party notices
+
+ZIME ad-hoc previews ship the locked source inventory, version/signing status,
+attribution and license texts in `Contents/Resources/ZIMERelease/`. These are
+not Linnet CMS-signed release metadata or an Apple notarization assertion.
+The exact upstream pins are also available in `upstreams.lock.json`.
 
 This repository page is a stable, unversioned guide to Linnet's third-party
 families. It deliberately does not copy release versions, commits or checksums.
@@ -13,7 +18,8 @@ For an installed build, the authoritative inventory is inside the App at:
 - `Contents/Resources/LinnetRelease/LICENSES/` — shipped third-party license
   texts;
 - `Contents/Resources/LICENSE.txt` — Linnet's GNU GPL text, also reused for the
-  byte-identical Squirrel and librime-octagram GPL text.
+  byte-identical Squirrel GPL text. The updated librime-octagram plugin carries
+  its own BSD-3-Clause notice.
 
 ## Shipped application and runtime
 

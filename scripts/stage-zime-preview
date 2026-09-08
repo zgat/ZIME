@@ -1,0 +1,64 @@
+#!/usr/bin/env ruby
+# SPDX-License-Identifier: GPL-3.0-or-later
+# ZIME's explicitly ad-hoc preview path is separate from Linnet's CMS release.
+require "digest"
+require "fileutils"
+require "json"
+require "open3"
+
+root = File.expand_path("..", __dir__)
+source, target = ARGV
+abort "usage: stage-zime-preview LOCAL_APP NEW_PRODUCTION_APP" unless ARGV.length == 2
+abort "target must not exist" if File.exist?(target) || File.symlink?(target)
+abort "unsafe source" unless File.directory?(source) && !File.symlink?(source)
+def run(*args)
+  output, error, status = Open3.capture3(*args)
+  abort "#{output}\n#{error}" unless status.success?
+  output.strip
+end
+def value(app, key)
+  run("/usr/bin/plutil", "-extract", key, "raw", "-o", "-", File.join(app, "Contents/Info.plist"))
+end
+abort "not the local ZIME build" unless value(source, "CFBundleIdentifier") == "com.zime.inputmethod.ZIME.local-build"
+FileUtils.mkdir_p(File.dirname(target))
+run("/usr/bin/ditto", "--noqtn", source, target)
+settings = File.join(target, "Contents/Applications/Settings.app")
+[[target, "com.zime.inputmethod.ZIME"], [settings, "com.zime.inputmethod.ZIME.settings"]].each do |app, id|
+  run("/usr/bin/plutil", "-replace", "CFBundleIdentifier", "-string", id, File.join(app, "Contents/Info.plist"))
+end
+metadata = File.join(target, "Contents/Resources/ZIMERelease")
+abort "unexpected preexisting metadata" if File.exist?(metadata)
+FileUtils.mkdir_p(File.join(metadata, "LICENSES"))
+lock_path = File.join(root, "upstreams.lock.json")
+lock = JSON.parse(File.read(lock_path))
+FileUtils.cp(lock_path, metadata)
+FileUtils.cp(File.join(root, "THIRD_PARTY_NOTICES.md"), metadata)
+license_paths = Dir.glob(File.join(root, "librime/dist/share/linnet-licenses/*.txt"))
+abort "incomplete runtime attribution" unless license_paths.size == 13
+license_paths.concat(Dir.glob(File.join(root, "LICENSES/*.txt")))
+license_paths << File.join(root, "upstreams/rime-wanxiang/LICENSE")
+license_paths.each do |path|
+  name = path.end_with?("/rime-wanxiang/LICENSE") ? "Rime-Wanxiang-CC-BY-4.0.txt" : File.basename(path)
+  FileUtils.cp(path, File.join(metadata, "LICENSES", name))
+end
+version = { "version" => value(target, "CFBundleShortVersionString"), "build" => value(target, "CFBundleVersion"),
+  "signing" => "ad-hoc; no Developer ID or notarization", "architecture" => "arm64",
+  "source_revision" => run("git", "-C", root, "rev-parse", "HEAD"),
+  "source_dirty" => !run("git", "-C", root, "status", "--porcelain", "--untracked-files=no").empty?,
+  "upstream_lock_sha256" => Digest::SHA256.file(lock_path).hexdigest }
+File.write(File.join(metadata, "VERSION.json"), JSON.pretty_generate(version) + "\n")
+notice = ["# ZIME #{version['version']} ad-hoc preview", "", "Application: GPL-3.0-or-later. Not Apple notarized.",
+  "Exact input identities and licenses: upstreams.lock.json and LICENSES/.",
+  "Wanxiang dictionaries/algebra and RIME-LMDG model: CC-BY-4.0; ZIME applies reviewed pronunciation corrections and algebra projections.",
+  "CC-CEDICT: CC-BY-SA-4.0; ZIME builds a simplified/traditional bilingual index, gloss/note/reference projection and reverse lookup.",
+  "Full source snapshot: https://github.com/zgat/ZIME/releases/tag/v#{version['version']}",
+  "CC-CEDICT source and adaptation attribution: ../ZIME-Lexicon-NOTICE.txt.", ""]
+File.write(File.join(metadata, "NOTICE.md"), notice.join("\n"))
+machos = Dir.glob(File.join(target, "**/*")).select do |path|
+  File.file?(path) && !File.symlink?(path) && run("/usr/bin/file", "-b", path).include?("Mach-O")
+end
+abort "wrong architecture" unless machos.all? { |path| run("/usr/bin/lipo", "-archs", path) == "arm64" }
+machos.sort.each { |path| run("/usr/bin/codesign", "--force", "--sign", "-", "--timestamp=none", path) }
+[settings, target].each { |app| run("/usr/bin/codesign", "--force", "--sign", "-", "--timestamp=none", app) }
+run("/usr/bin/codesign", "--verify", "--deep", "--strict", target)
+puts "ZIME preview staged: #{version['version']} / #{version['build']}; #{machos.length} arm64 binaries; ad-hoc signatures and attribution"

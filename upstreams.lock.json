@@ -158,15 +158,15 @@
         "lua": {
           "repository": "https://github.com/hchunhui/librime-lua.git",
           "ref": "refs/heads/master",
-          "commit": "68f9c364a2d25a04c7d4794981d7c796b05ab627",
-          "tree": "371b85de2f2bf993abeab8cb49294a11035e2b9b",
+          "commit": "ad1e4a6c98abf634dd34242a747f9b1d5d069fbe",
+          "tree": "82c5d05c6c6b832f76295c74ba6a1c59a596bb63",
           "source_dir": "lua",
           "declared_license": "BSD-3-Clause",
           "license_path": "LICENSE",
           "license_sha256": "c6bd4f58b13ae9d45c5e53adddeea5049114a25862797c6c6f64920431eea249",
           "embedded_mit_notice": {
             "path": "LICENSES/librime-lua-embedded-MIT.txt",
-            "sha256": "7741dacddeaa2e2a175852c7829061a5db2361721cb47c4c29cc67b366720cae",
+            "sha256": "bb33193c8cacfa5fa94e5db7346c40c0bde26813c1e665f32a9422bb9c058ac5",
             "sources": {
               "lauxlib_compat": {
                 "path": "src/lib/lauxlib-compat.c",
@@ -197,24 +197,24 @@
           "thirdparty": {
             "repository": "https://github.com/hchunhui/librime-lua.git",
             "ref": "refs/heads/thirdparty",
-            "commit": "fa40fadd8af1e5b1fbd55703ccbd54476956d74c",
-            "tree": "9b7384dce1515294fee814e818d550cf120d5373",
+            "commit": "9e5bb71db1544913f8005dadc3df8439c00d08b7",
+            "tree": "83fe89f089bc9dae0303ff933cb460db5c6687bc",
             "source_dir": "thirdparty",
-            "version": "5.4.8",
+            "version": "5.4.9",
             "declared_license": "MIT",
             "source_path": "lua5.4/lua.h",
-            "source_sha256": "3b77329f9deed929a5cbe7a7d5fc81ebbb63fd869a49e0a9302fe9240caf1930"
+            "source_sha256": "06138352a12f0710bc214eb3a2e134889979cadc9a7a761a4e43dafa926419af"
           }
         },
         "octagram": {
           "repository": "https://github.com/lotem/librime-octagram.git",
           "ref": "refs/heads/master",
-          "commit": "dfcc15115788c828d9dd7b4bff68067d3ce2ffb8",
-          "tree": "034f1500ac962e430f2c21377ef5410b4c7e64fe",
+          "commit": "57d18b9f58e5284bd891d559f6bdd16cf60341e9",
+          "tree": "c5e8b44781d179064773ee5ed61760706c154ec2",
           "source_dir": "octagram",
-          "declared_license": "GPL-3.0-only",
+          "declared_license": "BSD-3-Clause",
           "license_path": "LICENSE",
-          "license_sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903"
+          "license_sha256": "f67d27a6d2d586fcfed4b4c886a83747095396a39b6641e18e855086be2ec400"
         },
         "predict": {
           "repository": "https://github.com/rime/librime-predict.git",
@@ -268,10 +268,10 @@
       "repository": "https://github.com/amzxyz/rime-wanxiang.git",
       "submodule_path": "upstreams/rime-wanxiang",
       "submodule_name": "rime-wanxiang",
-      "tag": "v17.3.0",
-      "tag_ref": "refs/tags/v17.3.0",
-      "commit": "296f90d17e6b587b6fabcd661686e66372f2afaa",
-      "tree": "e8ff1fda545cc0d8ea99271e8cfcc9986ae4fb21",
+      "tag": "v17.9.9",
+      "tag_ref": "refs/tags/v17.9.9",
+      "commit": "d6e8e2c8a3ea2d2fa324f87919f52324fae5cc23",
+      "tree": "7c2797e247734e286fd9def888f0eb84b2708404",
       "declared_license": "CC-BY-4.0",
       "license_path": "LICENSE",
       "license_sha256": "9e5f1b3c610b9c2da5c313bf81d577a7d1acec686bdb0384edefa6df0f90cd94",
@@ -318,21 +318,21 @@
       "repository": "https://github.com/amzxyz/RIME-LMDG.git",
       "release": "LTS",
       "asset": "wanxiang-lts-zh-hans.gram",
-      "asset_id": 522394578,
-      "asset_api_url": "https://api.github.com/repos/amzxyz/RIME-LMDG/releases/assets/522394578",
+      "asset_id": 545303059,
+      "asset_api_url": "https://api.github.com/repos/amzxyz/RIME-LMDG/releases/assets/545303059",
       "asset_download_url": "https://github.com/amzxyz/RIME-LMDG/releases/download/LTS/wanxiang-lts-zh-hans.gram",
       "declared_license": "CC-BY-4.0",
       "license_path": "LICENSES/RIME-LMDG-CC-BY-4.0.txt",
       "license_sha256": "9ba9550ad48438d0836ddab3da480b3b69ffa0aac7b7878b5a0039e7ab429411",
-      "bytes": 420246572,
-      "sha256": "c5fca7cf43af7314c76c802903679eb7642892ebb8cdcf8b75100aa9ae0deecc",
-      "linnet_pack": {
-        "repository": "https://github.com/Ares-X/Linnet.git",
-        "release": "data-26",
-        "asset": "Linnet-LTS.linnetpack",
-        "asset_download_url": "https://github.com/Ares-X/Linnet/releases/download/data-26/Linnet-LTS.linnetpack",
-        "bytes": 371932250,
-        "sha256": "0e48509e9294757c84eb8d157e13587aa447063277acbeb0afde04b7fe11ffb3"
+      "bytes": 420339756,
+      "sha256": "654d7f1fe4b1bf3d425f8c0a44ac61423ded58c784267b4df03256030d72233f",
+      "mirror": {
+        "repository": "https://github.com/zgat/ZIME.git",
+        "release": "v0.1.17",
+        "asset": "wanxiang-lts-zh-hans.gram",
+        "asset_download_url": "https://github.com/zgat/ZIME/releases/download/v0.1.17/wanxiang-lts-zh-hans.gram",
+        "bytes": 420339756,
+        "sha256": "654d7f1fe4b1bf3d425f8c0a44ac61423ded58c784267b4df03256030d72233f"
       }
     }
   }

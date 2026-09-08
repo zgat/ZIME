@@ -36,15 +36,14 @@ build="$(/usr/bin/plutil -extract CFBundleVersion raw -o - "${info}")"
 pack_tool="${project_root}/build/linnet-pack"
 [[ -x "${pack_tool}" && ! -L "${pack_tool}" ]] ||
   fail_delivery "the verified local language-pack tool is missing"
-# The registration observer is built from the same checkout and understands
-# ZIME's Hans/Hant input modes rather than a mode-less keyboard input method.
-/usr/bin/make -C "${project_root}" input-source-registration-inspector
-registration_inspector="${project_root}/build/input-source-registration-inspector"
+/usr/bin/make -C "${project_root}" zime-install-helper
+install_helper="${project_root}/build/zime-install-helper"
 
 prefix="ZIME-${version}-arm64"
 zip_output="${output_dir}/${prefix}.zip"
 pkg_output="${output_dir}/${prefix}.pkg"
-for output in "${zip_output}" "${pkg_output}"; do
+core_output="${output_dir}/${prefix}-core.zip"
+for output in "${zip_output}" "${pkg_output}" "${core_output}"; do
   [[ ! -e "${output}" && ! -L "${output}" ]] ||
     fail_delivery "refusing to replace existing output: ${output:t}"
 done
@@ -70,10 +69,10 @@ while IFS= read -r code_path; do
   /usr/bin/codesign --force --sign - --timestamp=none "${code_path}"
 done < <(/usr/bin/find "${signed_app}" -type f \( -name '*.dylib' -o -name 'Settings' \) -print)
 embedded_settings="${signed_app}/Contents/Applications/Settings.app"
-/usr/bin/codesign --force --sign - --timestamp=none --options runtime \
+/usr/bin/codesign --force --sign - --timestamp=none \
   --entitlements "${project_root}/resources/Squirrel.entitlements" \
   "${embedded_settings}"
-/usr/bin/codesign --force --sign - --timestamp=none --options runtime \
+/usr/bin/codesign --force --sign - --timestamp=none \
   --entitlements "${project_root}/resources/Squirrel.entitlements" \
   "${signed_app}"
 /usr/bin/codesign --verify --deep --strict "${signed_app}"
@@ -111,9 +110,11 @@ for pack in "${chinese_pack}" "${english_pack}" "${lts_pack}" "${extended_pack}"
 done
 [[ -f "${data_root}/Runtime/Active/activation.json" ]] ||
   fail_delivery "offline data activation profile is missing"
+"${install_helper}" check "${signed_app}" "${data_root}"
 
 /bin/cp "${project_root}/scripts/install-zime" \
   "${project_root}/scripts/uninstall-zime" "${project_root}/scripts/update-zime-app" "${bundle_root}/"
+/bin/cp "${install_helper}" "${bundle_root}/zime-install-helper"
 /bin/cp "${project_root}/docs/ZIME-INSTALL.md" "${bundle_root}/安装说明.md"
 /bin/cp "${project_root}/LICENSE.txt" "${bundle_root}/LICENSE.txt"
 /bin/chmod 755 "${bundle_root}/install-zime" "${bundle_root}/uninstall-zime" "${bundle_root}/update-zime-app"
@@ -123,23 +124,53 @@ zip_candidate="${work_root}/${prefix}.zip"
 /usr/bin/ditto -x -k "${zip_candidate}" "${work_root}/zip-expanded"
 /usr/bin/codesign --verify --deep --strict \
   "${work_root}/zip-expanded/${prefix}/ZIME.app"
+/usr/bin/cmp "${install_helper}" "${work_root}/zip-expanded/${prefix}/zime-install-helper"
+
+core_root="${work_root}/${prefix}-core"
+/bin/mkdir "${core_root}"
+/usr/bin/ditto --noqtn "${signed_app}" "${core_root}/ZIME.app"
+/bin/cp "${bundle_root}/update-zime-app" "${install_helper}" \
+  "${bundle_root}/安装说明.md" "${bundle_root}/LICENSE.txt" "${core_root}/"
+core_candidate="${work_root}/${prefix}-core.zip"
+/usr/bin/ditto -c -k --sequesterRsrc --keepParent "${core_root}" "${core_candidate}"
+/usr/bin/ditto -x -k "${core_candidate}" "${work_root}/core-expanded"
+/usr/bin/codesign --verify --deep --strict "${work_root}/core-expanded/${prefix}-core/ZIME.app"
 
 payload_root="${work_root}/payload"
-/bin/mkdir -p "${payload_root}/Library/Input Methods" \
-  "${payload_root}/Library/Application Support"
-/usr/bin/ditto --noqtn "${signed_app}" \
-  "${payload_root}/Library/Input Methods/ZIME.app"
-/usr/bin/ditto --noqtn "${data_root}" \
-  "${payload_root}/Library/Application Support/ZIME"
+# Never let Installer overwrite a live registered App before postinstall.
+# Its payload is inert; the same transactional helper as ZIP publishes it.
+payload_stage="${payload_root}/Library/Application Support/ZIME Installer/${version}"
+/bin/mkdir -p "${payload_stage}"
+/usr/bin/ditto --noqtn "${bundle_root}" "${payload_stage}"
 component_pkg="${work_root}/ZIME-component.pkg"
 installer_scripts="${work_root}/installer-scripts"
 /bin/mkdir -p "${installer_scripts}"
-/bin/cp "${project_root}/package/zime-installer-scripts/postinstall" \
-  "${registration_inspector}" "${installer_scripts}/"
-/bin/chmod 755 "${installer_scripts}/postinstall" \
-  "${installer_scripts}/input-source-registration-inspector"
+/bin/cp "${project_root}/package/zime-installer-scripts/postinstall" "${installer_scripts}/"
+/bin/cp "${install_helper}" "${installer_scripts}/zime-install-helper"
+print -r -- "${version}" > "${installer_scripts}/version"
+/bin/chmod 755 "${installer_scripts}/postinstall"
+components="${work_root}/components.plist"
+/usr/bin/pkgbuild --analyze --root "${payload_root}" "${components}"
+/usr/bin/plutil -convert json "${components}"
+/usr/bin/ruby -rjson -e '
+  path = ARGV.fetch(0)
+  components = JSON.parse(File.read(path))
+  visit = lambda do |items|
+    items.each do |item|
+      item["BundleIsRelocatable"] = false
+      item["BundleOverwriteAction"] = "upgrade"
+      visit.call(item.fetch("ChildBundles", []))
+    end
+  end
+  visit.call(components)
+  File.write(path, JSON.generate(components))
+' "${components}"
+/usr/bin/plutil -convert xml1 "${components}"
+# A new receipt identity also prevents legacy direct-payload receipts from
+# obsoleting the live App when upgrading an old PKG installation.
 /usr/bin/pkgbuild --root "${payload_root}" \
-  --identifier "com.zime.inputmethod.ZIME.pkg" --version "${version}" \
+  --identifier "com.zime.inputmethod.ZIME.staged.pkg" --version "${version}" \
+  --component-plist "${components}" \
   --scripts "${installer_scripts}" --install-location / "${component_pkg}"
 
 distribution="${work_root}/Distribution.xml"
@@ -154,9 +185,9 @@ DIST_PATH="${distribution}" DIST_VERSION="${version}" /usr/bin/ruby -e '
       <domains enable_anywhere="false" enable_currentUserHome="true" enable_localSystem="false"/>
       <choices-outline><line choice="zime"/></choices-outline>
       <choice id="zime" visible="false">
-        <pkg-ref id="com.zime.inputmethod.ZIME.pkg"/>
+        <pkg-ref id="com.zime.inputmethod.ZIME.staged.pkg"/>
       </choice>
-      <pkg-ref id="com.zime.inputmethod.ZIME.pkg" version="#{version}" onConclusion="none">ZIME-component.pkg</pkg-ref>
+      <pkg-ref id="com.zime.inputmethod.ZIME.staged.pkg" version="#{version}" onConclusion="none">ZIME-component.pkg</pkg-ref>
     </installer-gui-script>
   XML
   File.binwrite(path, xml)
@@ -167,15 +198,15 @@ pkg_candidate="${work_root}/${prefix}.pkg"
   --package-path "${work_root}" "${pkg_candidate}"
 expanded_pkg="${work_root}/pkg-expanded"
 /usr/sbin/pkgutil --expand-full "${pkg_candidate}" "${expanded_pkg}"
-expanded_app="$(/usr/bin/find "${expanded_pkg}" -type d -path '*/Payload/Library/Input Methods/ZIME.app' -print -quit)"
+expanded_app="$(/usr/bin/find "${expanded_pkg}" -type d -path "*/Payload/Library/Application Support/ZIME Installer/${version}/ZIME.app" -print -quit)"
 [[ -n "${expanded_app}" ]] || fail_delivery "expanded package does not contain ZIME.app"
 /usr/bin/codesign --verify --deep --strict "${expanded_app}"
-expanded_data="$(/usr/bin/find "${expanded_pkg}" -type f -path '*/Payload/Library/Application Support/ZIME/Runtime/Active/activation.json' -print -quit)"
+expanded_data="$(/usr/bin/find "${expanded_pkg}" -type f -path "*/Payload/Library/Application Support/ZIME Installer/${version}/ZIME-Data/Runtime/Active/activation.json" -print -quit)"
 [[ -n "${expanded_data}" ]] || fail_delivery "expanded package does not contain offline data"
 expanded_scripts="${expanded_pkg}/ZIME-component.pkg/Scripts"
-for script in postinstall input-source-registration-inspector; do
-  [[ -x "${expanded_scripts}/${script}" ]] ||
-    fail_delivery "expanded package is missing the executable ${script}"
+for script in postinstall version zime-install-helper; do
+  [[ -f "${expanded_scripts}/${script}" ]] ||
+    fail_delivery "expanded package is missing ${script}"
   /usr/bin/cmp "${installer_scripts}/${script}" "${expanded_scripts}/${script}" ||
     fail_delivery "expanded package changed ${script}"
 done
@@ -183,4 +214,5 @@ done
 
 /bin/mv "${zip_candidate}" "${zip_output}"
 /bin/mv "${pkg_candidate}" "${pkg_output}"
-print "build-zime-delivery: PASS (${zip_output:t}, ${pkg_output:t})"
+/bin/mv "${core_candidate}" "${core_output}"
+print "build-zime-delivery: PASS (${zip_output:t}, ${pkg_output:t}, ${core_output:t})"

@@ -4,9 +4,9 @@ ZIME 是一款面向 Apple Silicon、macOS 13 及以上版本的本地优先双�
 它把候选原文和翻译分开显示：候选主文本是实际输入内容，灰色副文本是本地
 释义；只有用户主动切换到译文候选并确认时，译文才会上屏。
 
-当前版本：[0.1.16 开发预览](https://github.com/zgat/ZIME/releases/tag/v0.1.16)。
-本次先发布源码和版本说明，未附可下载的安装包。GitHub 自动生成的 Source code
-归档不是输入法安装包；随包升级流程仍需完善和单独验收。
+当前版本：[0.1.17 开发预览](https://github.com/zgat/ZIME/releases/tag/v0.1.17)。
+提供完整 ZIP、PKG 和 Core-only ZIP。此次更新万象词库与 LTS 模型，推荐完整包。
+仍为未公证的 Ad-hoc 预览；GitHub 自动生成的 Source code 归档不是输入法安装器。
 
 ## 功能
 
@@ -81,8 +81,9 @@ CC-CEDICT 124,988 条源词条、四类带清单校验的离线数据包和万�
 
 ## 安装与构建
 
-0.1.16 暂不提供公开安装包。旧版安装说明保留在
-[ZIME 历史安装说明](docs/ZIME-INSTALL.md)，不能作为本次版本已完成打包验收的依据。
+下载选择、首次安装、保留词频的升级流程与限制见
+[ZIME 安装说明](docs/ZIME-INSTALL.md)；本次上游更新见
+[0.1.17 版本说明](docs/releases/ZIME-0.1.17.md)。
 实现边界和行为合同见 [ZIME 设计说明](docs/ZIME.md)。
 
 准备锁定的依赖和数据后，可执行：
@@ -96,11 +97,11 @@ no_download=1 ./action-build.sh release
 ./tests/verify_english_data_projection.sh
 ```
 
-以下为旧开发交付脚本入口。它不代表 0.1.16 已发布的安装器；在完成升级流程修复和
-包级验收前，不建议用其覆盖现有安装：
+从本地 Release 构建生成独立的 Ad-hoc 预览和离线安装包（目标路径必须不存在）：
 
 ```sh
-scripts/build-zime-delivery /absolute/path/to/ZIME.app /absolute/output/directory
+scripts/stage-zime-preview /absolute/local/ZIME.app /absolute/preview/ZIME.app
+scripts/build-zime-delivery /absolute/preview/ZIME.app /absolute/output/directory
 ```
 
 开发预览包采用可验证的 Ad-hoc App 签名，PKG 未使用 Apple Developer ID 签名，

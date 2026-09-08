@@ -155,6 +155,19 @@ done
 test "$(rg -F -c '"linnet/recognizer_patterns/zz_code_token"' \
   "${user}/default.custom.yaml")" -eq 1
 end_phase "compile Settings projection fixture"
+if [[ "${runtime_probe}" == --profile-key-matrix-probe ]]; then
+  # ZIME exposes full pinyin + English by default. This dedicated compatibility
+  # fixture must explicitly deploy all eight inherited layouts; select_schema
+  # alone can otherwise create an empty engine for an undeployed schema.
+  ruby -ryaml -e '
+    path = ARGV.fetch(0)
+    config = YAML.load_file(path)
+    ids = %w[linnet_zh_pinyin linnet_zh linnet_zh_flypy linnet_zh_mspy linnet_zh_sogou linnet_zh_abc linnet_zh_ziguang linnet_zh_jiajia linnet_en]
+    config.fetch("patch").delete_if { |key, _| key.start_with?("schema_list/") }
+    config.fetch("patch")["schema_list"] = ids.map { |id| {"schema" => id} }
+    File.write(path, YAML.dump(config))
+  ' "${user}/default.custom.yaml"
+fi
 
 begin_phase "deploy native schemas"
 make --no-print-directory smart-english-plugin

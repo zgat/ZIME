@@ -299,7 +299,7 @@ def load_lock
   end
   expected_plugin_licenses = {
     "lua" => ["BSD-3-Clause", "LICENSE"],
-    "octagram" => ["GPL-3.0-only", "LICENSE"],
+    "octagram" => ["BSD-3-Clause", "LICENSE"],
     "predict" => ["BSD-3-Clause", "LICENSE"],
   }
   expected_plugin_licenses.each do |name, (license, path)|
@@ -343,7 +343,7 @@ def load_lock
   fail_lock("unexpected Lua third-party source directory") unless
     require_string(lua_thirdparty, "source_dir") == "thirdparty"
   fail_lock("unexpected embedded Lua version") unless
-    require_string(lua_thirdparty, "version") == "5.4.8"
+    require_string(lua_thirdparty, "version") == "5.4.9"
   fail_lock("unexpected embedded Lua license") unless
     require_string(lua_thirdparty, "declared_license") == "MIT"
   fail_lock("unexpected embedded Lua source path") unless
@@ -448,21 +448,20 @@ def load_lock
   end
   require_string(rime_lmdg_grammar, "license_path")
   require_string(rime_lmdg_grammar, "license_sha256", SHA256)
-  linnet_pack = require_hash(rime_lmdg_grammar, "linnet_pack")
+  mirror = require_hash(rime_lmdg_grammar, "mirror")
   expected_pack_keys = %w[
     asset asset_download_url bytes release repository sha256
   ]
-  fail_lock("unexpected Linnet LTS pack identity shape") unless
-    linnet_pack.keys.sort == expected_pack_keys
-  validate_repository(linnet_pack, "rime_lmdg_grammar.linnet_pack")
-  validate_release_download(linnet_pack, "Linnet LTS pack")
-  unless require_string(linnet_pack, "repository") ==
-         "https://github.com/Ares-X/Linnet.git"
-    fail_lock("the grammar recovery pack must be owned by Ares-X/Linnet")
+  fail_lock("unexpected ZIME model mirror identity shape") unless
+    mirror.keys.sort == expected_pack_keys
+  validate_repository(mirror, "rime_lmdg_grammar.mirror")
+  validate_release_download(mirror, "ZIME model mirror")
+  unless require_string(mirror, "repository") == "https://github.com/zgat/ZIME.git"
+    fail_lock("the grammar mirror must be owned by zgat/ZIME")
   end
-  unless require_string(linnet_pack, "release").match?(/\Adata-[1-9][0-9]*\z/) &&
-         require_string(linnet_pack, "asset") == "Linnet-LTS.linnetpack"
-    fail_lock("the grammar recovery pack must be one fixed Linnet data release")
+  unless require_string(mirror, "release").match?(/\Av[0-9]+\.[0-9]+\.[0-9]+\z/) &&
+         %w[asset bytes sha256].all? { |key| mirror.fetch(key) == rime_lmdg_grammar.fetch(key) }
+    fail_lock("the fixed ZIME mirror must contain the exact reviewed upstream model")
   end
   lock
 rescue Errno::ENOENT

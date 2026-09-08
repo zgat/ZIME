@@ -791,9 +791,10 @@ project_runtime_license \
   "${source_root}/plugins/lua/$(lock_value sources.librime.bundled_plugins.lua.license_path)" \
   "$(lock_value sources.librime.bundled_plugins.lua.license_sha256)" \
   "${runtime_license_stage}/librime-lua-BSD-3-Clause.txt" "librime-lua license"
-verify_locked_file \
+project_runtime_license \
   "${source_root}/plugins/octagram/$(lock_value sources.librime.bundled_plugins.octagram.license_path)" \
   "$(lock_value sources.librime.bundled_plugins.octagram.license_sha256)" \
+  "${runtime_license_stage}/librime-octagram-BSD-3-Clause.txt" \
   "librime-octagram license"
 project_runtime_license \
   "${source_root}/plugins/predict/$(lock_value sources.librime.bundled_plugins.predict.license_path)" \
@@ -858,7 +859,7 @@ project_runtime_license \
   "${repo_root}/$(lock_value sources.librime.static_dependencies.opencc.embedded_components.rapidjson.license_path)" \
   "$(lock_value sources.librime.static_dependencies.opencc.embedded_components.rapidjson.license_sha256)" \
   "${runtime_license_stage}/RapidJSON-1.1.0.txt" "RapidJSON license"
-[[ "$(find "${runtime_license_stage}" -mindepth 1 -maxdepth 1 -type f | wc -l | tr -d ' ')" == 12 ]] ||
+[[ "$(find "${runtime_license_stage}" -mindepth 1 -maxdepth 1 -type f | wc -l | tr -d ' ')" == 13 ]] ||
   fail "runtime license projection has an unexpected inventory"
 
 sdk="$(capture xcrun --sdk macosx --show-sdk-path)"

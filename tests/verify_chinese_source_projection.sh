@@ -64,6 +64,12 @@ profiles.each do |local_name, source_name|
   source_profile = source.fetch(source_name)
   raise "unexpected upstream profile shape" unless source_profile.keys == ["__append"]
   source_rules = source_profile.fetch("__append")
+  # v17.9.9 repeats the same idempotent m-macron normalization in full pinyin.
+  # Keep one copy without changing any other ordered projection rule.
+  macron_rule = %q{xform/m̄([a-z]*)$/m$1①/}
+  source_rules = source_rules.each_with_object([]) do |rule, rules|
+    rules << rule unless rule == macron_rule && rules.include?(rule)
+  end
   local_rules = local.fetch(local_name)
   raise "#{local_name} entity projection must be its final algebra rule" unless
     local_rules.last == english_entity_projection &&
@@ -319,7 +325,7 @@ if admitted_statuses != Counter({"verified": sum(lengths.values())}):
 # domains so a large but low-value projection cannot satisfy the gate by count.
 reviewed_samples = {
     "person": ("阿黛尔", "ā dài ěr", 13, 3),
-    "science": ("阿贝尔奖", "ā bèi ěr jiǎng", 6, 4),
+    "science": ("飞行原理", "fēi xíng yuán lǐ", 6, 4),
     "medicine": ("阿尔茨海默", "ā ěr cí hǎi mò", 151, 5),
     "education": ("阿亨科技大学", "ā hēng kē jì dà xué", 163, 6),
     "technology": ("生成式人工智能", "shēng chéng shì rén gōng zhì néng", 163, 7),
@@ -330,6 +336,10 @@ for domain, (text, expected_code, expected_weight, expected_length) in reviewed_
         raise SystemExit(
             f"reviewed {domain} supplement sample drifted: {text}={actual}"
         )
+# v17.9.9 promotes this former supplement into the canonical core dictionary.
+assert "阿贝尔奖" in owned_texts and "阿贝尔奖" not in projected_rows
+assert any(text == "阿贝尔奖" and code == "ā bèi ěr jiǎng" and weight == 52
+           for _, text, code, weight in projector.dictionary_rows(wanxiang_root / "jichu.dict.yaml"))
 if {sample[2] for sample in reviewed_samples.values()} != {6, 13, 151, 163}:
     raise SystemExit("reviewed supplement samples lost a projected rank stratum")
 if same_code_collisions < 4000:

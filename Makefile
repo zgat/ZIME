@@ -169,6 +169,15 @@ linnet-runtime-inspector: $(LINNET_RUNTIME_INSPECTOR)
 
 input-source-registration-inspector: $(INPUT_SOURCE_REGISTRATION_INSPECTOR)
 
+.PHONY: zime-install-helper
+zime-install-helper: build/zime-install-helper
+
+build/zime-install-helper: $(LINNET_DATA_REGISTRY_SOURCES) sources/ZIMEInstallTransaction.swift tools/ZIMEInstallHelper.swift
+	@mkdir -p build
+	$(SWIFTC) -O -warnings-as-errors -module-cache-path build/swift-module-cache -sdk "$(MACOS_SDK)" -target arm64-apple-macosx13.0 -framework AppKit -framework Carbon \
+		$(LINNET_DATA_REGISTRY_SOURCES) sources/ZIMEInstallTransaction.swift tools/ZIMEInstallHelper.swift -o $@
+	/usr/bin/codesign --force --sign - --timestamp=none $@
+
 $(ENGLISH_DATA_GENERATOR): $(ENGLISH_DATA_GENERATOR_SOURCES)
 	@mkdir -p $(@D)
 	$(SWIFTC) -parse-as-library -warnings-as-errors -O \

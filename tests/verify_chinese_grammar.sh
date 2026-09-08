@@ -68,6 +68,17 @@ mkdir -p \
 cp -R -X data/plum/. "${on_shared}/"
 cp -R -X data/opencc/. "${on_shared}/opencc/"
 cp -R -X "${on_shared}/." "${off_shared}/"
+# The product defaults to full pinyin + English. The grammar compatibility gate
+# explicitly deploys every inherited layout rather than assuming it is public.
+for shared_root in "${on_shared}" "${off_shared}"; do
+  ruby -ryaml -e '
+    path = ARGV.fetch(0)
+    config = YAML.load_file(path)
+    ids = %w[linnet_zh_pinyin linnet_zh linnet_zh_flypy linnet_zh_mspy linnet_zh_sogou linnet_zh_abc linnet_zh_ziguang linnet_zh_jiajia linnet_en]
+    config["schema_list"] = ids.map { |id| {"schema" => id} }
+    File.write(path, YAML.dump(config))
+  ' "${shared_root}/default.yaml"
+done
 # The staged tree intentionally defaults to the Standard compact grammar.
 # This A/B probe owns a Full activation fixture, so select the LTS model in
 # the same one-file projection that release profiles replace at install time.
