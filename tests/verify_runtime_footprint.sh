@@ -188,7 +188,7 @@ if ! ruby -e '
   config = File.read(ARGV[5])
   show = panel[/  func show\(publication:.*?\n  \}\n\n  func show\(status message:/m]
   draw = view[/  override func draw\(_ dirtyRect: NSRect\) \{.*?\n  \}\n\n\}\n\nextension SquirrelView/m]
-  commit = controller[/  private func commit\(string: String, to targetClient: IMKTextInput\?\) \{.*?\n  \}\n\n  private func show\(/m]
+  commit = controller[/  func commit\(string: String, to targetClient: IMKTextInput\?\) \{.*?\n  \}/m]
   abort "candidate panel owners are missing" unless show && draw && commit
   size = show.index("textContainer.size =")
   layout = show.index("ensureLayout(for:")
@@ -1865,7 +1865,7 @@ ruby -e '
   commit = controller[/override func commitComposition\(.*?\n  \}/m]
   active_commit_owner = controller[/func commitActiveComposition\(.*?\n  \}/m]
   raw_commit_owner = controller[/func commitRawComposition\(.*?\n  \}/m]
-  update = controller[/func rimeUpdate\(\) \{.*?\n  \}\n\n  private func commit\(string:/m]
+  update = controller[/func rimeUpdate\(\) \{.*?\n  \}/m]
   status = presentation[/func updateStatusIcon\(session: RimeSessionId\).*?\n  \}/m]
   abort "the canonical live-session recovery owner is missing" unless
     ensure_session && current_session && handle && activation && commit &&
@@ -2105,8 +2105,8 @@ test ! -e sources/LinnetInputActivationRegistry.swift ||
   fail "the retired process-global activation owner file returned"
 ruby -e '
   controller = File.read(ARGV.fetch(0))
-  update = controller[/func rimeUpdate\(\) \{.*?\n  \}\n\n  private func commit\(string:/m]
-  commit = controller[/private func commit\(string: String, to targetClient: IMKTextInput\?\) \{.*?\n  \}\n\n  private func show\(/m]
+  update = controller[/func rimeUpdate\(\) \{.*?\n  \}/m]
+  commit = controller[/func commit\(string: String, to targetClient: IMKTextInput\?\) \{.*?\n  \}/m]
   show = controller[/private func show\(\n.*?\n  \}\n\n  private func showPanel/m]
   panel = controller[/private func showPanel\(.*?\n  \}\n\}/m]
   abort "client-publication lifecycle owners are missing" unless

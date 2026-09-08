@@ -9,7 +9,6 @@ cd "$(dirname "$0")/.."
     raw.include?("guard hasPendingRimeInput, let targetClient = activeClient") &&
     raw.include?("candidateTranslator.cancel()") &&
     raw.include?("bilingualTranslationMode = false") &&
-    raw.include?("pendingCommitOverride = nil") &&
     raw.scan("commitActiveComposition(to: targetClient)").length == 1 &&
     !raw.include?("selectCandidate") && !raw.include?("highlighted")
   abort "candidate-confirmation shortcut returned" if host.include?(".commitCandidate")
@@ -17,6 +16,10 @@ cd "$(dirname "$0")/.."
   abort "Return/Space candidate-confirmation owner returned" if native.include?("CommitSpaceSelection")
   abort "native original-input owner missing" unless native.include?("context->CommitRawInput()")
   abort "numeric translated-candidate selection disappeared" unless
-    host.include?("selectCandidate(absoluteIndex: presented.items[digit - 1].absoluteIndex)")
+    host.include?("selectCandidate(absoluteIndex: presented.items[index].absoluteIndex)")
+  abort "global translation replacement returned" if host.include?("pendingCommitOverride")
+  selection = File.read("sources/SquirrelInputController+RimeSession.swift")
+  abort "translated selection can clear the entire composition" unless
+    selection.include?("select_candidate_with_text") && !selection.include?("clear_composition")
   puts "ZIME original-input Host boundary: PASS (source contract, not UI automation)"
 '

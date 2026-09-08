@@ -117,6 +117,8 @@ fi
 
 if [[ "${run_swift}" -eq 1 ]]; then
   tests/verify_swift_units.sh
+  bash tests/verify_zime.sh
+  bash tests/verify_zime_translation.sh
 fi
 
 if [[ "${run_rime}" -eq 1 ]]; then
@@ -131,6 +133,9 @@ if [[ "${run_rime}" -eq 1 ]]; then
   ruby tests/verify_profile_golden.rb
   tests/verify_chinese_learning_policy.sh
   tests/verify_rime_runtime.sh
+  for probe in --zime-shortcuts-probe --zime-bilingual-probe --zime-alphanumeric-probe --zime-case-probe --zime-paging-probe; do
+    tests/verify_rime_runtime.sh "${probe}"
+  done
 fi
 
 echo "Linnet development gate (${profile}): PASS (no signing or installation)"

@@ -1179,6 +1179,7 @@ static void rime_smart_english_initialize() {
   rime::Registry::instance().Register("zime_alphanumeric_segmentor", new rime::Component<linnet::AlphanumericSegmentor>);
   rime::Registry::instance().Register("linnet_english_translator", new rime::Component<linnet::SmartEnglishTranslator>);
   rime::Registry::instance().Register("linnet_english_filter", new rime::Component<linnet::SmartEnglishFilter>);
+  rime::Registry::instance().Register("zime_display_learning", new rime::Component<linnet::DisplayLearningFilter>);
   rime::Registry::instance().Register("linnet_disabled_filter", new rime::Component<linnet::DisabledWordsFilter>);
 }
 

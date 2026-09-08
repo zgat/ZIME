@@ -38,26 +38,20 @@ extension SquirrelInputController {
       .first { $0.absoluteIndex == absoluteIndex }
     let sourceAbsoluteIndex = presentedItem?.sourceAbsoluteIndex ?? absoluteIndex
     let commitOverride = presentedItem?.commitOverride
-    if commitOverride != nil {
-      pendingCommitOverride = commitOverride
-      bilingualTranslationMode = false
-    }
-    let success = rimeAPI.select_candidate(session, sourceAbsoluteIndex)
-    if success {
-      rimeUpdate()
-      // A partial Rime selection may not publish a commit. Translation rows
-      // represent complete local dictionary senses, so finish that selection
-      // directly while still letting Rime observe the chosen source candidate.
-      if let pendingCommitOverride {
-        self.pendingCommitOverride = nil
-        rimeAPI.clear_composition(session)
-        commit(string: pendingCommitOverride, to: activeClient)
-        bilingualSourceSnapshot = nil
-        bilingualHighlightedIndex = -1
-        NSApp.squirrelAppDelegate.panel?.hide(controller: self)
+    let success: Bool
+    if let commitOverride {
+      // Native segments own explicit translations. A partial choice remains
+      // marked with its raw tail; learning still observes the source candidate.
+      success = commitOverride.withCString {
+        rimeAPI.select_candidate_with_text(session, sourceAbsoluteIndex, $0)
       }
-    } else if commitOverride != nil {
-      pendingCommitOverride = nil
+    } else {
+      success = rimeAPI.select_candidate(session, sourceAbsoluteIndex)
+    }
+    if success {
+      bilingualTranslationMode = false
+      bilingualCandidates.reset()
+      rimeUpdate()
     }
     return success
   }
@@ -73,6 +67,19 @@ extension SquirrelInputController {
     guard NSApp.squirrelAppDelegate.canAcceptRimeInput,
       activeClient != nil, sessionIsCurrent()
     else { return false }
+    if bilingualTranslationMode {
+      if bilingualCandidates.changePage(backward: towardPreviousPage) {
+        rimeUpdate()
+        return true
+      }
+      guard let source = bilingualSourceSnapshot,
+        towardPreviousPage ? source.currentPage > 0 : !source.isLastPage
+      else { return true }
+      bilingualCandidates.reset(preferLast: towardPreviousPage)
+      _ = rimeAPI.change_page(session, towardPreviousPage)
+      rimeUpdate()
+      return true
+    }
     let handled = rimeAPI.change_page(session, towardPreviousPage)
     if handled {
       rimeUpdate()

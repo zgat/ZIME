@@ -14,6 +14,7 @@ struct LinnetSettingsProjectionRendererTests {
       try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
       testDefaultInteractionProjection()
       testAlphanumericSegmentorProjection()
+      testDisplayLearningProjection()
       testThemeFamilyAndAppearanceMapping()
       try testIndependentSelectionAndCorners()
       try testRetiredCandidateBrowsingMigration(in: directory)
@@ -51,6 +52,22 @@ struct LinnetSettingsProjectionRendererTests {
         text.contains("affix_segmentor@linnet_pinyin") == (name != LinnetSettingsProjectionRenderer.englishCustomFile),
         text.contains("affix_segmentor@radical_lookup") == (name != LinnetSettingsProjectionRenderer.englishCustomFile)
       else { fail("Core-only alphanumeric segmentor projection changed command precedence or duplicated the component") }
+    }
+  }
+
+  private static func testDisplayLearningProjection() {
+    var document = LinnetSettingsDocument.default
+    for enabled in [true, false] {
+      document.input.chineseLearningPolicy = enabled ? .enhanced : .disabled
+      document.english.learnFromSelections = enabled
+      let projections = LinnetSettingsProjectionRenderer.renderProjections(document: document)
+      for name in LinnetSettingsProjectionRenderer.chineseCustomFiles + [LinnetSettingsProjectionRenderer.englishCustomFile] {
+        guard let text = projections[name],
+          text.contains("\"zime_display_learning\", \"uniquifier\"]"),
+          text.components(separatedBy: "\"zime_display_learning\"").count == 2,
+          text.contains("\"zime_display_learning/enabled\": \(enabled)")
+        else { fail("display learning must occur once before the native uniquifier and honor its mode learning policy") }
+      }
     }
   }
 

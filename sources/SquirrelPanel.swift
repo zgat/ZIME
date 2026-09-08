@@ -59,6 +59,7 @@ final class SquirrelPanel: NSPanel {
     self.level = .init(Int(CGShieldingWindowLevel()) + 1)
     self.collectionBehavior = [.canJoinAllSpaces]
     self.hasShadow = true
+    self.hidesOnDeactivate = false
     self.isOpaque = false
     self.backgroundColor = .clear
     self.acceptsMouseMovedEvents = true

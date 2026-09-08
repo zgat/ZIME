@@ -19,6 +19,84 @@ struct ZIMENullCloudTranslationProvider: ZIMECloudTranslationProvider {
 }
 
 enum LinnetCandidatePresentation {
+  /// One translation selection owner serves keyboard, pointer and page controls.
+  /// Stable source/alternative identities keep asynchronous annotations from
+  /// moving a selection to a different word.
+  struct TranslationCandidates {
+    struct Source {
+      let index: Int
+      let text: String
+      let translations: [String]
+      var sourceLabel: String? = nil
+    }
+    struct Row: Equatable {
+      let id: Int
+      let sourceIndex: Int
+      let sourceText: String
+      let text: String
+      var sourceLabel: String? = nil
+    }
+    struct Page {
+      let rows: [Row]
+      let index: Int
+      let size: Int
+      let highlightedIndex: Int
+      let isLast: Bool
+    }
+    private var rows: [Row] = []
+    private var selectedID: Int?
+    private var preferLast = false
+    private var pageSize = 5
+
+    mutating func reset(preferLast: Bool = false) {
+      rows = []
+      selectedID = nil
+      self.preferLast = preferLast
+    }
+
+    mutating func project(_ sources: [Source], pageSize: Int, highlightedSource: Int?) -> Page {
+      self.pageSize = min(9, max(3, pageSize))
+      rows = sources.flatMap { source in
+        source.translations.prefix(3).enumerated().map { index, text in
+          Row(id: 1_000_000 + source.index * 4 + index,
+            sourceIndex: source.index, sourceText: source.text, text: text, sourceLabel: source.sourceLabel)
+        }
+      }
+      if !rows.contains(where: { $0.id == selectedID }) {
+        selectedID = preferLast ? rows.last?.id
+          : (rows.first { $0.sourceIndex == highlightedSource } ?? rows.first)?.id
+      }
+      preferLast = false
+      let selected = rows.firstIndex { $0.id == selectedID } ?? 0
+      let page = selected / self.pageSize
+      let start = page * self.pageSize
+      return Page(rows: Array(rows.dropFirst(start).prefix(self.pageSize)),
+        index: page, size: self.pageSize, highlightedIndex: selected - start,
+        isLast: start + self.pageSize >= rows.count)
+    }
+
+    mutating func move(by delta: Int) {
+      guard !rows.isEmpty else { return }
+      let current = rows.firstIndex { $0.id == selectedID } ?? 0
+      selectedID = rows[min(rows.count - 1, max(0, current + delta))].id
+    }
+
+    mutating func changePage(backward: Bool) -> Bool {
+      guard !rows.isEmpty else { return false }
+      let current = rows.firstIndex { $0.id == selectedID } ?? 0
+      let nextPage = current / pageSize + (backward ? -1 : 1)
+      guard nextPage >= 0, nextPage * pageSize < rows.count else { return false }
+      selectedID = rows[nextPage * pageSize].id
+      return true
+    }
+
+    /// Unavailable numbers must not fall through to a hidden source menu.
+    static func selectionIndex(digit: Int, count: Int) -> Int? {
+      guard (1...9).contains(digit), digit <= count else { return nil }
+      return digit - 1
+    }
+  }
+
   /// Smart completion edits only a plain English preedit. URLs, code tokens,
   /// Chinese segments and multiline text cannot be replaced through this path.
   static func smartCompletionText(input: String, candidates: [String], highlighted: Int) -> String? {
@@ -48,20 +126,23 @@ enum LinnetCandidatePresentation {
     let displayText: String
     let translations: [String]
     let detailText: String
+    let sourceLabel: String?
   }
   struct CandidateComment: Equatable {
     let displayText: String
     let belongsToSmartEnglish: Bool
     let translations: [String]
+    let sourceLabel: String?
 
     init(
       displayText: String,
       belongsToSmartEnglish: Bool,
-      translations: [String] = []
+      translations: [String] = [], sourceLabel: String? = nil
     ) {
       self.displayText = displayText
       self.belongsToSmartEnglish = belongsToSmartEnglish
       self.translations = translations
+      self.sourceLabel = sourceLabel
     }
   }
 
@@ -83,6 +164,7 @@ enum LinnetCandidatePresentation {
   static let maximumFooterDetailLineCount = 3
   static let smartEnglishDetailPrefix = "\u{001D}"
   static let structuredBilingualPrefix = "\u{001C}"
+  static let emojiSourcePrefix = "\u{001B}"
   static let reverseEnglishDetailPrefix = "\u{001E}"
   static let translationAlternativeSeparator = "\u{001F}"
 
@@ -101,12 +183,15 @@ enum LinnetCandidatePresentation {
   /// The presentation boundary removes its one-byte marker before any text is
   /// drawn or announced; ordinary Chinese spelling comments remain unmarked.
   static func candidateComment(_ rawComment: String) -> CandidateComment {
+    if rawComment.hasPrefix(emojiSourcePrefix) {
+      return .init(displayText: String(rawComment.dropFirst()), belongsToSmartEnglish: false)
+    }
     if rawComment.hasPrefix(structuredBilingualPrefix) {
       guard let annotation = decodeBilingualAnnotation(rawComment) else {
         return .init(displayText: "", belongsToSmartEnglish: false)
       }
       return .init(displayText: annotation.displayText, belongsToSmartEnglish: false,
-        translations: Array(annotation.translations.prefix(3)))
+        translations: Array(annotation.translations.prefix(3)), sourceLabel: annotation.sourceLabel)
     }
     if rawComment.hasPrefix(reverseEnglishDetailPrefix) {
       let alternatives = String(rawComment.dropFirst())
@@ -145,9 +230,11 @@ enum LinnetCandidatePresentation {
 
   /// The local dictionary owns parsing and deduplication. JSON preserves all
   /// punctuation, quotes and legacy delimiter characters in source notes.
-  static func bilingualComment(displayText: String, translations: [String], detailText: String) -> String {
+  static func bilingualComment(displayText: String, translations: [String], detailText: String,
+    sourceLabel: String? = nil
+  ) -> String {
     let value = BilingualAnnotation(displayText: displayText,
-      translations: Array(translations.prefix(3)), detailText: detailText)
+      translations: Array(translations.prefix(3)), detailText: detailText, sourceLabel: sourceLabel)
     guard let data = try? JSONEncoder().encode(value) else { return "" }
     return structuredBilingualPrefix + String(decoding: data, as: UTF8.self)
   }

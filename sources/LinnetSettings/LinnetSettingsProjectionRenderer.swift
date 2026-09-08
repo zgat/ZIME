@@ -257,6 +257,7 @@ private extension LinnetSettingsProjectionRenderer {
     english: LinnetSettingsDocument.English
   ) -> String? {
     var entries = alphanumericSegmentorProjection(chinese: true)
+    entries += displayLearningProjection(chinese: true, enabled: input.chineseLearningPolicy != .disabled)
     appendCandidateLayout(
       appearance.chineseCandidateLayout,
       defaultLayout: .horizontal,
@@ -304,6 +305,7 @@ private extension LinnetSettingsProjectionRenderer {
     english: LinnetSettingsDocument.English
   ) -> String? {
     var entries = alphanumericSegmentorProjection(chinese: false)
+    entries += displayLearningProjection(chinese: false, enabled: english.learnFromSelections)
     appendCandidateLayout(
       appearance.englishCandidateLayout,
       defaultLayout: .horizontal,
@@ -377,6 +379,24 @@ private extension LinnetSettingsProjectionRenderer {
     if chinese { names += ["affix_segmentor@linnet_pinyin", "affix_segmentor@radical_lookup"] }
     names += ["ascii_segmentor", "abc_segmentor", "punct_segmentor", "fallback_segmentor"]
     return [("engine/segmentors", "[" + names.map(quoted).joined(separator: ", ") + "]")]
+  }
+
+  /// Run after emoji/OpenCC, before the native published-row deduplicator.
+  /// A full list also upgrades retained pre-emoji-learning language packs.
+  private static func displayLearningProjection(chinese: Bool, enabled: Bool) -> [(String, String)] {
+    var filters = ["linnet_disabled_filter@linnet_disabled_filter", "linnet_english_filter"]
+    if chinese {
+      filters += ["lua_filter@*auto_phrase", "lua_filter@*corrector", "reverse_lookup_filter@radical_reverse_lookup",
+        "lua_filter@*pin_cand_filter", "simplifier@emoji", "simplifier@traditionalize", "lua_filter@*search@radical_pinyin"]
+    }
+    filters += ["zime_display_learning", "uniquifier"]
+    var entries = [("engine/filters", "[" + filters.map(quoted).joined(separator: ", ") + "]"),
+      ("zime_display_learning/enabled", enabled ? "true" : "false")]
+    if chinese {
+      entries += [("emoji/tips", quoted("all")),
+        ("emoji/comment_format", "[" + quoted("xform/^/zime-emoji:/") + "]")]
+    }
+    return entries
   }
 
   /// The bundled schema owns the enhanced default. Settings emits only the

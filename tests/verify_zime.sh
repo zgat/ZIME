@@ -47,7 +47,7 @@ rg -Fq 'configuration.enabled' sources/ZIMECandidateTranslator.swift ||
   fail "cloud consent gate"
 [[ -f resources/zime-cedict.sqlite3 && -f resources/ZIME-Lexicon-NOTICE.txt ]] ||
   fail "direct bilingual dictionary and attribution"
-[[ "$(/usr/bin/sqlite3 resources/zime-cedict.sqlite3 'PRAGMA user_version')" == 2 ]] ||
+[[ "$(/usr/bin/sqlite3 resources/zime-cedict.sqlite3 'PRAGMA user_version')" == 3 ]] ||
   fail "dictionary must preserve source headword identity"
 ruby -ryaml -e 'abort unless YAML.load_file("data/squirrel.yaml").dig("status_icon", "show") == false' ||
   fail "duplicate menu-bar indicator must default off"
@@ -60,8 +60,8 @@ if rg -n 'URLSession|NSURLConnection|curl_easy|CFNetwork' \
   plugins/smart_english; then
   fail "candidate translation path contains a network client"
 fi
-rg -Fq 'pendingCommitOverride' sources/SquirrelInputController.swift ||
-  fail "translation-only commit boundary"
+rg -Fq 'select_candidate_with_text' sources/SquirrelInputController+RimeSession.swift ||
+  fail "segment-owned translation commit boundary"
 bash tests/verify_zime_settings_cleanup.sh || fail "Settings cleanup contract"
 bash tests/verify_zime_commit_contract.sh || fail "original-input commit contract"
 

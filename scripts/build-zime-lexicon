@@ -6,6 +6,7 @@ require 'json'
 require 'digest'
 require 'open3'
 require 'tempfile'
+require 'tmpdir'
 
 abort 'usage: build-zime-lexicon CEDICT.txt.gz OUTPUT.sqlite3' unless ARGV.length == 2
 input, output = ARGV
@@ -21,9 +22,9 @@ Zlib::GzipReader.open(input) do |gzip|
     abort "invalid CC-CEDICT row #{source_count + 1}" unless match
     traditional, simplified, pinyin, definition = match.captures
     source_count += 1
-    senses = definition.split('/').reject do |sense|
-      sense.match?(/\A(?:CL:|variant of |old variant of |see |also written )/)
-    end
+    # Keep every source sense, including references, classifiers and ordinary
+    # English beginning with "see". Interpretation belongs to the shared parser.
+    senses = definition.split('/', -1)
     priority = pinyin.match?(/\A[A-Z]/) ? 1 : 0
     # Preserve the source identity. A shared simplified spelling does not make
     # two traditional headwords the same entry (e.g. 你/妳 and 發/髮).
@@ -57,7 +58,7 @@ Tempfile.create(['zime-lexicon-', '.tsv']) do |tsv|
       CREATE INDEX source_simplified ON source_entries(simplified);
       CREATE TABLE metadata(key TEXT PRIMARY KEY, value TEXT NOT NULL) WITHOUT ROWID;
       INSERT INTO metadata VALUES('source_entries','#{source_count}'),('source_sha256','#{Digest::SHA256.file(input).hexdigest}'),('license','CC-BY-SA-4.0');
-      PRAGMA user_version=2;
+      PRAGMA user_version=3;
       VACUUM;
       PRAGMA integrity_check;
     SQL
@@ -65,4 +66,30 @@ Tempfile.create(['zime-lexicon-', '.tsv']) do |tsv|
     abort stderr unless status.success? && stdout.lines.last&.strip == 'ok'
   end
 end
-puts "CC-CEDICT v2 index: #{source_count} distinct source entries, #{entries.count} reverse English heads; #{output}"
+root = File.expand_path('..', __dir__)
+Dir.mktmpdir('zime-lexicon-projection-') do |scratch|
+  builder = File.join(scratch, 'project')
+  projections = File.join(scratch, 'annotations.tsv')
+  compile = ['/usr/bin/xcrun', 'swiftc', '-O', '-warnings-as-errors', '-parse-as-library',
+    '-module-cache-path', File.join(scratch, 'modules'),
+    File.join(root, 'sources/ZIMELocalLexicon.swift'), File.join(root, 'tools/ZIMELexiconProjectionBuilder.swift'), '-o', builder]
+  stdout, stderr, status = Open3.capture3(*compile)
+  abort "#{stdout}\n#{stderr}" unless status.success?
+  stdout, stderr, status = Open3.capture3(builder, File.expand_path(output), projections)
+  abort "#{stdout}\n#{stderr}" unless status.success?
+  puts stdout
+  sql = <<~SQL
+    .bail on
+    CREATE TABLE annotations(term TEXT PRIMARY KEY, all_senses TEXT NOT NULL, mainland TEXT, traditional_regions TEXT) WITHOUT ROWID;
+    .mode tabs
+    .import "#{projections}" annotations
+    UPDATE annotations SET mainland=NULL WHERE mainland='';
+    UPDATE annotations SET traditional_regions=NULL WHERE traditional_regions='';
+    INSERT INTO metadata VALUES('projection_revision','3');
+    VACUUM;
+    PRAGMA integrity_check;
+  SQL
+  stdout, stderr, status = Open3.capture3('/usr/bin/sqlite3', output, stdin_data: sql)
+  abort stderr unless status.success? && stdout.lines.last&.strip == 'ok'
+end
+puts "CC-CEDICT index v3: #{source_count} lossless source entries, #{entries.count} reverse English heads; #{output}"

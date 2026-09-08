@@ -69,7 +69,7 @@ struct AppearanceTabView: View {
         }
         .accessibilityIdentifier("settings.appearance.typeface")
         HStack(spacing: 10) {
-          Text("双韵 Linnet")
+          Text("ZIME")
             .font(Font(LinnetCandidatePresentation.platformFont(
               fontNames: model.configuration.documentDraft.appearance.fontPreset.fontFamilies,
               size: 17)))
@@ -229,7 +229,7 @@ struct InputTabView: View {
       VStack(alignment: .leading, spacing: 10) {
         LabeledContent("Chinese scheme", value: "Full Pinyin")
         Text(
-          "ZIME 1.x uses full pinyin for Chinese input and pinyin-to-English lookup."
+          "ZIME uses full pinyin for Chinese input and pinyin-to-English lookup."
         )
         .font(.callout)
         .foregroundStyle(.secondary)
@@ -560,7 +560,7 @@ struct DataTabView: View {
         versionSection
         GroupBox("Offline translation") {
           Text(
-            "Candidate definitions, reverse lookups, corrections, prediction, and learning stay on this Mac. ZIME 1.x has no cloud translation provider."
+            "Dictionaries and learning stay on this Mac. Cloud translation is off by default; when explicitly enabled in Translation settings, missing candidate definitions are requested from your selected provider."
           )
           .font(.callout)
           .foregroundStyle(.secondary)

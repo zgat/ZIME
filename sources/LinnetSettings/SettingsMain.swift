@@ -15,6 +15,8 @@ import UniformTypeIdentifiers
 
 @MainActor
 final class SettingsModel: ObservableObject {
+  let translation = ZIMETranslationSettingsModel()
+  private var translationObservation: AnyCancellable?
   @Published var backupRetentionPolicy: LinnetSettingsContract.BackupRetentionPolicy
   @Published var configuration: SettingsConfigurationSession {
     didSet {
@@ -135,6 +137,9 @@ final class SettingsModel: ObservableObject {
     updateObservation = updateChecker.objectWillChange.sink { [weak self] _ in
       self?.objectWillChange.send()
     }
+    translationObservation = translation.objectWillChange.sink { [weak self] _ in
+      self?.objectWillChange.send()
+    }
   }
 }
 
@@ -201,7 +206,19 @@ extension SettingsModel {
   /// checked coordinator, which selects live config reload or a staged data
   /// transaction from the authoritative change scope.
   func applyConfiguration(completion: (@MainActor (Bool) -> Void)? = nil) {
-    guard canApplyChanges,
+    guard canApplyChanges else { completion?(false); return }
+    do { try translation.validate() }
+    catch {
+      status = .operationFailed(presentationFailure(error))
+      completion?(false)
+      return
+    }
+    if !configuration.pendingChanges {
+      let applied = applyTranslationDraft()
+      completion?(applied)
+      return
+    }
+    guard
       let personalTicket = configuration.makePersonalTicket(),
       let documentTicket = configuration.makeDocumentTicket()
     else {
@@ -219,7 +236,11 @@ extension SettingsModel {
       ),
       personalTicket: personalTicket,
       documentTicket: documentTicket,
-      completion: completion
+      completion: { [weak self] accepted in
+        guard let self else { completion?(false); return }
+        let applied = accepted && self.applyTranslationDraft()
+        completion?(applied)
+      }
     ) { outcome in
       return .applied(backupName: outcome.backupDirectory?.lastPathComponent)
     }
@@ -228,6 +249,19 @@ extension SettingsModel {
   func discardPendingChanges() {
     cancelPendingAppearancePublish()
     configuration.discardPendingChanges()
+    translation.discard()
+  }
+
+  private func applyTranslationDraft() -> Bool {
+    guard translation.pendingChanges else { return true }
+    do {
+      try translation.apply()
+      status = .applied(backupName: nil)
+      return true
+    } catch {
+      status = .operationFailed(presentationFailure(error))
+      return false
+    }
   }
 
   func refreshLegacyImportCandidate() {

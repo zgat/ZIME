@@ -41,55 +41,64 @@ final class ZIMECandidateTranslator {
     showTranslation: Bool, region: ZIMELocalLexicon.RegionProfile = .mainland,
     refresh: @escaping () -> Void
   ) -> SquirrelInputController.CandidateSnapshot {
+    guard showTranslation else { cancel(); return snapshot }
     let currentConfiguration = loadConfiguration()
-    if configuration != currentConfiguration || self.region != region {
+    if !configuration.hasSameService(as: currentConfiguration) || self.region != region {
       cancel()
       cache.removeAll()
       cooldownUntil = .distantPast
-      configuration = currentConfiguration
       self.region = region
     }
-    if !showTranslation || !configuration.enabled { cancel() }
+    configuration = currentConfiguration
+    if !configuration.enabled { cancel() }
     var missing: [String] = []
     let items = snapshot.items.map { item -> SquirrelInputController.CandidateItem in
+      let emojiSource = item.comment.hasPrefix(LinnetCandidatePresentation.emojiSourcePrefix)
+        ? String(item.comment.dropFirst()) : nil
+      let lookupText = emojiSource ?? item.text
       let original = LinnetCandidatePresentation.candidateComment(item.comment)
-      let chinese = ZIMELocalLexicon.containsHan(item.text)
-      let allSenses = localLexicon.translations(for: item.text)
-      let exact = localLexicon.translations(for: item.text, region: region)
-      let annotation = chinese ? localLexicon.annotation(for: item.text, region: region) : nil
-      let excludedByRegion = chinese && !allSenses.isEmpty && exact.isEmpty
-      let originalTranslations = chinese
-        ? ZIMELocalLexicon.regionalTranslations(original.translations, for: item.text, region: region)
-        : original.translations
+      let chinese = ZIMELocalLexicon.containsHan(lookupText)
+      let annotation = chinese ? localLexicon.annotation(for: lookupText, region: region,
+        includeDetails: configuration.showFullAnnotations) : nil
       // A direct Chinese dictionary definition outranks reverse English senses
-      // such as surname romanizations. Preserve English IPA when already known.
-      let translations = excludedByRegion ? [] : chinese && !exact.isEmpty ? Array(exact.prefix(3))
-        : !originalTranslations.isEmpty ? originalTranslations : Array(exact.prefix(3))
+      // such as surname romanizations. Neither the active script nor region can
+      // block a real candidate's native/local definition or cloud fallback.
+      let nativeTranslations = ZIMELocalLexicon.coreTranslations(original.translations)
+      let translations = !nativeTranslations.isEmpty ? nativeTranslations
+        : chinese ? [] : ZIMELocalLexicon.coreTranslations(localLexicon.translations(for: lookupText))
       let term = item.text.trimmingCharacters(in: .whitespacesAndNewlines)
       let cached = cache[term].flatMap { $0.expires > Date() ? $0.text : nil }
-      let canRequest = !excludedByRegion && showTranslation && configuration.enabled && item.page == snapshot.currentPage && term.count <= 64
+      let canRequest = emojiSource == nil && configuration.enabled && item.page == snapshot.currentPage && term.count <= 64
         && !term.isEmpty && (chinese || item.comment.hasPrefix(LinnetCandidatePresentation.smartEnglishDetailPrefix))
         && !term.contains("@") && !term.contains("://")
-      var comment = item.comment
-      if showTranslation {
-        if !translations.isEmpty {
-          if let annotation, !annotation.translations.isEmpty {
-            comment = LinnetCandidatePresentation.bilingualComment(displayText: annotation.displayText,
-              translations: annotation.translations, detailText: annotation.detailText)
-          } else {
-            comment = !chinese && !original.translations.isEmpty ? item.comment : Self.comment(translations)
-          }
-        } else if !excludedByRegion, let cached, !cached.isEmpty {
-          comment = Self.comment([cached])
+      let comment: String
+      if let annotation, !annotation.translations.isEmpty {
+        comment = LinnetCandidatePresentation.bilingualComment(displayText: annotation.displayText,
+          translations: annotation.translations,
+          detailText: configuration.showFullAnnotations ? annotation.detailText : "")
+      } else if !translations.isEmpty {
+        // IPA and part-of-speech labels may remain in the English display,
+        // but never enter the plain translation candidates used for commits.
+        let display = original.belongsToSmartEnglish && !nativeTranslations.isEmpty
+          ? ZIMELocalLexicon.coreDefinition(original.displayText)
+          : translations.prefix(2).joined(separator: " / ")
+        comment = LinnetCandidatePresentation.bilingualComment(displayText: display,
+          translations: translations, detailText: configuration.showFullAnnotations
+            ? (!nativeTranslations.isEmpty ? LinnetCandidatePresentation.fullCandidateComment(item.comment)
+              : translations.joined(separator: "\n")) : "")
+      } else if let cached {
+        // Provider fields are translations, not CC-CEDICT definitions. Preserve
+        // the entire accepted field as one commit candidate; labels are UI-only.
+        let label = configuration.provider.candidateSourceLabel
+        comment = LinnetCandidatePresentation.bilingualComment(displayText: "\(label):\(cached)",
+          translations: [cached], detailText: "", sourceLabel: label)
+      } else {
+        // Unmarked comments are spelling hints, never English translations.
+        if canRequest && cached == nil && cooldownUntil <= Date() {
+          if !missing.contains(term) { missing.append(term) }
+          comment = "译文查询中…"
         } else {
-          // Unmarked comments are spelling hints, never English translations.
-          comment = excludedByRegion ? "当前地区暂无本地释义" : "暂无本地译文"
-          if canRequest {
-            if cached == nil && cooldownUntil <= Date() {
-              if !missing.contains(term) { missing.append(term) }
-              comment = "译文查询中…"
-            } else { comment = "暂无译文 · 云翻译暂不可用" }
-          }
+          comment = "无译文"
         }
       }
       var result = item
@@ -97,7 +106,7 @@ final class ZIMECandidateTranslator {
       result.emphasizesPrimaryText = showTranslation
       return result
     }
-    // Limit requests to the selected page even if the user expanded browsing.
+    // Only the current source page is eligible for remote lookup.
     let currentPageTerms = snapshot.items.filter { $0.page == snapshot.currentPage }.map {
       $0.text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
@@ -112,15 +121,22 @@ final class ZIMECandidateTranslator {
       task = Task { @MainActor [weak self] in
         do {
           try await Task.sleep(nanoseconds: 400_000_000)
-          guard let self, self.generation == token else { return }
+          guard let self, self.generation == token,
+            self.loadConfiguration().hasSameService(as: selected) else { return }
           let credentials = try self.loadCredentials(selected.credentialAccount)
           for (index, text) in missing.enumerated() {
             try Task.checkCancellation()
-            guard self.generation == token, self.loadConfiguration() == selected else { return }
+            guard self.generation == token, self.loadConfiguration().hasSameService(as: selected) else { return }
             if index > 0 { try await Task.sleep(nanoseconds: 1_000_000_000) }
+            // Consent/provider may change in Settings during the rate-limit
+            // wait, without another candidate update to cancel this task.
+            guard self.generation == token, self.loadConfiguration().hasSameService(as: selected) else { return }
             let value = try await self.translate(selected, credentials, text, ZIMELocalLexicon.containsHan(text))
-            guard self.generation == token, self.loadConfiguration() == selected else { return }
-            if self.cache.count >= 512 { self.cache.removeAll() }
+            guard self.generation == token, self.loadConfiguration().hasSameService(as: selected) else { return }
+            if self.cache.count >= 512,
+              let oldest = self.cache.min(by: { $0.value.expires < $1.value.expires })?.key {
+              self.cache.removeValue(forKey: oldest)
+            }
             self.cache[text] = (value, Date().addingTimeInterval(600))
             refresh()
           }
@@ -143,8 +159,4 @@ final class ZIMECandidateTranslator {
       highlightedItemIndex: snapshot.highlightedItemIndex, isLastPage: snapshot.isLastPage)
   }
 
-  private static func comment(_ translations: [String]) -> String {
-    LinnetCandidatePresentation.reverseEnglishDetailPrefix
-      + translations.joined(separator: LinnetCandidatePresentation.translationAlternativeSeparator)
-  }
 }

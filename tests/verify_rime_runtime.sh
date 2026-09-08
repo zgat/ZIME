@@ -71,7 +71,9 @@ cp data/linnet/default.yaml "${shared}/default.yaml"
     source = File.binread(path)
     line = "    - zime_alphanumeric_segmentor\n"
     abort "new segmentor missing from canonical schema" unless source.scan(line).length == 1
-    File.binwrite(path, source.sub(line, ""))
+    filter = "    - zime_display_learning\n"
+    abort "display learner missing from canonical schema" unless source.scan(filter).length == 1
+    File.binwrite(path, source.sub(line, "").sub(filter, ""))
   end
 ' "${shared}/linnet_zh.schema.yaml" "${shared}/linnet_en.schema.yaml"
 # An installed pre-0.1.8 language pack disables English learning in Chinese
@@ -205,6 +207,28 @@ if ! DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
   exit 1
 fi
 end_phase "run native candidate matrix"
+
+if [[ "${runtime_probe}" == --zime-shortcuts-probe ]]; then
+  begin_phase "reopen and export/restore emoji learning"
+  DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
+    "${scratch}/rime-smoke" "${shared}" "${user}" --zime-emoji-reopen-probe
+  restored_user="${scratch}/restored-emoji-user"
+  mkdir "${restored_user}"
+  cp -R "${user}/build" "${restored_user}/build"
+  (
+    cd "${user}"
+    DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
+      "${repo_root}/bin/rime_dict_manager" --export linnet_zh "${scratch}/emoji-learning.txt"
+  )
+  (
+    cd "${restored_user}"
+    DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
+      "${repo_root}/bin/rime_dict_manager" --import linnet_zh "${scratch}/emoji-learning.txt"
+  )
+  DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
+    "${scratch}/rime-smoke" "${shared}" "${restored_user}" --zime-emoji-reopen-probe
+  end_phase "reopen and export/restore emoji learning"
+fi
 
 if [[ "${runtime_probe}" == --zime-bilingual-probe ]]; then
   begin_phase "reopen learned ranking in a fresh process"

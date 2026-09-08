@@ -1,6 +1,16 @@
 import CryptoKit
 import Foundation
 
+/// Product distribution identity is separate from retained upstream pack
+/// formats. ZIME has not published a compatible automatic-update catalog yet.
+enum ZIMEReleasePolicy {
+  static let releasesURL = URL(string: "https://github.com/zgat/ZIME/releases")!
+  static func usesManualReleases(bundleIdentifier: String?) -> Bool {
+    bundleIdentifier == "com.zime.inputmethod.ZIME" ||
+      bundleIdentifier == "com.zime.inputmethod.ZIME.local-build"
+  }
+}
+
 // The transport choice owns the verified pack to reuse or reconstruct.
 extension LinnetDataChannel {
   struct Delta: Codable, Equatable, Sendable {

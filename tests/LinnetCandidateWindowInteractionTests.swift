@@ -160,6 +160,8 @@ struct LinnetCandidateWindowInteractionTests {
     testEveryCandidateShowsTranslation()
     testSquareAndRoundedPaths()
     testStructuredLocalGlosses()
+    testOptionalFullAnnotations()
+    testOnlineSourceAnnotations()
     testRegionalDefinitionsWrapWithoutSummarization()
     testChineseCommentsDoNotCreateEnglishPlaceholder()
     testThemeLayoutMatrix()
@@ -349,6 +351,70 @@ struct LinnetCandidateWindowInteractionTests {
     }
   }
 
+  private static func testOptionalFullAnnotations() {
+    guard let yaml = try? String(contentsOfFile: "data/squirrel.yaml", encoding: .utf8),
+      let sample = parseThemeSamples(yaml)["linnet_macos_light"] else {
+      failures.append("missing theme for annotation toggle test")
+      return
+    }
+    let lexicon = ZIMELocalLexicon(url: URL(fileURLWithPath: "resources/zime-cedict.sqlite3"))
+    let annotation = lexicon.annotation(for: "你", region: .mainland)
+    let panel = SquirrelPanel(position: NSRect(x: 260, y: 420, width: 2, height: 20))
+    let controller = SquirrelInputController()
+    panel.bind(controller: controller)
+    configureThemeLayout(panel.view.lightTheme, sample: sample, point: 16, linear: false)
+    for fullNotes in [false, true, false] {
+      let item = SquirrelInputController.CandidateItem(text: "你",
+        comment: LinnetCandidatePresentation.bilingualComment(displayText: annotation.displayText,
+          translations: annotation.translations, detailText: fullNotes ? annotation.detailText : ""),
+        page: 0, indexOnPage: 0, absoluteIndex: 0, selectionLabel: "1")
+      require(panel.update(preedit: "ni", selRange: .empty, caretPos: 2,
+        candidates: .init(items: [item], pageSize: 5, currentPage: 0, isLastPage: true),
+        highlighted: 0, update: true, controller: controller), "annotation toggle lost the candidate panel")
+      render(panel.view)
+      require(panel.view.candidateToolTipTexts.first?.description == (fullNotes ? annotation.detailText : ""),
+        "disabled full annotations left a stale native tooltip")
+      if let element = panel.view.accessibilityChildren()?.first as? LinnetCandidateAccessibilityElement {
+        require((element.accessibilityHelp()?.contains("您[nin2]") == true) == fullNotes,
+          "optional full annotations leaked into accessibility help")
+      } else { failures.append("annotation toggle lost candidate accessibility") }
+      require(panel.view.textView.textContentStorage?.attributedString?.string.contains("informal") == false,
+        "hover toggle exposed full notes in the candidate row")
+    }
+    panel.hide()
+  }
+
+  private static func testOnlineSourceAnnotations() {
+    guard let yaml = try? String(contentsOfFile: "data/squirrel.yaml", encoding: .utf8),
+      let sample = parseThemeSamples(yaml)["linnet_macos_light"] else { return }
+    let panel = SquirrelPanel(position: NSRect(x: 260, y: 420, width: 2, height: 20))
+    let controller = SquirrelInputController()
+    panel.bind(controller: controller)
+    configureThemeLayout(panel.view.lightTheme, sample: sample, point: 16, linear: false)
+    let labels = ["腾讯", "百度", "DeepL", "ai"]
+    let raw = "you (informal) / yourself\nsecond line"
+    let items = labels.enumerated().map { index, label in
+      SquirrelInputController.CandidateItem(text: "你",
+        comment: LinnetCandidatePresentation.bilingualComment(displayText: "\(label):\(raw)",
+          translations: [raw], detailText: "", sourceLabel: label),
+        page: 0, indexOnPage: index, absoluteIndex: index, selectionLabel: String(index + 1))
+    }
+    require(panel.update(preedit: "ni", selRange: .empty, caretPos: 2,
+      candidates: .init(items: items, pageSize: 5, currentPage: 0, isLastPage: true),
+      highlighted: 0, update: true, controller: controller), "online source panel not published")
+    render(panel.view)
+    if let text = panel.view.textView.textContentStorage?.attributedString {
+      for (index, label) in labels.enumerated() {
+        let row = text.attributedSubstring(from: panel.view.candidateRanges[index]).string
+        require(row.contains("\(label):\(raw)"), "online row lost its provider or original punctuation/newline")
+      }
+    } else { failures.append("online source text missing") }
+    let frames = panel.view.candidateAccessibilityGeometry().candidateFrames
+    require(frames.count == labels.count && frames.allSatisfy { panel.view.bounds.insetBy(dx: -1, dy: -1).contains($0) },
+      "online source rows lost hit geometry")
+    panel.hide()
+  }
+
   private static func testStructuredLocalGlosses() {
     guard let yaml = try? String(contentsOfFile: "data/squirrel.yaml", encoding: .utf8),
       let sample = parseThemeSamples(yaml)["linnet_macos_light"] else { return }
@@ -378,7 +444,7 @@ struct LinnetCandidateWindowInteractionTests {
           render(view)
           if let text = view.textView.textContentStorage?.attributedString {
             let ni = text.attributedSubstring(from: view.candidateRanges[0]).string
-            require(ni.contains("you (informal)") && !ni.contains("nin2") && !ni.contains("Mainland") && !ni.contains(" / you"),
+            require(ni.contains("you") && !ni.contains("informal") && !ni.contains("nin2") && !ni.contains("Mainland") && !ni.contains(" / you"),
               "structured 你 retained redundant / explanatory suffixes")
             for index in 0..<count {
               let row = text.attributedSubstring(from: view.candidateRanges[index]).string

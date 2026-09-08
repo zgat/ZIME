@@ -97,6 +97,9 @@ emoji:
   option_name: emoji
   opencc_config: emoji.json
   inherit_comment: false
+  tips: all
+  comment_format:
+    - xform/^/zime-emoji:/
 
 # ── Radical reverse lookup ──────────────────────────────────────────────────
 radical_lookup:
@@ -173,6 +176,7 @@ engine:
     - simplifier@emoji
     - simplifier@traditionalize
     - lua_filter@*search@radical_pinyin
+    - zime_display_learning
     - uniquifier
 
 # ── Speller: Linnet natural-code algebra ───────────────────────────────────

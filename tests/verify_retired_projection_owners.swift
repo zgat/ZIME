@@ -64,8 +64,8 @@ for path in CommandLine.arguments.dropFirst() {
 guard registrationUses == [registrationOwner, registrationOwner] else {
   fatalError("TIS authorization request escaped its single owner: \(registrationUses)")
 }
-guard Set(downloadUses) == [downloadOwner] else {
-  fatalError("URLSession escaped its single download owner: \(downloadUses)")
+guard Set(downloadUses) == [downloadOwner, "sources/ZIMETranslationProvider.swift"] else {
+  fatalError("URLSession escaped the update and opt-in translation transports: \(downloadUses)")
 }
 guard forbiddenUses.isEmpty else {
   fatalError("a forbidden TIS, network, or Swift mode owner returned: \(forbiddenUses)")

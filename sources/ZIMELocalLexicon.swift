@@ -16,6 +16,7 @@ final class ZIMELocalLexicon {
     let pinyin: String
     let priority: Int
     let senses: [String]
+    var identity: String { "\(traditional)|\(simplified)[\(pinyin)]" }
   }
   struct Annotation: Equatable {
     let displayText: String
@@ -25,11 +26,13 @@ final class ZIMELocalLexicon {
   private var database: OpaquePointer?
   private var statement: OpaquePointer?
   private var sourceStatement: OpaquePointer?
+  private var annotationStatement: OpaquePointer?
   private var cache: [String: [String]] = [:]
   private var sourceCache: [String: [SourceEntry]] = [:]
   private var annotationCache: [String: Annotation] = [:]
+  private var parsedSenseCache: [String: ParsedSense] = [:]
 
-  init(url: URL?) {
+  init(url: URL?, usePreparedAnnotations: Bool = true) {
     guard let url,
       sqlite3_open_v2(url.path, &database, SQLITE_OPEN_READONLY | SQLITE_OPEN_NOMUTEX, nil) == SQLITE_OK
     else { return }
@@ -38,11 +41,17 @@ final class ZIMELocalLexicon {
     sqlite3_prepare_v2(database,
       "SELECT traditional,simplified,pinyin,priority,senses FROM source_entries WHERE traditional=?1 OR simplified=?1 ORDER BY priority,id",
       -1, &sourceStatement, nil)
+    if usePreparedAnnotations {
+      sqlite3_prepare_v2(database,
+        "SELECT CASE ?2 WHEN 'mainland' THEN COALESCE(mainland,all_senses) WHEN 'traditionalRegions' THEN COALESCE(traditional_regions,all_senses) ELSE all_senses END FROM annotations WHERE term=?1",
+        -1, &annotationStatement, nil)
+    }
   }
 
   deinit {
     sqlite3_finalize(statement)
     sqlite3_finalize(sourceStatement)
+    sqlite3_finalize(annotationStatement)
     sqlite3_close(database)
   }
 
@@ -118,107 +127,252 @@ final class ZIMELocalLexicon {
     // push the distinct 髮 "hair" sense beyond all visible alternatives.
     sourceEntries(for: term, region: region).enumerated().flatMap { sourceIndex, entry in
       entry.senses.enumerated().map { senseIndex, sense in
-        (entry: entry, sense: sense, sourceIndex: sourceIndex, senseIndex: senseIndex)
+        let parsed = parsedSense(sense)
+        let rank: Int
+        switch parsed.kind {
+        case .meaning: rank = sense.hasPrefix("(bound form)") ? 1 : 0
+        case .reference: rank = 2
+        case .annotation: rank = 3
+        }
+        return (entry: entry, sense: sense, sourceIndex: sourceIndex, senseIndex: senseIndex, rank: rank)
       }
     }.sorted { lhs, rhs in
-      let left = lhs.entry.priority + (lhs.sense.hasPrefix("(bound form)") ? 2 : 0)
-      let right = rhs.entry.priority + (rhs.sense.hasPrefix("(bound form)") ? 2 : 0)
+      // Keep standalone meanings ahead of bound forms (帅 -> handsome), but
+      // never let usage/reference metadata outrank real bound-form meanings.
+      let left = lhs.entry.priority
+      let right = rhs.entry.priority
       if left != right { return left < right }
+      if lhs.rank != rhs.rank { return lhs.rank < rhs.rank }
       if lhs.senseIndex != rhs.senseIndex { return lhs.senseIndex < rhs.senseIndex }
       return lhs.sourceIndex < rhs.sourceIndex
     }.map { (entry: $0.entry, sense: $0.sense) }
   }
 
-  /// Keep display-only notes separate from the untouched explicit commit
-  /// alternatives. Only equal glosses / explanatory copies are coalesced.
-  func annotation(for text: String, region: RegionProfile) -> Annotation {
+  /// Look up the candidate's actual spelling, irrespective of the active input
+  /// mode. Region is a sense preference, never permission to translate a glyph.
+  /// Display and explicit commits share core glosses; full notes stay in help.
+  func annotation(for text: String, region: RegionProfile, includeDetails: Bool = true) -> Annotation {
     let term = text.trimmingCharacters(in: .whitespacesAndNewlines)
-    let key = region.rawValue + "/" + term
+    guard !term.isEmpty, term.count <= 128 else { return .init(displayText: "", translations: [], detailText: "") }
+    let key = region.rawValue + "/" + String(includeDetails) + "/" + term
     if let result = annotationCache[key] { return result }
-    var displayed: [String] = []
-    var translations: [String] = []
-    var details: [String] = []
-    var seenDetails = Set<String>()
-    var noteOnlyIndices = Set<Int>()
-    let senses = orderedSenses(for: term, region: region)
-    let hasDefinition = senses.contains { !Self.isPronunciationNote($0.sense) }
-    for (entry, sense) in senses {
-      guard let full = Self.regionalTranslations([sense], for: term, region: region).first else { continue }
-      let projected = Self.inlineDefinition(full, headword: term)
-      let heading = entry.traditional == entry.simplified ? entry.traditional : "\(entry.traditional) / \(entry.simplified)"
-      let detail = "\(heading) [\(entry.pinyin)]\n\(full)"
-      if seenDetails.insert(detail).inserted { details.append(detail) }
-      if hasDefinition && Self.isPronunciationNote(full) { continue }
-      if let same = displayed.firstIndex(of: projected.text) {
-        if noteOnlyIndices.contains(same), !projected.isExplanatoryCopy {
-          translations[same] = full
-          noteOnlyIndices.remove(same)
-        }
-        continue
-      }
-      let bare = Self.withoutParentheticalAnnotations(projected.text)
-      // A bare "you (Note: ...)" supplements an existing qualified "you";
-      // it is not another translation. Never merge two qualified senses such
-      // as capital (city) / capital (finance), or distinct 發/髮 definitions.
-      if projected.isExplanatoryCopy,
-        displayed.contains(where: { Self.withoutParentheticalAnnotations($0) == bare }) { continue }
-      if let previous = displayed.indices.first(where: {
-        noteOnlyIndices.contains($0) && Self.withoutParentheticalAnnotations(displayed[$0]) == bare
-      }) {
-        displayed[previous] = projected.text
-        translations[previous] = full
-        noteOnlyIndices.remove(previous)
-      } else {
-        if projected.isExplanatoryCopy { noteOnlyIndices.insert(displayed.count) }
-        displayed.append(projected.text)
-        translations.append(full)
-      }
-    }
-    let result = Annotation(displayText: displayed.prefix(2).joined(separator: " / "),
-      translations: Array(translations.prefix(3)), detailText: details.joined(separator: "\n\n"))
+    let prepared = preparedTranslations(for: term, region: region)
+    let resolved = prepared != nil && !includeDetails ? [] : resolve(term: term, region: region, visited: [], depth: 0)
+    let translations = prepared ?? Self.unique(resolved.map(\.core).filter { !$0.isEmpty })
+    let result = Annotation(displayText: translations.prefix(2).joined(separator: " / "),
+      translations: Array(translations.prefix(3)),
+      detailText: includeDetails ? Self.unique(resolved.map(\.detail)).joined(separator: "\n\n") : "")
     if annotationCache.count >= 2048 { annotationCache.removeAll(keepingCapacity: true) }
     annotationCache[key] = result
     return result
   }
 
-  static func inlineDefinition(_ definition: String, headword: String) -> (text: String, isExplanatoryCopy: Bool) {
-    // Retain the distinguishing female-address sense when its source headword
-    // is 妳, rather than treating the entire use restriction as a footnote.
-    if headword == "妳", definition == "you (Taiwan: 妳 is used to address females.)" {
-      return ("you (female)", false)
+  private func preparedTranslations(for term: String, region: RegionProfile) -> [String]? {
+    guard let annotationStatement else { return nil }
+    defer { sqlite3_reset(annotationStatement); sqlite3_clear_bindings(annotationStatement) }
+    let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+    sqlite3_bind_text(annotationStatement, 1, term, -1, transient)
+    sqlite3_bind_text(annotationStatement, 2, region.rawValue, -1, transient)
+    guard sqlite3_step(annotationStatement) == SQLITE_ROW,
+      let value = sqlite3_column_text(annotationStatement, 0) else { return nil }
+    return try? JSONDecoder().decode([String].self, from: Data(String(cString: value).utf8))
+  }
+
+  private struct ResolvedSense { let core: String; let detail: String }
+
+  private func resolve(term: String, region: RegionProfile, visited: Set<String>, depth: Int,
+    exactReference: Reference? = nil
+  ) -> [ResolvedSense] {
+    guard depth < 8 else { return [] }
+    let all = orderedSenses(for: term, region: .all).filter { entry, _ in
+      guard let reference = exactReference else { return true }
+      return entry.traditional == reference.traditional && entry.simplified == reference.simplified
+        && (reference.pinyin == nil || entry.pinyin == reference.pinyin)
     }
-    var result = definition
-    var movedNote = false
-    for annotation in parentheticalAnnotations(in: definition).reversed() {
-      let text = annotation.text.lowercased()
-      if ["note:", "mainland china:", "taiwan:", "abbr. for ", "abbreviation of ",
-        "also written ", "also pr.", "taiwan pr.", "e.g.", "for example", "as in "]
-        .contains(where: text.hasPrefix) {
-        result.removeSubrange(annotation.range)
-        movedNote = true
-      } else if let comparison = annotation.text.range(of: ", as opposed to ") {
-        // Keep the exact qualifier, move only its explanatory comparison.
-        result.replaceSubrange(annotation.range, with: "(\(annotation.text[..<comparison.lowerBound]))")
+    func project(_ profile: RegionProfile) -> [ResolvedSense] {
+      var output: [ResolvedSense] = []
+      let senses = all.compactMap { entry, raw -> (SourceEntry, String, ParsedSense)? in
+        guard !visited.contains(entry.identity),
+          let regional = Self.regionalTranslations([raw], for: term, region: profile).first else { return nil }
+        return (entry, raw, parsedSense(regional))
+      }
+      let hasDirectMeaning = senses.contains { !$0.2.core.isEmpty }
+      for (entry, raw, parsed) in senses {
+        let heading = entry.traditional == entry.simplified ? entry.traditional : "\(entry.traditional) / \(entry.simplified)"
+        let detail = "\(heading) [\(entry.pinyin)]\n\(raw)"
+        output.append(.init(core: parsed.core, detail: detail))
+        // References fill missing meanings, not extra readings of a headword
+        // that already has a direct gloss (妳 ni3 must not acquire 奶 nai3).
+        // Mixed abbreviation lines already contain their own English meaning.
+        if !hasDirectMeaning, parsed.core.isEmpty, let reference = parsed.reference, reference.inheritsMeaning {
+          let inherited = resolve(term: reference.traditional, region: profile,
+            visited: visited.union([entry.identity]), depth: depth + 1, exactReference: reference)
+          output.append(contentsOf: inherited.prefix(128))
+        }
+      }
+      return output
+    }
+    let preferred = project(region)
+    return region == .all || preferred.contains(where: { !$0.core.isEmpty }) ? preferred : project(.all)
+  }
+
+  private static func unique(_ values: [String]) -> [String] {
+    var seen = Set<String>()
+    return values.filter { seen.insert($0).inserted }
+  }
+
+  struct Reference: Equatable {
+    let relation: String
+    let traditional: String
+    let simplified: String
+    let pinyin: String?
+    var inheritsMeaning: Bool {
+      ["variant of", "old variant of", "archaic variant of", "ancient variant of", "see", "same as",
+        "unofficial variant of", "classical variant of", "japanese variant of", "taiwan variant of",
+        "erhua variant of", "erhua form of", "contracted variant of", "contracted form of",
+        "also written", "abbr. for", "abbr. of", "short for"].contains(relation)
+    }
+  }
+  struct ParsedSense {
+    enum Kind: String { case meaning, reference, annotation }
+    let kind: Kind
+    let core: String
+    let reference: Reference?
+  }
+
+  private func parsedSense(_ raw: String) -> ParsedSense {
+    if let parsed = parsedSenseCache[raw] { return parsed }
+    let parsed = Self.parseSense(raw)
+    if parsedSenseCache.count >= 4096 { parsedSenseCache.removeAll(keepingCapacity: true) }
+    parsedSenseCache[raw] = parsed
+    return parsed
+  }
+
+  private static let referenceTarget = try! NSRegularExpression(pattern: #"^([^\s\[\],;]+)(?:\[([^\]]+)\])?(.*)$"#)
+  private static let numberedPinyin = try! NSRegularExpression(pattern: #"\[[A-Za-züÜ:]+[1-5](?:[ '\-·]*[A-Za-züÜ:]+[1-5])*\]"#)
+  private static let pairedHeadword = try! NSRegularExpression(pattern: #"([\p{Han}A-Za-z0-9]+)\|([\p{Han}A-Za-z0-9]+)"#)
+
+  /// Recognize a relation only when it has an actual dictionary headword
+  /// target. Ordinary English such as "see you tomorrow" remains a meaning.
+  private static func reference(in value: String) -> (Reference, String)? {
+    let relations = ["contracted variant of", "contracted form of", "erhua variant of", "erhua form of",
+      "unofficial variant of", "classical variant of", "japanese variant of", "taiwan variant of",
+      "old variant of", "archaic variant of", "ancient variant of", "also known as", "also written",
+      "variant of", "abbr. for", "abbr. of", "abbr. to", "short for", "see also", "same as",
+      "also called", "used in", "see", "cf.", "cf"]
+    let lower = value.lowercased()
+    guard let relation = relations.first(where: { lower.hasPrefix($0 + " ") }) else { return nil }
+    let tail = String(value.dropFirst(relation.count + 1))
+    guard let match = referenceTarget.firstMatch(in: tail, range: NSRange(tail.startIndex..., in: tail)),
+      let targetRange = Range(match.range(at: 1), in: tail) else { return nil }
+    let target = String(tail[targetRange])
+    let reading = Range(match.range(at: 2), in: tail).map { String(tail[$0]) }
+    // Non-Han source heads (e.g. 3C or a Bopomofo character) require a reading.
+    guard containsHan(target) || (reading != nil && target.contains(where: { !$0.isASCII || $0.isNumber || $0.isUppercase }))
+    else { return nil }
+    let forms = target.split(separator: "|", omittingEmptySubsequences: false)
+    guard (1...2).contains(forms.count), forms.allSatisfy({ !$0.isEmpty }) else { return nil }
+    let suffix = Range(match.range(at: 3), in: tail).map { String(tail[$0]) } ?? ""
+    return (.init(relation: relation, traditional: String(forms[0]), simplified: String(forms.last!), pinyin: reading), suffix)
+  }
+
+  static func parseSense(_ definition: String) -> ParsedSense {
+    let body = projectParentheses(definition).trimmingCharacters(in: .whitespacesAndNewlines)
+    let lower = body.lowercased()
+    if body.isEmpty || (lower.hasPrefix("cl:") && containsHan(body)) ||
+      (["taiwan pr.", "also pr.", "also pronounced "].contains(where: lower.hasPrefix) && body.contains("[")) {
+      return .init(kind: .annotation, core: "", reference: nil)
+    }
+    if let (reference, suffix) = reference(in: body) {
+      // Legacy abbreviation records may place the real English definition
+      // after the reference, e.g. "abbr. for 世博..., World Expo".
+      let mixed = reference.inheritsMeaning
+        && suffix.trimmingCharacters(in: .whitespaces).hasPrefix(",")
+      let core = mixed ? cleanReferenceMarkup(String(suffix.drop(while: { $0.isWhitespace || $0 == "," }))) : ""
+      return .init(kind: core.isEmpty ? .reference : .meaning, core: core, reference: reference)
+    }
+    // Some legacy rows put the abbreviation note after an English definition.
+    // Require a real referenced headword before separating the trailing note.
+    for marker in [", abbr. for ", ", abbr. of ", ", abbr. to "] {
+      if let boundary = body.range(of: marker, options: .caseInsensitive),
+        let (reference, _) = reference(in: String(body[body.index(boundary.lowerBound, offsetBy: 2)...])) {
+        return .init(kind: .meaning, core: cleanReferenceMarkup(String(body[..<boundary.lowerBound])), reference: reference)
       }
     }
-    result = result.replacingOccurrences(
-      of: #"\[[A-Za-züÜ:]+[1-5](?:[ '\-·]*[A-Za-züÜ:]+[1-5])*\]"#,
-      with: "", options: .regularExpression)
-      .split(whereSeparator: \.isWhitespace).joined(separator: " ")
-    // Grammar-only / unrecognized definitions must remain readable, never
-    // disappear just because all of their text happens to be parenthetical.
-    guard !result.isEmpty else { return (definition, false) }
-    return (result, movedNote && result == withoutParentheticalAnnotations(result))
+    return .init(kind: .meaning, core: cleanReferenceMarkup(body), reference: nil)
   }
 
-  private static func isPronunciationNote(_ text: String) -> Bool {
-    ["taiwan pr.", "also pr.", "also pronounced "].contains(where: text.lowercased().hasPrefix)
+  /// Local dictionary projection only. Online translation fields bypass this.
+  static func coreDefinition(_ definition: String) -> String {
+    parseSense(definition).core
   }
 
-  private static func withoutParentheticalAnnotations(_ text: String) -> String {
-    var result = text
-    for annotation in parentheticalAnnotations(in: text).reversed() { result.removeSubrange(annotation.range) }
+  private static func projectParentheses(_ definition: String) -> String {
+    var result = definition
+    for annotation in parentheticalAnnotations(in: definition).reversed() {
+      // Parentheses inside a spelling/formula are not usage notes: colo(u)r,
+      // teacher(s), B(12), (CH3)2CO. Preserve those literal tokens.
+      let before = annotation.range.lowerBound > definition.startIndex
+        ? definition[definition.index(before: annotation.range.lowerBound)] : nil
+      let after = annotation.range.upperBound < definition.endIndex
+        ? definition[annotation.range.upperBound] : nil
+      let token = !annotation.text.isEmpty && annotation.text.allSatisfy { $0.isLetter || $0.isNumber }
+      if token && (after?.isNumber == true ||
+        (before?.isLetter == true && (after?.isLetter == true || annotation.text == "s" || annotation.text.allSatisfy(\.isNumber)))) {
+        continue
+      }
+      let whole = definition.trimmingCharacters(in: .whitespacesAndNewlines) == String(definition[annotation.range])
+      let note = annotation.text.trimmingCharacters(in: .whitespacesAndNewlines)
+      if isExplanatoryNote(note) || (!whole && (isUsageLabel(note) || reference(in: note) != nil)) {
+        result.removeSubrange(annotation.range)
+      } else if whole {
+        // A whole grammatical/functional definition is not a disposable note.
+        let core = note.components(separatedBy: ", literary equivalent of ").first ?? note
+        result.replaceSubrange(annotation.range, with: core)
+      }
+      // Unknown qualifiers, negation, optional word parts and formulas remain
+      // intact. No "remove all parentheses" fallback is permitted.
+    }
+    return result
+  }
+
+  private static func isExplanatoryNote(_ value: String) -> Bool {
+    let lower = value.lowercased()
+    return ["note:", "example:", "examples:", "e.g.", "esp.", "abbr. for ", "abbr. of ", "abbr. to ",
+      "taiwan pr.", "also pr.", "loanword from ", "etymologically", "mainland china:",
+      "taiwan:", "usage note", "注释", "示例"].contains(where: lower.hasPrefix)
+  }
+
+  private static func isUsageLabel(_ value: String) -> Bool {
+    let lower = value.lowercased()
+    let labels: Set<String> = ["informal", "formal", "courteous", "bound form", "coll.", "jocular", "slang",
+      "internet slang", "idiom", "literary", "archaic", "old", "dialect", "loanword", "fig.", "lit.",
+      "noun", "verb", "adjective", "adverb", "computing", "math.", "botany", "chemistry", "medicine",
+      "physics", "prc", "tw", "hk", "hong kong", "mainland china", "singapore", "malaysia", "macau", "macao",
+      "名词", "动词"]
+    let parts = lower.components(separatedBy: CharacterSet(charactersIn: ",，"))
+      .map { $0.trimmingCharacters(in: .whitespaces) }
+    return labels.contains(lower) || parts.allSatisfy {
+      labels.contains($0.trimmingCharacters(in: .whitespaces))
+    } || (parts.count > 1 && labels.contains(parts[0]) && parts.dropFirst().allSatisfy(isExplanatoryNote))
+      || ["informal, ", "of ", "used in relation to "].contains(where: lower.hasPrefix)
+  }
+
+  private static func cleanReferenceMarkup(_ value: String) -> String {
+    var result = numberedPinyin.stringByReplacingMatches(in: value,
+      range: NSRange(value.startIndex..., in: value), withTemplate: "")
+    for match in pairedHeadword.matches(in: result, range: NSRange(result.startIndex..., in: result)).reversed() {
+      guard let whole = Range(match.range, in: result), let simple = Range(match.range(at: 2), in: result),
+        containsHan(String(result[whole])) else { continue }
+      result.replaceSubrange(whole, with: String(result[simple]))
+    }
     return result.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+      .trimmingCharacters(in: CharacterSet(charactersIn: ";；,， "))
+  }
+
+  static func coreTranslations(_ definitions: [String]) -> [String] {
+    var seen = Set<String>()
+    return definitions.map(coreDefinition).filter { !$0.isEmpty && seen.insert($0).inserted }
   }
 
   /// Filter explicit usage labels only. Geographic mentions, examples,
@@ -280,14 +434,14 @@ final class ZIMELocalLexicon {
     -> [(text: String, range: Range<String.Index>)] {
     var result: [(String, Range<String.Index>)] = []
     var start: String.Index?
-    var depth = 0
+    var closing: [Character] = []
     for index in text.indices {
-      if text[index] == "(" {
-        if depth == 0 { start = index }
-        depth += 1
-      } else if text[index] == ")", depth > 0 {
-        depth -= 1
-        if depth == 0, let start {
+      if text[index] == "(" || text[index] == "（" {
+        if closing.isEmpty { start = index }
+        closing.append(text[index] == "(" ? ")" : "）")
+      } else if text[index] == closing.last {
+        closing.removeLast()
+        if closing.isEmpty, let start {
           result.append((String(text[text.index(after: start)..<index]), start..<text.index(after: index)))
         }
       }

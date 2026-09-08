@@ -12,16 +12,18 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 
-candidate_processes="$(ps -axo pid=,command= | awk '
+# `comm` is the executable path without arguments. Never split it on spaces:
+# the user's worktree may itself contain spaces. lsof remains the authority
+# for processes whose executable lives elsewhere but maps this runtime.
+candidate_processes="$(ps -axww -o pid=,comm= | awk '
   {
     pid = $1
     line = $0
     sub(/^[[:space:]]*[0-9]+[[:space:]]+/, "", line)
     executable = line
-    sub(/[[:space:]].*$/, "", executable)
     basename = executable
     sub(/^.*\//, "", basename)
-    if (basename ~ /^(rime_deployer|rime_dict_manager|rime-smoke(\..*)?|rime_golden_probe|auto_phrase_probe|Linnet|Squirrel|Settings)$/) {
+    if (basename ~ /^(rime_deployer|rime_dict_manager|rime-smoke(\..*)?|rime_golden_probe|auto_phrase_probe|ZIME|Linnet|Squirrel|Settings)$/) {
       print pid "\t" line
     }
   }
@@ -31,7 +33,7 @@ blocked=0
 unknown_processes=
 while IFS=$'\t' read -r process_id command_line; do
   [[ -n "${process_id}" ]] || continue
-  executable="${command_line%%[[:space:]]*}"
+  executable="${command_line}"
   owns_candidate=0
   if [[ "${executable}" == "${repo_root}/"* ]]; then
     owns_candidate=1

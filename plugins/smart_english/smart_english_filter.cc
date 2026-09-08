@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <functional>
 #include <limits>
+#include <map>
 #include <utility>
 #include <vector>
 
@@ -172,6 +173,33 @@ an<Candidate> ProjectSmartEnglishCandidate(
 using CandidateProjector =
     std::function<an<Candidate>(const an<Candidate>&)>;
 
+string DisplayChoiceCode(const string& input) {
+  if (input.empty() || input.size() > 128) return string();
+  string code = "zime_choice_";
+  constexpr char hex[] = "0123456789abcdef";
+  for (unsigned char byte : input) {
+    if (byte < 0x20 || byte > 0x7e) return string();
+    if (byte >= 'A' && byte <= 'Z') byte += 'a' - 'A';
+    code += hex[byte >> 4];
+    code += hex[byte & 15];
+  }
+  return code;
+}
+
+an<Candidate> DisplayCandidate(const an<Candidate>& candidate) {
+  // The emoji converter tags its own output. Do not maintain a partial
+  // Unicode range list that misses flags, keycaps, ZWJ or future emoji.
+  if (!candidate || candidate->comment().rfind("zime-emoji:", 0) != 0) return candidate;
+  const auto genuine = Candidate::GetGenuineCandidate(candidate);
+  if (!genuine || genuine->text() == candidate->text()) return candidate;
+  // Do not let Rime's phrase learner count selecting 😀 as selecting “笑脸”.
+  // Retain only a source-headword annotation; this variant learns separately.
+  auto emoji = New<SimpleCandidate>("zime_emoji", candidate->start(), candidate->end(),
+      candidate->text(), string(1, '\x1b') + genuine->text(), candidate->preedit());
+  emoji->set_quality(candidate->quality());
+  return emoji;
+}
+
 class SmartEnglishTailTranslation : public Translation {
  public:
   SmartEnglishTailTranslation(an<Translation> translation,
@@ -223,6 +251,99 @@ class SmartEnglishTailTranslation : public Translation {
 };
 
 }  // namespace
+
+DisplayLearningFilter::DisplayLearningFilter(const Ticket& ticket) : Filter(ticket) {
+  if (!engine_ || !ticket.schema) return;
+  bool enabled = true;
+  ticket.schema->config()->GetBool("zime_display_learning/enabled", &enabled);
+  if (!enabled || !InteractionOptions::Load(ticket.schema).learning_enabled) return;
+  auto component = dynamic_cast<UserDictionaryComponent*>(UserDictionary::Require("user_dictionary"));
+  if (!component) return;
+  dictionary_.reset(component->Create(
+      ticket.schema->schema_id() == kSmartEnglishSchema ? "linnet_en" : "linnet_zh", "userdb"));
+  if (!dictionary_ || !dictionary_->Load()) { dictionary_.reset(); return; }
+  commit_connection_ = engine_->context()->commit_notifier().connect(
+      [this](Context* context) { OnCommit(context); });
+}
+
+DisplayLearningFilter::~DisplayLearningFilter() { commit_connection_.disconnect(); }
+
+void DisplayLearningFilter::OnCommit(Context* context) {
+  if (!dictionary_ || !context) return;
+  for (const auto& segment : context->composition()) {
+    const auto candidate = segment.GetSelectedCandidate();
+    if (!candidate || segment.status < Segment::kSelected ||
+        IsRawCandidate(candidate) || IsCustomPhrase(Candidate::GetGenuineCandidate(candidate)) ||
+        candidate->end() <= candidate->start() || candidate->end() > context->input().size()) continue;
+    const auto code = DisplayChoiceCode(context->input().substr(
+        candidate->start(), candidate->end() - candidate->start()));
+    if (code.empty()) continue;
+    // Lookup refreshes the shared userdb tick before this writer updates it.
+    UserDictEntryIterator existing;
+    dictionary_->LookupWords(&existing, code, false);
+    DictEntry entry;
+    entry.custom_code = code + " ";
+    entry.text = candidate->text();
+    dictionary_->UpdateEntry(entry, 1);
+  }
+}
+
+an<Translation> DisplayLearningFilter::Apply(an<Translation> translation, CandidateList*) {
+  if (!translation) return New<FifoTranslation>();
+  // Ordinary typing and disabled learning stay lazy. Emoji is the only
+  // conversion that introduces a separately learned display variant.
+  if (!dictionary_ || !engine_->context()->get_option("emoji"))
+    return New<SmartEnglishTailTranslation>(translation, false, false, DisplayCandidate);
+  auto result = New<FifoTranslation>();
+  struct Row { an<Candidate> candidate; int count = 0; };
+  std::vector<Row> rows;
+  bool has_emoji = false;
+  for (size_t index = 0; index < kCandidateLimit && !translation->exhausted(); ++index) {
+    auto candidate = DisplayCandidate(translation->Peek());
+    if (!candidate) break;
+    has_emoji = has_emoji || candidate->type() == "zime_emoji";
+    const auto phrase = As<Phrase>(Candidate::GetGenuineCandidate(candidate));
+    rows.push_back({candidate, phrase ? std::max(0, phrase->entry().commit_count) : 0});
+    translation->Next();
+  }
+  if (dictionary_ && has_emoji) {
+    std::map<string, std::map<string, int>> counts;
+    const auto& input = engine_->context()->input();
+    for (auto& row : rows) {
+      const auto& candidate = row.candidate;
+      if (candidate->end() > input.size() || candidate->end() <= candidate->start()) continue;
+      const auto code = DisplayChoiceCode(input.substr(candidate->start(), candidate->end() - candidate->start()));
+      if (code.empty()) continue;
+      auto found = counts.find(code);
+      if (found == counts.end()) {
+        std::map<string, int> values;
+        UserDictEntryIterator entries;
+        dictionary_->LookupWords(&entries, code, false);
+        for (; !entries.exhausted(); entries.Next()) {
+          if (const auto entry = entries.Peek()) values[entry->text] = std::max(0, entry->commit_count);
+        }
+        found = counts.emplace(code, std::move(values)).first;
+      }
+      row.count = std::max(row.count, found->second[candidate->text()]);
+    }
+    // Keep custom phrases, literal input and partial-match boundaries intact.
+    for (auto begin = rows.begin(); begin != rows.end();) {
+      const auto eligible = [](const Row& row) {
+        return !IsRawCandidate(row.candidate) &&
+          !IsCustomPhrase(Candidate::GetGenuineCandidate(row.candidate));
+      };
+      if (!eligible(*begin)) { ++begin; continue; }
+      auto end = std::next(begin);
+      while (end != rows.end() && eligible(*end) &&
+             end->candidate->start() == begin->candidate->start() &&
+             end->candidate->end() == begin->candidate->end()) ++end;
+      std::stable_sort(begin, end, [](const Row& left, const Row& right) { return left.count > right.count; });
+      begin = end;
+    }
+  }
+  for (const auto& row : rows) result->Append(row.candidate);
+  return result + New<SmartEnglishTailTranslation>(translation, false, false, DisplayCandidate);
+}
 
 SmartEnglishFilter::SmartEnglishFilter(const Ticket& ticket)
     : Filter(ticket),

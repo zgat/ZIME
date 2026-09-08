@@ -83,6 +83,13 @@ extension DataTabView {
             .foregroundStyle(.secondary)
         }
         LabeledContent("Language data") { Text(languageDataEditionLabel) }
+        if updateChecker.usesManualReleases {
+          Divider()
+          Link("查看 ZIME 的 GitHub 发布版本", destination: ZIMEReleasePolicy.releasesURL)
+            .accessibilityIdentifier("settings.data.zimeReleases")
+          Text("当前通过 ZIME 发布页手动更新；独立自动更新渠道尚未启用。不会查询或下载上游 Linnet 的更新。")
+            .font(.caption).foregroundStyle(.secondary)
+        }
         if model.installedPacks.isEmpty {
           LabeledContent("Data status") { Text("Installation needs repair") }
           Text("Reinstall Linnet to restore the required local language data.")

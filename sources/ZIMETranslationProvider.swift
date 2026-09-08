@@ -27,15 +27,50 @@ struct ZIMETranslationConfiguration: Codable, Equatable, Sendable {
       case .tencent: "腾讯翻译"
       }
     }
+    var candidateSourceLabel: String {
+      switch self {
+      case .compatible: "ai"
+      case .deepl: "DeepL"
+      case .baidu: "百度"
+      case .tencent: "腾讯"
+      }
+    }
   }
   var enabled = false
+  var showFullAnnotations = false
   var provider: Provider = .compatible
   var baseURL = ""
   var model = ""
   var deeplFree = true
   var region = "ap-guangzhou"
   // Rotate after credential updates to invalidate in-memory result caches.
-  var revision = UUID().uuidString
+  var revision = "initial"
+
+  init() {}
+
+  // Older saved providers must not be discarded when a display preference is
+  // added. Missing keys migrate independently; malformed values still fail.
+  init(from decoder: Decoder) throws {
+    let values = try decoder.container(keyedBy: CodingKeys.self)
+    enabled = try values.decodeIfPresent(Bool.self, forKey: .enabled) ?? false
+    showFullAnnotations = try values.decodeIfPresent(Bool.self, forKey: .showFullAnnotations) ?? false
+    provider = try values.decodeIfPresent(Provider.self, forKey: .provider) ?? .compatible
+    baseURL = try values.decodeIfPresent(String.self, forKey: .baseURL) ?? ""
+    model = try values.decodeIfPresent(String.self, forKey: .model) ?? ""
+    deeplFree = try values.decodeIfPresent(Bool.self, forKey: .deeplFree) ?? true
+    region = try values.decodeIfPresent(String.self, forKey: .region) ?? "ap-guangzhou"
+    revision = try values.decodeIfPresent(String.self, forKey: .revision) ?? "initial"
+  }
+
+  /// Display-only changes do not invalidate translations, repeat API requests,
+  /// or require another Keychain read. Credential revisions still do.
+  func hasSameService(as other: Self) -> Bool {
+    var left = self
+    var right = other
+    left.showFullAnnotations = false
+    right.showFullAnnotations = false
+    return left == right
+  }
 
   var endpoint: URL? {
     switch provider {
@@ -204,9 +239,13 @@ enum ZIMETranslationHTTP {
       guard response?["Error"] == nil else { throw ZIMETranslationError.response }
       value = response?["TargetText"] as? String
     }
-    guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines),
-      !value.isEmpty, value.count <= 256,
-      !value.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) })
+    guard let value, !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+      // Match the native segment's byte limit. Reject oversized responses as a
+      // whole, never silently truncate a translation that the user will commit.
+      value.utf8.count <= 4096,
+      !value.unicodeScalars.contains(where: {
+        CharacterSet.controlCharacters.contains($0) && ![9, 10, 13].contains($0.value)
+      })
     else { throw ZIMETranslationError.response }
     return value
   }

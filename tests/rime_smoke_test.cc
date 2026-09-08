@@ -169,8 +169,8 @@ std::vector<std::string> RuntimeChineseSchemaIDs(RimeApi_stdbool* api) {
     }
     result.push_back(schema_id);
   }
-  if (result.size() != 8) {
-    Fail("the deployed product no longer exposes exactly eight Chinese profiles");
+  if (result != std::vector<std::string>{"linnet_zh_pinyin"}) {
+    Fail("ZIME must expose exactly its full-pinyin Chinese profile");
   }
   return result;
 }
@@ -2336,22 +2336,13 @@ void ExpectNineCandidateSelectKeys(RimeApi_stdbool* api,
     api->destroy_session(session);
     Fail(std::string(schema_id) + " zero pass-through fixture has no candidate");
   }
-  const std::string expected_before_zero = before_zero.front().text;
-  if (api->process_key(session, XK_0, 0)) {
-    Fail(std::string(schema_id) +
-         " swallowed zero despite a nine-candidate page");
-  }
-  if (TakeCommit(api, session,
-                 std::string(schema_id) + " active zero pass-through") !=
-      expected_before_zero) {
-    Fail(std::string(schema_id) +
-         " did not commit the current candidate before zero reached the host");
-  }
-  const char* after_zero = api->get_input(session);
-  if ((after_zero && *after_zero != '\0') || !Candidates(api, session).empty()) {
-    Fail(std::string(schema_id) +
-         " retained input-method state after zero reached the host");
-  }
+  const std::string raw_before_zero = api->get_input(session);
+  if (!api->process_key(session, XK_0, 0) ||
+      std::string(api->get_input(session)) != raw_before_zero + "0")
+    Fail(std::string(schema_id) + " split an alphanumeric token at zero");
+  ExpectNoCommit(api, session, "zero must extend mixed input without selecting a candidate");
+  if (!api->commit_raw_input(session) || TakeCommit(api, session) != raw_before_zero + "0")
+    Fail(std::string(schema_id) + " changed a mixed token during raw submission");
   api->destroy_session(session);
 
   for (int keycode = XK_1; keycode <= XK_9; ++keycode) {
@@ -3882,8 +3873,11 @@ void ExpectRawLikeArrowEditing(RimeApi_stdbool* api) {
 void ExpectAlphanumericComposition(RimeApi_stdbool* api) {
   const auto literal = [&](RimeSessionId session, const std::string& expected) {
     const auto rows = Candidates(api, session);
-    if (std::string(api->get_input(session)) != expected || rows.size() != 1 || rows.front().text != expected)
-      Fail("alphanumeric spelling was split or replaced: " + expected + ", input=" + api->get_input(session));
+    if (std::string(api->get_input(session)) != expected || rows.size() != 1 || rows.front().text != expected) {
+      std::string observed;
+      for (const auto& row : rows) observed += " [" + row.text + "]";
+      Fail("alphanumeric spelling was split or replaced: " + expected + ", input=" + api->get_input(session) + observed);
+    }
     ExpectNoCommit(api, session, "alphanumeric preedit " + expected);
   };
   for (const char* schema : {"linnet_zh_pinyin", "linnet_en"}) {
@@ -6571,12 +6565,9 @@ void ExpectFormalProfileCommitKeys(RimeApi_stdbool* api,
     const std::string reason = schema_id + " active Space";
     const RimeSessionId session = CreateSchemaSession(api, schema_id.c_str());
     Enter(api, session, input);
-    const auto candidates = Candidates(api, session);
-    const int selected = HighlightedCandidateIndex(api, session);
-    if (selected < 0 || static_cast<size_t>(selected) >= candidates.size() ||
-        !api->process_key(session, XK_space, 0) ||
-        TakeCommit(api, session, reason) != candidates[selected].text) {
-      Fail(reason + " did not commit the selected candidate exactly once");
+    if (!api->process_key(session, XK_space, 0) ||
+        TakeCommit(api, session, reason) != input + " ") {
+      Fail(reason + " did not submit the raw spelling with one literal space");
     }
     ExpectNoCommit(api, session, "duplicate " + reason);
     api->destroy_session(session);
@@ -6601,14 +6592,13 @@ void ExpectFormalProfileCommitKeys(RimeApi_stdbool* api,
     api->set_option(session, "_vertical", false);
     Enter(api, session, input);
     const auto before = ReadCandidateNavigationState(session, reason);
-    if (CandidateOrigins(session).size() < 2 ||
-        !api->process_key(session, kTab, 0)) {
-      Fail(reason + " did not expose candidate navigation");
+    if (api->process_key(session, kTab, 0)) {
+      Fail(reason + " intercepted the Host-owned source/translation shortcut");
     }
     const auto after = ReadCandidateNavigationState(session, reason);
-    if (before.selected_index != 0 || after.selected_index != 1 ||
+    if (after.selected_index != before.selected_index ||
         after.caret_position != before.caret_position) {
-      Fail(reason + " did not move exactly one candidate");
+      Fail(reason + " changed native selection behind the Host shortcut");
     }
     ExpectNoCommit(api, session, reason);
     api->destroy_session(session);
@@ -7397,7 +7387,139 @@ void ExpectLiveUserDataSync(RimeApi_stdbool* api) {
   api->destroy_session(english);
 }
 
+std::map<std::string, int> EmojiChoiceCounts(const char* dictionary_name) {
+  auto* component = dynamic_cast<rime::UserDictionaryComponent*>(
+      rime::UserDictionary::Require("user_dictionary"));
+  if (!component) Fail("emoji learning dictionary component is missing");
+  std::unique_ptr<rime::UserDictionary> dictionary(component->Create(dictionary_name, "userdb"));
+  if (!dictionary || !dictionary->Load()) Fail("emoji learning dictionary cannot load");
+  rime::UserDictEntryIterator entries;
+  dictionary->LookupWords(&entries, "zime_choice_7869616f6c69616e", false);  // xiaolian
+  std::map<std::string, int> result;
+  for (; !entries.exhausted(); entries.Next()) {
+    if (const auto entry = entries.Peek()) result[entry->text] = entry->commit_count;
+  }
+  return result;
+}
+
+void ExpectZIMEEmojiPersisted(RimeApi_stdbool* api) {
+  const auto session = CreateSchemaSession(api, "linnet_zh_pinyin");
+  api->set_option(session, "emoji", true);
+  Enter(api, session, "xiaolian");
+  if (Candidates(api, session).front().text != "笑脸" || CandidateIndex(api, session, "😀") > 2 ||
+      EmojiChoiceCounts("linnet_zh") != std::map<std::string, int>{{"😀", 3}, {"笑脸", 6}} ||
+      !EmojiChoiceCounts("linnet_en").empty())
+    Fail("fresh process lost emoji ranking or crossed mode ownership");
+  api->destroy_session(session);
+  std::cout << "ZIME emoji ranking: process persistence and mode ownership: PASS\n";
+}
+
 void ExpectZIMENumericAndRawCommit(RimeApi_stdbool* api) {
+  {
+    auto session = CreateSchemaSession(api, "linnet_zh_pinyin");
+    api->set_option(session, "emoji", true);
+    Enter(api, session, "x0");
+    const auto literal_rows = Candidates(api, session);
+    if (literal_rows.size() != 1 || literal_rows.front().text != "x0")
+      Fail("emoji-enabled ranking bypassed native literal candidate deduplication");
+    ExpectNoCommit(api, session, "emoji-enabled literal candidate");
+    const auto choose = [&](const std::string& text) {
+      Enter(api, session, "xiaolian");
+      if (!api->select_candidate(session, CandidateIndex(api, session, text)) || TakeCommit(api, session) != text)
+        Fail("emoji learning fixture could not commit " + text);
+    };
+    for (int index = 0; index < 3; ++index) choose("😀");
+    Enter(api, session, "xiaolian");
+    if (Candidates(api, session).front().text != "😀") Fail("emoji did not learn ahead of its source word");
+    std::vector<std::string> visible_texts;
+    for (const auto& row : Candidates(api, session)) visible_texts.push_back(row.text);
+    std::sort(visible_texts.begin(), visible_texts.end());
+    if (std::adjacent_find(visible_texts.begin(), visible_texts.end()) != visible_texts.end())
+      Fail("emoji ranking exposed duplicate display candidates");
+    for (int index = 0; index < 6; ++index) choose("笑脸");
+    Enter(api, session, "xiaolian");
+    if (Candidates(api, session).front().text != "笑脸") Fail("source word could not learn back ahead of emoji");
+    api->destroy_session(session);
+    session = CreateSchemaSession(api, "linnet_zh_pinyin");
+    api->set_option(session, "emoji", true);
+    Enter(api, session, "xiaolian");
+    if (Candidates(api, session).front().text != "笑脸" || CandidateIndex(api, session, "😀") > 2)
+      Fail("new session lost durable emoji choices");
+    // The source remains a genuine phrase. Emoji must not masquerade as it.
+    const auto origins = CandidateOrigins(session);
+    const auto emoji = std::find_if(origins.begin(), origins.end(), [](const auto& row) { return row.text == "😀"; });
+    if (emoji == origins.end() || emoji->genuine_language == "linnet_zh")
+      Fail("choosing emoji still trains its Chinese source phrase");
+    const auto before = EmojiChoiceCounts("linnet_zh");
+    SetSchemaBool(api, "linnet_zh_pinyin", "linnet_english_interaction/learning_enabled", false);
+    const auto disabled = CreateSchemaSession(api, "linnet_zh_pinyin");
+    api->set_option(disabled, "emoji", true);
+    for (int index = 0; index < 5; ++index) {
+      Enter(api, disabled, "xiaolian");
+      if (!api->select_candidate(disabled, CandidateIndex(api, disabled, "😀")) || TakeCommit(api, disabled) != "😀")
+        Fail("disabled emoji learning blocked ordinary selection");
+    }
+    if (EmojiChoiceCounts("linnet_zh") != before) Fail("disabled learning still wrote emoji choices");
+    api->destroy_session(disabled);
+    SetSchemaBool(api, "linnet_zh_pinyin", "linnet_english_interaction/learning_enabled", true);
+    api->destroy_session(session);
+    ExpectZIMEEmojiPersisted(api);
+    std::cout << "ZIME emoji learning: emoji promotes, text re-promotes, disabled learning and source separation: PASS\n";
+  }
+  if (!RIME_API_AVAILABLE(api, select_candidate_with_text) ||
+      api->select_candidate_with_text(0, 0, "fixture"))
+    Fail("translated selection API is missing or accepts an invalid lease");
+  for (bool translate_tail : {false, true}) {
+    const auto session = CreateSchemaSession(api, "linnet_zh_pinyin");
+    Enter(api, session, "xiazhouni");
+    api->set_caret_pos(session, 7);
+    const auto index = CandidateIndex(api, session, "下周");
+    if (api->select_candidate_with_text(session, 99999, "wrong") ||
+        api->select_candidate_with_text(session, index, nullptr) ||
+        api->select_candidate_with_text(session, index, ""))
+      Fail("invalid translated selection mutated the native segment");
+    if (!api->select_candidate_with_text(session, index, "next week"))
+      Fail("translated prefix was rejected");
+    ExpectNoCommit(api, session, "partial translated prefix must retain its tail");
+    const auto ctx = rime::Service::instance().GetSession(session)->context();
+    if (ctx->input() != "xiazhouni" || ctx->GetPreedit().text.rfind("next week", 0) != 0)
+      Fail("translated prefix lost its marked text or raw tail");
+    if (translate_tail) {
+      if (!api->select_candidate_with_text(session, CandidateIndex(api, session, "你"), "you") ||
+          TakeCommit(api, session) != "next weekyou")
+        Fail("translated tail replaced an already confirmed prefix");
+    } else if (!api->commit_raw_input(session) || TakeCommit(api, session) != "next weekni") {
+      Fail("raw Return discarded a confirmed translated prefix or the raw suffix");
+    }
+    ExpectNoCommit(api, session, "translated selection duplicated a commit");
+    api->set_input(session, "nihao");
+    api->commit_raw_input(session);
+    if (TakeCommit(api, session) != "nihao") Fail("translation leaked into the next composition");
+    api->destroy_session(session);
+  }
+  {
+    const auto session = CreateSchemaSession(api, "linnet_zh_pinyin");
+    Enter(api, session, "xiazhouni");
+    api->set_caret_pos(session, 7);
+    api->select_candidate(session, CandidateIndex(api, session, "下周"));
+    if (!api->select_candidate_with_text(session, CandidateIndex(api, session, "你"), "you") ||
+        TakeCommit(api, session) != "下周you")
+      Fail("translation discarded a previously selected source prefix");
+    api->destroy_session(session);
+  }
+  {
+    const auto session = CreateSchemaSession(api, "linnet_zh_pinyin");
+    Enter(api, session, "xiazhouni");
+    api->set_caret_pos(session, 7);
+    if (!api->select_candidate_with_text(session, CandidateIndex(api, session, "下周"), "next week"))
+      Fail("translation reopen fixture could not confirm its prefix");
+    const auto context = rime::Service::instance().GetSession(session)->context();
+    if (!context->ReopenPreviousSelection() || context->GetPreedit().text.find("next week") != std::string::npos ||
+        !api->commit_raw_input(session) || TakeCommit(api, session) != "xiazhouni")
+      Fail("reopening a translated selection retained its old replacement text");
+    api->destroy_session(session);
+  }
+  std::cout << "ZIME segment translations: partial tail, marked text, source prefix, raw exit and isolation: PASS\n";
   for (const char* schema : {"linnet_zh_pinyin", "linnet_en"}) {
     for (const char* input : {"key", "nihao", "shuru", "iMe", "Cluod", "x70"}) {
       for (const int key : {0, XK_Return, XK_KP_Enter, XK_space}) {
@@ -7523,6 +7645,8 @@ int main(int argc, char** argv) {
       argc == 4 && std::strcmp(argv[3], "--zime-paging-probe") == 0;
   const bool zime_shortcuts_probe =
       argc == 4 && std::strcmp(argv[3], "--zime-shortcuts-probe") == 0;
+  const bool zime_emoji_reopen_probe =
+      argc == 4 && std::strcmp(argv[3], "--zime-emoji-reopen-probe") == 0;
   const bool zime_alphanumeric_probe =
       argc == 4 && std::strcmp(argv[3], "--zime-alphanumeric-probe") == 0;
   const bool zime_case_probe =
@@ -7554,7 +7678,7 @@ int main(int argc, char** argv) {
       !page_size_probe && !english_profile_probe &&
       !fast_config_reload_probe && !prediction_punctuation_probe &&
       !mixed_input_probe && !zime_bilingual_probe && !zime_paging_probe && !zime_ranking_reopen_probe &&
-      !zime_shortcuts_probe && !zime_case_probe && !zime_alphanumeric_probe &&
+      !zime_shortcuts_probe && !zime_emoji_reopen_probe && !zime_case_probe && !zime_alphanumeric_probe &&
       !zime_english_ranking_reopen_probe && !zime_english_learning_off_probe && !zime_chinese_learning_off_probe &&
       !mixed_learning_on_probe &&
       !mixed_learning_off_probe &&
@@ -7567,7 +7691,7 @@ int main(int argc, char** argv) {
          "--english-profile-probe PROFILE CHINESE_SCHEMA CODE PREFIX|"
          "--fast-config-reload-probe|--prediction-punctuation-probe|"
          "--mixed-input-probe|--zime-bilingual-probe|--zime-paging-probe|--zime-ranking-reopen-probe|"
-         "--zime-shortcuts-probe|--zime-case-probe|--zime-alphanumeric-probe|"
+         "--zime-shortcuts-probe|--zime-emoji-reopen-probe|--zime-case-probe|--zime-alphanumeric-probe|"
          "--zime-english-ranking-reopen-probe|--zime-english-learning-off-probe|"
          "--zime-chinese-learning-off-probe|"
          "--mixed-learning-on-probe|"
@@ -7655,6 +7779,11 @@ int main(int argc, char** argv) {
   if (zime_shortcuts_probe) {
     ExpectZIMERecordedShortcutBridge(api);
     ExpectZIMENumericAndRawCommit(api);
+    api->finalize();
+    return 0;
+  }
+  if (zime_emoji_reopen_probe) {
+    ExpectZIMEEmojiPersisted(api);
     api->finalize();
     return 0;
   }

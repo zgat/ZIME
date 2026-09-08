@@ -54,6 +54,7 @@ engine:
   filters:
     - linnet_disabled_filter@linnet_disabled_filter
     - linnet_english_filter
+    - zime_display_learning
     - uniquifier
 
 speller:

@@ -7,20 +7,28 @@ License: Creative Commons Attribution-ShareAlike 4.0 International
 https://creativecommons.org/licenses/by-sa/4.0/
 
 Changes by the ZIME contributors (2026): indexed simplified/traditional
-headwords; removed reference-only senses; ranked ordinary senses before
-bound forms and proper names; generated a bounded reverse English index.
-The runtime additionally filters explicit regional usage labels and projects
+headwords; preserved all original source senses and pronunciation identities;
+ranked common readings before proper names; generated a bounded reverse English index.
+The runtime additionally prefers explicit regional usage labels and projects
 the mixed Mainland/Taiwan note for 你/妳 into region-specific definitions.
 These projected definition strings also remain under CC BY-SA 4.0.
-Index revision 2 preserves traditional/simplified headword identity and source
-pronunciation. Candidate annotations coalesce duplicate displayed glosses and
-separate explanatory notes/references from distinguishing usage qualifiers;
-the original regional definitions remain available in details.
+Index revision 3 retains 124,988 complete source entries / 199,654 source senses
+and generates annotations for 197,976 spellings using the shared build/runtime
+parser in sources/ZIMELocalLexicon.swift. Meanings, annotations and explicit
+references are classified separately; alias/abbreviation targets are resolved
+with spelling/reading identity and cycle/depth guards. Ordinary English beginning
+with words such as "see" is preserved. Parentheses are classified by content,
+preserving semantic qualifiers, complete grammatical meanings and unrecognized
+content rather than deleting every parenthesis. Duplicate core glosses coalesce;
+full source definitions and reference notes remain in optional hover details.
+Candidates are looked up by their own spelling regardless of the active script;
+regional preferences fall back to other available senses rather than blocking
+a translation.
 This adapted dictionary remains licensed under CC BY-SA 4.0, independently
 of the application's GPL-3.0-or-later code. Attribution and license must be
 preserved in redistributed or adapted versions. No endorsement is implied.
 
 Reproducible source and conversion script are distributed with ZIME:
-data/zime/cedict.txt.gz, scripts/build-zime-lexicon, and the regional projection
-in sources/ZIMELocalLexicon.swift.
+data/zime/cedict.txt.gz, scripts/build-zime-lexicon,
+tools/ZIMELexiconProjectionBuilder.swift, and sources/ZIMELocalLexicon.swift.
 Repository: https://github.com/zgat/ZIME

@@ -1,8 +1,62 @@
+diff --git a/src/rime/composition.cc b/src/rime/composition.cc
+--- a/src/rime/composition.cc
++++ b/src/rime/composition.cc
+@@ -38,7 +38,8 @@
+     if (i < size() - 1) {  // converted
+       if (cand) {
+         end = cand->end();
+-        preedit.text += cand->text();
++        preedit.text += at(i).status >= Segment::kSelected && !at(i).commit_text.empty()
++                            ? at(i).commit_text : cand->text();
+       } else {  // raw input
+         end = at(i).end;
+         if (!at(i).HasTag("phony")) {
+@@ -106,7 +107,8 @@
+   for (const Segment& seg : *this) {
+     if (auto cand = seg.GetSelectedCandidate()) {
+       end = cand->end();
+-      result += cand->text();
++      result += seg.status >= Segment::kSelected && !seg.commit_text.empty()
++                    ? seg.commit_text : cand->text();
+     } else {
+       end = seg.end;
+       if (!seg.HasTag("phony")) {
+diff --git a/src/rime/segmentation.h b/src/rime/segmentation.h
+--- a/src/rime/segmentation.h
++++ b/src/rime/segmentation.h
+@@ -31,6 +31,8 @@
+   an<Menu> menu;
+   size_t selected_index = 0;
+   string prompt;
++  // Explicit translation output, never dictionary/learning text.
++  string commit_text;
+ 
+   Segment() = default;
+ 
+@@ -43,6 +45,7 @@
+     menu.reset();
+     selected_index = 0;
+     prompt.clear();
++    commit_text.clear();
+   }
+ 
+   void Close();
+diff --git a/src/rime/segmentation.cc b/src/rime/segmentation.cc
+--- a/src/rime/segmentation.cc
++++ b/src/rime/segmentation.cc
+@@ -28,6 +28,7 @@
+   if (status < kSelected) {
+     return false;
+   }
++  commit_text.clear();
+   const size_t original_end_pos = start + length;
+   if (original_end_pos == caret_pos) {
+     // reuse previous candidates and keep selection
 diff --git a/src/rime/context.cc b/src/rime/context.cc
 index ec840a3..c83c0d2 100644
 --- a/src/rime/context.cc
 +++ b/src/rime/context.cc
-@@ -25,6 +25,29 @@ bool Context::Commit() {
+@@ -25,6 +25,44 @@ bool Context::Commit() {
    return true;
  }
  
@@ -29,18 +83,42 @@ index ec840a3..c83c0d2 100644
 +  return committed;
 +}
 +
++bool Context::SelectWithText(size_t index, const string& text) {
++  if (text.empty() || text.size() > 4096 || composition_.empty())
++    return false;
++  Segment& seg(composition_.back());
++  if (!seg.GetCandidateAt(index))
++    return false;
++  seg.selected_index = index;
++  seg.commit_text = text;
++  seg.status = Segment::kSelected;
++  // Keep the genuine candidate intact for learning. The replacement belongs
++  // only to this confirmed segment; native composition retains its raw tail.
++  select_notifier_(this);
++  return true;
++}
++
  string Context::GetCommitText() const {
    if (get_option("dumb"))
      return string();
+@@ -121,6 +159,7 @@ bool Context::Select(size_t index) {
+     return false;
+   Segment& seg(composition_.back());
+   if (auto cand = seg.GetCandidateAt(index)) {
++    seg.commit_text.clear();
+     seg.selected_index = index;
+     seg.status = Segment::kSelected;
+     DLOG(INFO) << "Selected: '" << cand->text() << "', index = " << index;
 diff --git a/src/rime/context.h b/src/rime/context.h
 index d526130..55605cf 100644
 --- a/src/rime/context.h
 +++ b/src/rime/context.h
-@@ -29,6 +29,7 @@ class RIME_DLL Context {
+@@ -29,6 +29,8 @@ class RIME_DLL Context {
    ~Context() = default;
  
    bool Commit();
 +  bool CommitRawInput();
++  bool SelectWithText(size_t index, const string& text);
    string GetCommitText() const;
    string GetScriptText() const;
    Preedit GetPreedit() const;
@@ -1199,7 +1277,7 @@ diff --git a/src/rime_api.h b/src/rime_api.h
 index 2fccde0..2fce13b 100644
 --- a/src/rime_api.h
 +++ b/src/rime_api.h
-@@ -505,6 +505,12 @@ typedef struct RIME_FLAVORED(rime_api_t) {
+@@ -505,6 +505,16 @@ typedef struct RIME_FLAVORED(rime_api_t) {
                                                size_t index);
  
    Bool (*change_page)(RimeSessionId session_id, Bool backward);
@@ -1209,6 +1287,10 @@ index 2fccde0..2fce13b 100644
 +  // Linnet: append-only ABI; nullptr cancels. 1=pending, 0=done,
 +  // 2=deferred (inactive/changing dictionary), -1=failed.
 +  int (*sync_user_data_step)(const char* sync_directory);
++  // ZIME: replace only the selected segment's output, retaining its source
++  // candidate for learning and any unconsumed input. Append-only ABI.
++  Bool (*select_candidate_with_text)(RimeSessionId session_id, size_t index,
++                                     const char* text);
  } RIME_FLAVORED(RimeApi);
  
  //! API entry
@@ -1248,7 +1330,7 @@ index 30f4514..9368c75 100644
    Service::instance().CleanupAllSessions();
    Deployer& deployer(Service::instance().deployer());
    deployer.ScheduleTask("installation_update");
-@@ -184,6 +188,13 @@ RIME_DEPRECATED Bool RimeCommitComposition(RimeSessionId session_id) {
+@@ -184,6 +188,21 @@ RIME_DEPRECATED Bool RimeCommitComposition(RimeSessionId session_id) {
    return Bool(session->CommitComposition());
  }
  
@@ -1259,15 +1341,24 @@ index 30f4514..9368c75 100644
 +  return Bool(session->CommitRawInput());
 +}
 +
++static Bool RimeSelectCandidateWithText(RimeSessionId session_id, size_t index,
++                                        const char* text) {
++  an<Session> session(Service::instance().GetSession(session_id));
++  if (!session || !session->context() || !text)
++    return False;
++  return Bool(session->context()->SelectWithText(index, text));
++}
++
  RIME_DEPRECATED void RimeClearComposition(RimeSessionId session_id) {
    an<Session> session(Service::instance().GetSession(session_id));
    if (!session)
-@@ -1232,6 +1243,8 @@ RIME_API RIME_FLAVORED(RimeApi) * RIME_FLAVORED(rime_get_api)() {
+@@ -1232,6 +1243,9 @@ RIME_API RIME_FLAVORED(RimeApi) * RIME_FLAVORED(rime_get_api)() {
      s_api.highlight_candidate_on_current_page =
          &RimeHighlightCandidateOnCurrentPage;
      s_api.change_page = &RimeChangePage;
 +    s_api.sync_user_data_step = &UserDictManager::SynchronizeIncrementally;
 +    s_api.commit_raw_input = &RimeCommitRawInput;
++    s_api.select_candidate_with_text = &RimeSelectCandidateWithText;
    }
    return &s_api;
  }

@@ -289,6 +289,7 @@ if ! RIME_LOG_DIR="${scratch}/rime-logs" \
     DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
     "${LINNET_SWIFT_COMPILED_BINARY}" \
     >"${scratch}/settings-data.out" 2>&1; then
+  rg -n 'FAIL|Fatal|fatal|error:|Assertion|SIG|failed:' "${scratch}/settings-data.out" >&2 || true
   tail -n 160 "${scratch}/settings-data.out" >&2 || true
   exit 1
 fi

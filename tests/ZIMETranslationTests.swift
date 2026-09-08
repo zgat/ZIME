@@ -32,14 +32,23 @@ struct ZIMETranslationTests {
     let mainlandNi = lexicon.annotation(for: "你", region: .mainland)
     let traditionalNi = lexicon.annotation(for: "你", region: .traditionalRegions)
     let traditionalFemaleNi = lexicon.annotation(for: "妳", region: .traditionalRegions)
-    require(mainlandNi.displayText == "you (informal)" && mainlandNi.translations.count == 1,
-      "Mainland 你 must coalesce explanatory you without dropping the informal qualifier")
+    require(mainlandNi.displayText == "you" && mainlandNi.translations == ["you"],
+      "你 must display and commit only its deduplicated core meaning")
     require(mainlandNi.detailText.contains("both males and females") && mainlandNi.detailText.contains("您[nin2]")
-      && !mainlandNi.detailText.contains("Taiwan"), "Mainland full regional notes lost")
-    require(traditionalNi.displayText == "you (informal)" && !traditionalNi.detailText.contains("妳"),
-      "Traditional 你 must not inherit the 妳 headword's female-address notes")
-    require(traditionalFemaleNi.displayText == "you (female)" && traditionalFemaleNi.detailText.contains("Taiwan"),
-      "妳 must retain its distinguishing female-address sense")
+      && mainlandNi.detailText.contains("Taiwan"), "full original notes must remain available without regional rewriting")
+    require(traditionalNi.displayText == "you" && traditionalNi.translations == ["you"],
+      "traditional mode must use the same core-meaning contract")
+    require(traditionalFemaleNi.displayText == "you" && traditionalFemaleNi.detailText.contains("Taiwan"),
+      "妳 must keep the full use restriction in optional details only")
+    for region in [ZIMELocalLexicon.RegionProfile.mainland, .traditionalRegions, .all] {
+      for word in ["你", "妳", "帅", "帥", "发", "發", "髮", "德士", "拟", "擬", "腻", "膩"] {
+        require(!lexicon.annotation(for: word, region: region).translations.isEmpty,
+          "visible candidate blocked by script/region: \(word), \(region)")
+      }
+      require(lexicon.annotation(for: "髮", region: region).translations == ["hair"], "髮 inherited 發 meanings")
+      require(!lexicon.annotation(for: "發", region: region).translations.contains("hair"), "發 inherited 髮 meanings")
+      require(lexicon.annotation(for: "德士", region: region).translations == ["taxi"], "regional fallback did not translate taxi")
+    }
     require(lexicon.translations(for: "妳", region: .mainland).isEmpty, "strict simplified lookup must not guess a traditional spelling")
     require(lexicon.sourceEntries(for: "你").map(\.traditional) == ["你", "妳"], "original headword identity lost")
     require(lexicon.sourceEntries(for: "你", region: .traditionalRegions).map(\.traditional) == ["你"], "traditional lookup reused simplified alias")
@@ -54,19 +63,64 @@ struct ZIMETranslationTests {
       _ = lexicon.annotation(for: term, region: .traditionalRegions)
       require(lexicon.annotation(for: term, region: .mainland) == first, "annotation cache crossed a region boundary")
     }
-    for definition in ["capital (city)", "capital (finance)", "(bound form) other; another",
-      "(used after an attribute when it modifies a noun)", "not (positive)",
-      "a (nested (essential) condition)", "you (unclosed note"] {
-      require(ZIMELocalLexicon.inlineDefinition(definition, headword: "fixture").text == definition,
-        "necessary or unclassified qualification was removed: \(definition)")
+    for (definition, core) in [
+      ("you (informal, as opposed to courteous 您[nin2])", "you"),
+      ("(Singapore, Malaysia) taxi (loanword)", "taxi"),
+      ("(bound form) other; another", "other; another"),
+      ("work (noun) / job (informal)", "work / job"),
+      ("/aɪ/ · n. 译文（注释）", "/aɪ/ · n. 译文"),
+      ("工作（名词，示例（嵌套）） / 上班（动词）", "工作 / 上班"),
+      ("test (Note: example (nested) / another example)", "test"),
+      ("capital (city)", "capital (city)"),
+      ("not (positive)", "not (positive)"),
+      ("(a grammatical definition)", "a grammatical definition"),
+      ("(possessive particle, literary equivalent of 的[de5])", "possessive particle"),
+      ("also written as", "also written as"),
+      ("also known as", "also known as"),
+      ("see you tomorrow", "see you tomorrow"),
+      ("abbr. for 世界博覽會|世界博览会[Shi4 jie4 Bo2 lan3 hui4], World Expo", "World Expo"),
+      ("Shanghai Stock Exchange (SSE), abbr. for 上海證券交易所|上海证券交易所", "Shanghai Stock Exchange (SSE)"),
+      ("unofficial variant of 瞭[liao4]", ""),
+      ("old variant of 壯|壮, Zhuang ethnic group of Guangxi", "Zhuang ethnic group of Guangxi"),
+      ("to obtain (old variant of 得[de2])", "to obtain"),
+      ("a river (from the mountains)", "a river (from the mountains)"),
+      ("(Note: no standalone gloss)", ""),
+      ("Taiwan pr. [fa3]", ""),
+      ("see you (informal)", "see you"),
+      ("see a doctor", "see a doctor"),
+      ("see 你[ni3]", ""),
+      ("variant of 你[ni3]", ""),
+      ("reference 您[nin2] [x] [1]", "reference 您 [x] [1]"),
+      ("colo(u)r", "colo(u)r"), ("teacher(s)", "teacher(s)"),
+      ("vitamin B(12)", "vitamin B(12)"), ("(CH3)2CO", "(CH3)2CO"),
+      ("you (unclosed note", "you (unclosed note")
+    ] {
+      require(ZIMELocalLexicon.coreDefinition(definition) == core, "core projection failed: \(definition)")
+      require(ZIMELocalLexicon.coreDefinition(core) == core, "core projection is not idempotent: \(definition)")
     }
-    require(ZIMELocalLexicon.inlineDefinition("you (informal, as opposed to courteous 您[nin2])", headword: "你").text == "you (informal)", "comparison not moved to detail")
-    require(ZIMELocalLexicon.inlineDefinition("test (Note: example (nested))", headword: "fixture").text == "test", "balanced explanatory note not separated")
-    require(ZIMELocalLexicon.inlineDefinition("(Note: no standalone gloss)", headword: "fixture").text == "(Note: no standalone gloss)", "note-only entry became blank")
-    require(ZIMELocalLexicon.inlineDefinition("reference 您[nin2] [x] [1]", headword: "fixture").text == "reference 您 [x] [1]", "pinyin removal changed other bracket content")
+    require(ZIMELocalLexicon.coreTranslations(["you (informal)", "you (Note: example)", "yourself", "Taiwan pr. [ni3]"])
+      == ["you", "yourself"], "core alternatives were duplicated or distinct meanings lost")
+    require(ZIMELocalLexicon.parseSense("CL:個|个[ge4]").kind == .annotation, "classifier is metadata")
+    let reference = ZIMELocalLexicon.parseSense("variant of 費城|费城[Fei4 cheng2]")
+    require(reference.kind == .reference && reference.reference?.traditional == "費城"
+      && reference.reference?.simplified == "费城" && reference.reference?.pinyin == "Fei4 cheng2",
+      "reference target identity or reading lost")
+    let runtimeLexicon = ZIMELocalLexicon(url: URL(fileURLWithPath: "resources/zime-cedict.sqlite3"), usePreparedAnnotations: false)
+    for word in ["你", "妳", "费城", "費城", "世博", "上汽", "瞭解", "了解", "明天见", "下次见", "看穿", "亦作", "之", "了", "发", "髮", "德士"] {
+      for region in [ZIMELocalLexicon.RegionProfile.all, .mainland, .traditionalRegions] {
+        let prepared = lexicon.annotation(for: word, region: region, includeDetails: false)
+        require(prepared == runtimeLexicon.annotation(for: word, region: region, includeDetails: false),
+          "build/runtime parser drift: \(word), \(region)")
+        require(!prepared.translations.isEmpty && prepared.detailText.isEmpty, "missing prepared meaning: \(word)")
+      }
+    }
+    require(lexicon.annotation(for: "费城", region: .mainland).translations == ["Philadelphia, Pennsylvania"], "abbreviation reference leaked into commit")
+    require(lexicon.annotation(for: "世博", region: .mainland).translations.first == "World Expo", "mixed abbreviation lost real gloss")
+    require(lexicon.annotation(for: "明天见", region: .mainland).translations.first == "see you tomorrow", "ordinary see meaning was dropped")
     let originalNi = lexicon.translations(for: "你").first!
-    require(lexicon.translations(for: "你", region: .mainland).first == originalNi && mainlandNi.translations.first == originalNi,
-      "general informal/polite distinction must not be summarized away")
+    require(lexicon.translations(for: "你", region: .mainland).first == originalNi
+      && originalNi.contains("informal") && mainlandNi.translations == ["you"],
+      "core projection must not rewrite the source dictionary")
     let regionalFixture = ["(HK) regional sense", "(Macau) local usage", "(PRC) mainland usage",
       "(Singapore, Malaysia) taxi", "a company in Taiwan and mainland China",
       "China Airlines (Taiwan)", "(dialect) to take a shower", "not (positive)",
@@ -140,6 +194,30 @@ struct ZIMETranslationTests {
         _ = try ZIMETranslationHTTP.parse(Data("{}".utf8), provider: provider)
         fatalError("malformed response accepted")
       } catch {}
+    }
+    let providerLabels: [(ZIMETranslationConfiguration.Provider, String)] = [(.compatible, "ai"), (.deepl, "DeepL"), (.baidu, "百度"), (.tencent, "腾讯")]
+    for (provider, label) in providerLabels {
+      require(provider.candidateSourceLabel == label, "wrong source label")
+      func response(_ text: String) throws -> Data {
+        let object: [String: Any]
+        switch provider {
+        case .compatible: object = ["choices": [["message": ["content": text]]]]
+        case .deepl: object = ["translations": [["text": text]]]
+        case .baidu: object = ["trans_result": [["dst": text]]]
+        case .tencent: object = ["Response": ["TargetText": text]]
+        }
+        return try JSONSerialization.data(withJSONObject: object)
+      }
+      for raw in ["  you (informal) / yourself; yours\nsecond line\t尾行  ", String(repeating: "译", count: 1000)] {
+        let parsed = try ZIMETranslationHTTP.parse(response(raw), provider: provider)
+        require(parsed == raw, "online translation was trimmed, split or classified: \(provider)")
+      }
+      for invalid in [" \n\t", "invalid\0tail", String(repeating: "译", count: 1400)] {
+        do {
+          _ = try ZIMETranslationHTTP.parse(response(invalid), provider: provider)
+          fatalError("invalid or oversized translation accepted: \(provider)")
+        } catch {}
+      }
     }
     print("ZIMETranslationTests: PASS (offline; no credentials accessed and no API requests sent)")
   }

@@ -3,7 +3,45 @@ import Foundation
 
 @main
 struct LinnetCandidatePresentationTests {
+  static func testTranslationPaging() {
+    typealias Owner = LinnetCandidatePresentation.TranslationCandidates
+    let sources = (0..<9).map { index in
+      Owner.Source(index: index, text: "source\(index)", translations: (0..<3).map { "\(index)-\($0)" })
+    }
+    for size in 3...9 {
+      var owner = Owner()
+      var page = owner.project(Array(sources.prefix(size)), pageSize: size, highlightedSource: 0)
+      var seen = page.rows.map(\.text)
+      require(page.rows.count == size && page.highlightedIndex == 0, "translated page ignored configured count")
+      require(!owner.changePage(backward: true), "first page moved backward")
+      while owner.changePage(backward: false) {
+        page = owner.project(Array(sources.prefix(size)), pageSize: size, highlightedSource: 0)
+        require(page.rows.count <= size, "translated page overflow")
+        seen += page.rows.map(\.text)
+      }
+      require(seen.count == size * 3 && Set(seen).count == size * 3 && page.isLast,
+        "translation pagination dropped or duplicated later source words")
+      owner.reset()
+      page = owner.project(Array(sources.prefix(size)), pageSize: size, highlightedSource: size - 1)
+      require(page.rows[page.highlightedIndex].sourceIndex == size - 1,
+        "switching translation lost the highlighted source")
+      let selected = page.rows[page.highlightedIndex].id
+      page = owner.project(sources, pageSize: size, highlightedSource: 0)
+      require(page.rows[page.highlightedIndex].id == selected, "annotation refresh moved selection")
+    }
+    require(Owner.selectionIndex(digit: 2, count: 1) == nil, "hidden source selection returned")
+    require(Owner.selectionIndex(digit: 1, count: 1) == 0, "visible translation is not selectable")
+    var empty = Owner()
+    require(empty.project([], pageSize: 5, highlightedSource: nil).rows.isEmpty &&
+      !empty.changePage(backward: false), "empty translation menu manufactured a candidate")
+  }
+
   static func main() {
+    require(ZIMEReleasePolicy.usesManualReleases(bundleIdentifier: "com.zime.inputmethod.ZIME") &&
+      ZIMEReleasePolicy.usesManualReleases(bundleIdentifier: "com.zime.inputmethod.ZIME.local-build") &&
+      !ZIMEReleasePolicy.usesManualReleases(bundleIdentifier: "org.rime.inputmethod.Squirrel"),
+      "ZIME must not inherit upstream update catalogs")
+    testTranslationPaging()
     testCandidateRows()
     testNavigationLayout()
 
@@ -28,12 +66,28 @@ struct LinnetCandidatePresentationTests {
     testIdleMenuPresentationState()
     testHighlightedCandidateBounds()
     testCandidateSelectionLabels()
-    let annotation = LinnetCandidatePresentation.bilingualComment(displayText: "you (informal)",
-      translations: ["you (informal, as opposed to courteous 您[nin2])"],
+    let annotation = LinnetCandidatePresentation.bilingualComment(displayText: "you",
+      translations: ["you"],
       detailText: "你 [ni3]\nFull note with \"quotes\" and \u{001F} delimiter")
-    require(LinnetCandidatePresentation.candidateComment(annotation).displayText == "you (informal)", "structured comment lost display text")
-    require(LinnetCandidatePresentation.candidateComment(annotation).translations == ["you (informal, as opposed to courteous 您[nin2])"], "display optimization changed explicit translation commit text")
+    require(LinnetCandidatePresentation.candidateComment(annotation).displayText == "you", "structured comment lost display text")
+    require(LinnetCandidatePresentation.candidateComment(annotation).translations == ["you"], "full annotations leaked into translation commits")
     require(LinnetCandidatePresentation.fullCandidateComment(annotation) == "你 [ni3]\nFull note with \"quotes\" and \u{001F} delimiter", "structured detail was not lossless")
+    let legacy = "\u{001C}" + #"{"displayText":"you","translations":["you"],"detailText":"legacy note"}"#
+    require(LinnetCandidatePresentation.candidateComment(legacy).translations == ["you"]
+      && LinnetCandidatePresentation.candidateComment(legacy).sourceLabel == nil,
+      "adding source metadata broke older/local annotations")
+    let onlineText = "  you (informal) / yourself\nsecond line  "
+    let online = LinnetCandidatePresentation.bilingualComment(displayText: "腾讯:\(onlineText)",
+      translations: [onlineText], detailText: "", sourceLabel: "腾讯")
+    let decodedOnline = LinnetCandidatePresentation.candidateComment(online)
+    require(decodedOnline.sourceLabel == "腾讯" && decodedOnline.translations == [onlineText]
+      && decodedOnline.displayText == "腾讯:\(onlineText)", "online annotation lost its source or complete field")
+    var onlineOwner = LinnetCandidatePresentation.TranslationCandidates()
+    let onlinePage = onlineOwner.project([.init(index: 3, text: "你", translations: [onlineText], sourceLabel: "腾讯")],
+      pageSize: 5, highlightedSource: 3)
+    require(onlinePage.rows.count == 1 && onlinePage.rows[0].sourceIndex == 3
+      && onlinePage.rows[0].sourceLabel == "腾讯" && onlinePage.rows[0].text == onlineText,
+      "translation paging split an online field or mixed a source label into the commit")
     for malformed in ["\u{001C}not JSON", "\u{001C}{}", "\u{001C}" + String(repeating: "x", count: 140000)] {
       require(LinnetCandidatePresentation.candidateComment(malformed).displayText.isEmpty &&
         LinnetCandidatePresentation.fullCandidateComment(malformed).isEmpty, "malformed comment leaked internal payload into UI")

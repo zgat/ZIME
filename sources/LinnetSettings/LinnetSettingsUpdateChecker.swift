@@ -237,6 +237,10 @@ final class LinnetSettingsUpdateChecker: ObservableObject {
     refreshRuntime()
   }
 
+  var usesManualReleases: Bool {
+    ZIMEReleasePolicy.usesManualReleases(bundleIdentifier: hostBundleIdentifier)
+  }
+
   func setUpdateChannel(_ channel: UpdateChannel) {
     guard channel != updateChannel else { return }
     task?.cancel()
@@ -337,6 +341,9 @@ extension LinnetSettingsUpdateChecker {
   }
 
   private func startCheck(replacingCurrent: Bool) {
+    // Do not query another product's catalog, including on Settings startup
+    // or when an inherited preview-channel preference is present.
+    guard !usesManualReleases else { return }
     guard !activationInProgress, replacingCurrent || !active else { return }
     refreshInstalledIdentity()
     task?.cancel()
@@ -394,6 +401,7 @@ extension LinnetSettingsUpdateChecker {
   }
 
   func downloadCoreUpdate(_ core: LinnetDataChannel.Core) {
+    guard !usesManualReleases else { return }
     if case .ready(let readyCore, let file) = coreDownloadState,
       readyCore == core {
       revealCorePackage(file)

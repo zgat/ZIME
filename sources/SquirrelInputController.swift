@@ -7,8 +7,12 @@
 
 import Carbon
 import InputMethodKit
+import OSLog
 
 final class SquirrelInputController: IMKInputController {
+  // Structural lifecycle diagnostics only: never record keys, candidate text,
+  // client/app identity, document content or clipboard contents.
+  private static let lifecycleLog = Logger(subsystem: "com.zime.inputmethod.ZIME", category: "InputLifecycle")
   static let keyRollOver = 50
   static var unknownAppCount: UInt = 0
 
@@ -24,8 +28,7 @@ final class SquirrelInputController: IMKInputController {
   private var systemInputModeIdentifier: String?
   var bilingualTranslationMode = false
   var bilingualSourceSnapshot: CandidateSnapshot?
-  var bilingualHighlightedIndex = -1
-  var pendingCommitOverride: String?
+  var bilingualCandidates = LinnetCandidatePresentation.TranslationCandidates()
   private let candidateTranslator = ZIMECandidateTranslator()
   private var inlinePreedit = false
   private var inlineCandidate = false
@@ -165,6 +168,7 @@ final class SquirrelInputController: IMKInputController {
   }
 
   override func activateServer(_ sender: Any!) {
+    Self.lifecycleLog.info("activateServer")
     guard let activatingClient = sender as? IMKTextInput else { return }
     inputModeIdentity = nil
     activeClient = activatingClient
@@ -220,14 +224,14 @@ final class SquirrelInputController: IMKInputController {
   }
 
   override func deactivateServer(_ sender: Any!) {
+    Self.lifecycleLog.info("deactivateServer pending=\(self.hasPendingRimeInput, privacy: .public)")
     candidateTranslator.cancel()
     guard let deactivatingClient = sender as? IMKTextInput else { return }
     inputModeIdentity = nil
     systemInputModeIdentifier = nil
     bilingualTranslationMode = false
     bilingualSourceSnapshot = nil
-    bilingualHighlightedIndex = -1
-    pendingCommitOverride = nil
+    bilingualCandidates.reset()
     clearChord()
     // Retire the old client before calling back into it. A synchronous native
     // activation triggered by the commit then becomes the sole new owner.
@@ -237,6 +241,7 @@ final class SquirrelInputController: IMKInputController {
   }
 
   override func hidePalettes() {
+    if hasPendingRimeInput { Self.lifecycleLog.info("hidePalettes with pending composition") }
     candidateTranslator.cancel()
     NSApp.squirrelAppDelegate.panel?.hide(controller: self)
     super.hidePalettes()
@@ -253,6 +258,7 @@ final class SquirrelInputController: IMKInputController {
    to clean up if that is necessary.
    */
   override func commitComposition(_ sender: Any!) {
+    Self.lifecycleLog.info("commitComposition pending=\(self.hasPendingRimeInput, privacy: .public)")
     guard let targetClient = sender as? IMKTextInput else { return }
     commitActiveComposition(to: targetClient)
   }
@@ -412,11 +418,10 @@ extension SquirrelInputController {
     var commitText = RimeCommit.rimeStructInit()
     if rimeAPI.get_commit(session, &commitText) {
       if let text = commitText.text {
-        let committed = pendingCommitOverride ?? String(cString: text)
-        pendingCommitOverride = nil
+        let committed = String(cString: text)
         bilingualTranslationMode = false
         bilingualSourceSnapshot = nil
-        bilingualHighlightedIndex = -1
+        bilingualCandidates.reset()
         commit(string: committed, to: targetClient)
       }
       _ = rimeAPI.free_commit(&commitText)
@@ -613,7 +618,7 @@ extension SquirrelInputController {
     if action == .switchSourceTranslation {
       if bilingualTranslationMode {
         bilingualTranslationMode = false
-        bilingualHighlightedIndex = -1
+        bilingualCandidates.reset()
         rimeUpdate()
         return true
       }
@@ -624,11 +629,11 @@ extension SquirrelInputController {
         !LinnetCandidatePresentation.candidateComment($0.comment).translations.isEmpty
       }) else {
         NSApp.squirrelAppDelegate.panel?.updateStatus(
-          long: "暂无本地译文", short: "无译文", controller: self)
+          long: "无译文", short: "无译文", controller: self)
         return true
       }
       bilingualTranslationMode = true
-      bilingualHighlightedIndex = -1
+      bilingualCandidates.reset()
       rimeUpdate()
       return true
     }
@@ -639,8 +644,7 @@ extension SquirrelInputController {
       candidateTranslator.cancel()
       bilingualTranslationMode = false
       bilingualSourceSnapshot = nil
-      bilingualHighlightedIndex = -1
-      pendingCommitOverride = nil
+      bilingualCandidates.reset()
       commitActiveComposition(to: targetClient)
       return true
     }
@@ -661,38 +665,46 @@ extension SquirrelInputController {
     }
 
     guard bilingualTranslationMode else { return nil }
+    // Custom bindings above have priority. Other host chords (including
+    // Command/Option/Shift arrows and screenshot shortcuts) pass through.
+    if !shortcutModifiers.isEmpty { return nil }
     if event.keyCode == UInt16(kVK_Escape) {
       bilingualTranslationMode = false
-      bilingualHighlightedIndex = -1
+      bilingualCandidates.reset()
       rimeUpdate()
       return true
     }
-    if shortcutModifiers.isEmpty,
-      let digit = event.charactersIgnoringModifiers?.first?.wholeNumberValue,
-      (1...9).contains(digit),
-      let presented,
-      presented.items.indices.contains(digit - 1) {
-      return selectCandidate(absoluteIndex: presented.items[digit - 1].absoluteIndex)
+    if let digit = event.charactersIgnoringModifiers?.first?.wholeNumberValue,
+      (1...9).contains(digit) {
+      guard let presented,
+        let index = LinnetCandidatePresentation.TranslationCandidates.selectionIndex(
+          digit: digit, count: presented.items.count) else { return true }
+      _ = selectCandidate(absoluteIndex: presented.items[index].absoluteIndex)
+      return true
+    }
+    if [UInt16(kVK_PageUp), UInt16(kVK_ANSI_Minus)].contains(event.keyCode) {
+      return page(up: true)
+    }
+    if [UInt16(kVK_PageDown), UInt16(kVK_ANSI_Equal)].contains(event.keyCode) {
+      return page(up: false)
     }
     // The native raw-input owner handles an unbound Return or Space. Leave
     // translation mode first so no hidden source/translation is selected.
     if [UInt16(kVK_Return), UInt16(kVK_ANSI_KeypadEnter), UInt16(kVK_Space)].contains(event.keyCode),
       shortcutModifiers.isEmpty {
       bilingualTranslationMode = false
-      bilingualHighlightedIndex = -1
-      pendingCommitOverride = nil
+      bilingualCandidates.reset()
       return nil
     }
     if [UInt16(kVK_LeftArrow), UInt16(kVK_UpArrow)].contains(event.keyCode) {
       guard let presented, !presented.items.isEmpty else { return true }
-      bilingualHighlightedIndex = max(0, bilingualHighlightedIndex - 1)
+      bilingualCandidates.move(by: -1)
       rimeUpdate()
       return true
     }
     if [UInt16(kVK_RightArrow), UInt16(kVK_DownArrow)].contains(event.keyCode) {
       guard let presented, !presented.items.isEmpty else { return true }
-      bilingualHighlightedIndex = min(
-        presented.items.count - 1, bilingualHighlightedIndex + 1)
+      bilingualCandidates.move(by: 1)
       rimeUpdate()
       return true
     }
@@ -700,48 +712,32 @@ extension SquirrelInputController {
     // Any other key resumes ordinary Rime composition from the unchanged
     // source state before the key is processed.
     bilingualTranslationMode = false
-    bilingualHighlightedIndex = -1
+    bilingualCandidates.reset()
     return nil
   }
 
   private func projectTranslationCandidates(
     from source: CandidateSnapshot
   ) -> CandidateSnapshot {
-    var items: [CandidateItem] = []
-    items.reserveCapacity(min(9, source.items.count * 2))
-    for sourceItem in source.items {
-      let translations = LinnetCandidatePresentation
-        .candidateComment(sourceItem.comment).translations
-      for (alternativeIndex, translation) in translations.enumerated() {
-        guard items.count < 9 else { break }
-        items.append(.init(
-          absoluteIndex: 1_000_000 + sourceItem.absoluteIndex * 4 + alternativeIndex,
-          page: 0,
-          indexOnPage: items.count,
-          text: translation,
-          comment: sourceItem.text,
-          selectionLabel: String(items.count + 1),
-          sourceAbsoluteIndex: sourceItem.absoluteIndex,
-          commitOverride: translation,
-          emphasizesPrimaryText: true))
-      }
-      if items.count == 9 { break }
+    let highlightedSource = source.items.indices.contains(source.highlightedItemIndex)
+      ? source.items[source.highlightedItemIndex].absoluteIndex : nil
+    let page = bilingualCandidates.project(source.items.map {
+      let annotation = LinnetCandidatePresentation.candidateComment($0.comment)
+      return .init(index: $0.absoluteIndex, text: $0.text,
+        translations: annotation.translations, sourceLabel: annotation.sourceLabel)
+    }, pageSize: source.pageSize, highlightedSource: highlightedSource)
+    let items = page.rows.enumerated().map { index, row in
+      CandidateItem(absoluteIndex: row.id, page: page.index, indexOnPage: index,
+        text: row.text, comment: row.sourceLabel.map { "\($0):\(row.sourceText)" } ?? row.sourceText,
+        selectionLabel: String(index + 1),
+        sourceAbsoluteIndex: row.sourceIndex, commitOverride: row.text)
     }
-    if bilingualHighlightedIndex < 0 {
-      let highlightedSource = source.items.indices.contains(source.highlightedItemIndex)
-        ? source.items[source.highlightedItemIndex].absoluteIndex : nil
-      bilingualHighlightedIndex = items.firstIndex {
-        $0.sourceAbsoluteIndex == highlightedSource
-      } ?? 0
-    }
-    bilingualHighlightedIndex = min(
-      max(0, bilingualHighlightedIndex), max(0, items.count - 1))
     return .init(
       items: items,
-      currentPage: 0,
-      pageSize: items.count,
-      highlightedItemIndex: bilingualHighlightedIndex,
-      isLastPage: true)
+      currentPage: source.currentPage + page.index,
+      pageSize: page.size,
+      highlightedItemIndex: page.highlightedIndex,
+      isLastPage: page.isLast && source.isLastPage)
   }
 
   func commit(string: String, to targetClient: IMKTextInput?) {

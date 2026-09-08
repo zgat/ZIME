@@ -5,6 +5,7 @@
 #define LINNET_SMART_ENGLISH_FILTER_H_
 
 #include <rime/filter.h>
+#include <rime/dict/user_dictionary.h>
 
 #include <optional>
 #include <string>
@@ -15,6 +16,22 @@
 #pragma GCC visibility push(hidden)
 
 namespace linnet {
+
+/// Display-order learning after OpenCC, before the final native uniquifier.
+/// An eager ranker after uniquifier would bypass its published-row deduplication.
+/// Uses reserved codes in the existing mode-owned Rime learning database so
+/// normal clear/export/restore/sync operations include these choices.
+class DisplayLearningFilter : public rime::Filter {
+ public:
+  explicit DisplayLearningFilter(const rime::Ticket& ticket);
+  ~DisplayLearningFilter() override;
+  rime::an<rime::Translation> Apply(rime::an<rime::Translation> translation,
+                                   rime::CandidateList*) override;
+ private:
+  void OnCommit(rime::Context* context);
+  rime::the<rime::UserDictionary> dictionary_;
+  rime::connection commit_connection_;
+};
 
 class SmartEnglishFilter : public rime::Filter {
  public:

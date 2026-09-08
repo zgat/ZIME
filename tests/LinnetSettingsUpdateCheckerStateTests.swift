@@ -241,6 +241,23 @@ struct LinnetSettingsUpdateCheckerStateTests {
         failedDownloadChecker.coreDownloadState == .failed(core: core)
       }
 
+      for identifier in ["com.zime.inputmethod.ZIME", "com.zime.inputmethod.ZIME.local-build"] {
+        let zime = try makeBundleFixture(identity: installed, identifier: identifier)
+        defer { try? FileManager.default.removeItem(at: zime.root) }
+        let manualChecker = LinnetSettingsUpdateChecker(
+          edition: nil, installedPacks: [], bundle: zime.settings,
+          transactionRequester: requester, updateDefaults: updateDefaults,
+          coreDownloader: ForbiddenCoreDownloader(),
+          revealCorePackage: { _ in fail("ZIME revealed an upstream Core download") })
+        require(manualChecker.usesManualReleases, "ZIME was not recognized as an independent product")
+        manualChecker.check()
+        manualChecker.setUpdateChannel(.preview)
+        manualChecker.downloadCoreUpdate(core)
+        try await Task.sleep(nanoseconds: 20_000_000)
+        require(!manualChecker.active && manualChecker.availability == nil && manualChecker.coreDownloadState == .idle,
+          "ZIME initiated an inherited upstream update or download")
+      }
+
       if ProcessInfo.processInfo.environment["LINNET_CORE_DOWNLOAD_LIVE"] == "1" {
         let catalogData = try await LinnetSettingsDownloadTransport(
           source: .direct
@@ -341,13 +358,20 @@ struct LinnetSettingsUpdateCheckerStateTests {
     private enum Failure: Error { case rejected }
   }
 
+  private struct ForbiddenCoreDownloader: LinnetCorePackageDownloading {
+    func download(_: LinnetDataChannel.Core, progress _: @escaping @Sendable (Double) -> Void) async throws -> URL {
+      fatalError("ZIME called the upstream Core downloader")
+    }
+  }
+
   private struct BundleFixture {
     let root: URL
     let settings: Bundle
   }
 
   private static func makeBundleFixture(
-    identity: LinnetSettingsContract.ProductIdentity
+    identity: LinnetSettingsContract.ProductIdentity,
+    identifier: String = "io.github.ares-x.inputmethod.Linnet"
   ) throws -> BundleFixture {
     let root = LinnetTestScratch.directory.appending(
       path: "LinnetSettingsUpdateCheckerTests-\(UUID().uuidString)",
@@ -361,7 +385,7 @@ struct LinnetSettingsUpdateCheckerStateTests {
       values: [
         "CFBundleDisplayName": "Linnet",
         "CFBundleExecutable": "Linnet",
-        "CFBundleIdentifier": "io.github.ares-x.inputmethod.Linnet",
+        "CFBundleIdentifier": identifier,
         "CFBundleName": "Linnet",
         "CFBundlePackageType": "APPL",
         "CFBundleShortVersionString": identity.version,
@@ -374,7 +398,7 @@ struct LinnetSettingsUpdateCheckerStateTests {
       values: [
         "CFBundleDisplayName": "Linnet Settings",
         "CFBundleExecutable": "Settings",
-        "CFBundleIdentifier": "io.github.ares-x.inputmethod.Linnet.settings",
+        "CFBundleIdentifier": identifier + ".settings",
         "CFBundleName": "Settings",
         "CFBundlePackageType": "APPL",
       ]

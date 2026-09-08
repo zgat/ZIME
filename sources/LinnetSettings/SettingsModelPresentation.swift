@@ -102,10 +102,11 @@ extension SettingsModel {
     return false
   }
 
-  var pendingChanges: Bool { configuration.pendingChanges }
+  var pendingChanges: Bool { configuration.pendingChanges || translation.pendingChanges }
   var canApplyChanges: Bool {
-    configuration.canPersist && !personalValidationPending
-      && personalValidation.isValid && !operationActive && pendingChanges
+    let mainDraftIsReady = !configuration.pendingChanges ||
+      (configuration.canPersist && !personalValidationPending && personalValidation.isValid)
+    return mainDraftIsReady && !operationActive && pendingChanges
   }
 
   var displayedStatus: SettingsPresentationStatus {

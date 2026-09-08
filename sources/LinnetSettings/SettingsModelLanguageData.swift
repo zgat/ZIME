@@ -22,7 +22,7 @@ extension SettingsModel {
   }
 
   var languageDataUpdatesAvailable: Bool {
-    dataServicesAvailable && configuredDownloadSource != nil
+    !updateChecker.usesManualReleases && dataServicesAvailable && configuredDownloadSource != nil
   }
 
   var downloadSourceConfigured: Bool { configuredDownloadSource != nil }

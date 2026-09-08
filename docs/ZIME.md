@@ -33,6 +33,26 @@ metadata too. Lookup aliases do not change candidate spelling, commit text or
 learning keys. Explicit case-sensitive exclusions remain authoritative, so
 `US` does not inherit the unrelated pronoun definition of `us`.
 
+Candidate lookup uses each candidate's actual spelling, not the active input
+mode as a glyph filter. Regional labels express a preference with local fallback,
+never a ban on translating a displayed word: 帥/髮 work in Simplified mode,
+发/帅 work in Traditional mode, and 德士 still resolves to taxi in either mode.
+Local and native dictionary glosses use a deterministic core projection that
+distinguishes meanings, annotations and explicit headword references. Parentheses
+are classified by content: known usage notes are separated, while semantic
+qualifiers, complete grammatical definitions, literal formulas and unknown
+content remain. Distinct meanings keep the ` / ` separator. Ordinary English
+such as “see you tomorrow” is not treated as a headword reference.
+Online fields bypass dictionary parsing entirely. Candidate annotations display
+`腾讯:`, `百度:`, `DeepL:` or `ai:`; the source is separate metadata and never
+part of a translation commit. The complete field remains one selectable result.
+Translation Settings has a default-off “翻译显示完整注释” checkbox for hover/AX
+details only. It uses the existing Apply/Discard workflow, migrates older provider
+settings without resetting them, and does not access Keychain or invalidate the
+translation cache merely because the display preference changes. Unknown words
+still require dictionary coverage or an explicitly enabled translation provider;
+the input method never invents a definition.
+
 During candidate composition, minus pages up and equal/plus pages down.
 At the first/last page these keys are consumed without a commit or state change.
 Outside a real candidate menu, normal punctuation and raw/code input still apply.
@@ -79,9 +99,12 @@ receives Option-Tab. Rime's legacy fixed Tab action is
 always projected as pass so it cannot compete with the recorded Host binding.
 
 On the translation side, arrow keys move the highlight and 1–9 commit a row
-directly. Escape or the toggle key returns to source candidates. If no local
+directly. The configured 3–9 row page size applies to translations too; all
+alternatives remain reachable through paging instead of being truncated at
+nine rows. Unavailable numeric rows never select an invisible source candidate.
+Escape or the toggle key returns to source candidates. If no available
 definition exists, the source list remains active and ZIME reports
-“暂无本地译文”. Definitions are never appended automatically. Outside composition,
+“无译文”. Definitions are never appended automatically. Outside composition,
 these candidate shortcuts pass through to the application.
 
 Space also submits original input rather than selecting a candidate; it adds
@@ -92,8 +115,10 @@ candidate selection remain supported. Numeric selection and its page boundaries
 are unchanged, including the literal alphanumeric behavior described above.
 
 Selecting a translation first selects the corresponding source candidate in
-Rime, preserving normal user-frequency learning, then substitutes only the
-chosen definition at the client insertion boundary.
+Rime, preserving normal user-frequency learning. The chosen definition belongs
+to that confirmed native segment, not to a global client-insertion override.
+Partial selections retain their raw suffix; editing or reopening a segment
+invalidates its previous translation, without affecting other confirmed segments.
 
 ## Local data and modern input features
 
@@ -103,6 +128,12 @@ chosen definition at the client insertion boundary.
 - Wanxiang and the existing Linnet reviewed dictionaries provide full-pinyin
   phrases, initials/abbreviations, fuzzy spelling, context ranking, emoji,
   automatic phrase formation, and native Rime learning.
+- Emoji participates in the same mode's candidate ranking as text. Choosing an
+  emoji does not accidentally train its source Chinese word; either can move
+  ahead through repeated selections. Display choices use reserved entries in
+  the existing mode-owned learning database, included in native export/restore
+  and disabled by the same learning switch. The bounded ranker runs after
+  OpenCC and before Rime's final deduplicator; ordinary typing stays lazy.
 - Chinese mode treats established same-span Chinese words, including initials
   and mixed full-pinyin/initial abbreviations, as Chinese intent by default.
   Common exact English can lead weak Chinese matches; explicit capitalization
@@ -127,7 +158,14 @@ chosen definition at the client insertion boundary.
   translations for sentences.
 - A direct CC-CEDICT index adds 124,988 source entries, including simplified
   and traditional Chinese. Direct definitions take priority over the reverse
-  English index. Spelling hints are never presented as missing translations.
+  English index. Schema revision 3 preserves all 199,654 source senses without
+  prefix-based deletion and precomputes annotations for 197,976 spellings with
+  the production Swift parser. Explicit aliases/abbreviations resolve by target
+  spelling and optional reading when no direct meaning exists, with cycle/depth limits; usage, see-also and
+  backward abbreviation references do not inherit meanings. Mixed legacy
+  abbreviation lines retain their own English definition. An indexed runtime
+  resolver provides the same behavior if no prepared projection exists.
+  Spelling hints are never presented as missing translations.
 - Runtime lookups use read-only indexed databases and bounded hot caches plus
   Rime's local user databases. By default no candidate text leaves the Mac.
 
@@ -141,21 +179,30 @@ are in the `com.zime.translation` preferences domain. Both remain outside the
 language-data/portable backup path. Changing endpoint requires credentials for
 that endpoint. Ad-hoc builds may require a Keychain access confirmation.
 
-Cloud translation is **off by default**. Enabling it and pressing this tab's
-own Save button allows sending only untranslated visible-page candidates
+Cloud translation is **off by default**. Enabling it and pressing the window's
+shared Apply Changes button allows sending only untranslated visible-page candidates
 (at most 9, at most 64 characters each). No clipboard, surrounding document,
 application name or input history is read/sent. Requests are debounced 400 ms,
 serialized with a one-second interval, cancelled on page/composition changes,
-and never allowed to redirect. Responses are capped at 64 KiB / 256 characters.
+and never allowed to redirect. Local usable meanings, including resolved aliases,
+prevent online requests and Keychain reads. Response bodies are capped at 64 KiB;
+translation fields at 4,096 UTF-8 bytes, matching the native commit boundary.
+Oversized/invalid fields are rejected whole, never silently truncated. Valid
+punctuation, surrounding whitespace, tabs and newlines are retained verbatim.
 Transient results remain in a bounded in-memory cache for ten minutes; errors
 back off for 30 seconds. Network errors never block original-text input.
 
 The test-connection button explicitly sends the fixed word `hello`, even if
 the automatic cloud toggle is off. Merely opening Settings, entering a key or
 selecting a provider does not make a request. API usage may incur provider fees.
+Translation edits share the window's dirty-state, Apply, Discard and close-warning
+contract. Credential deletion is confirmed and staged until Apply; Discard cancels it.
+Changing the provider or endpoint clears unsaved credential drafts and cancels stale tests.
 
 Language-pack/update code inherited from Linnet remains outside the candidate
-translation path; it is not needed while typing.
+translation path; it is not needed while typing. ZIME does not query or download
+from Linnet's update catalog. Settings links to ZIME's releases until a separately
+published, verified automatic-update catalog is available.
 
 API request formats were checked against [OpenAI Chat Completions](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create),
 [DeepL](https://developers.deepl.com/api-reference/translate/request-translation),
