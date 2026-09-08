@@ -76,6 +76,7 @@ embedded_settings="${signed_app}/Contents/Applications/Settings.app"
   --entitlements "${project_root}/resources/Squirrel.entitlements" \
   "${signed_app}"
 /usr/bin/codesign --verify --deep --strict "${signed_app}"
+"${project_root}/scripts/build-privacy" scan "${signed_app}" "${install_helper}"
 
 # Assemble the exact four-pack offline data layout consumed by the runtime.
 # The hashes are calculated from this checkout, so the reverse bilingual index

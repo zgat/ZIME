@@ -226,7 +226,10 @@ class PrivacyScanner
       next true if @path_patterns.any? { |pattern| pattern.match?(inspected) }
 
       without_public_urls = inspected.gsub(%r{https?://[^\x00\s"\x27<>()]+}ni, "")
-      workspace_hit = @workspace != "Linnet".b && without_public_urls.include?(@workspace)
+      # Linnet and ZIME are public product/repository names, not private
+      # workspace identities. Exact build roots and generic path checks above
+      # still reject /Users, /Volumes, SDK and temporary paths for both.
+      workspace_hit = !%w[Linnet ZIME].map(&:b).include?(@workspace) && without_public_urls.include?(@workspace)
       workspace_hit || @marker_patterns.any? { |pattern| pattern.match?(without_public_urls) }
     end
   end
@@ -235,7 +238,7 @@ class PrivacyScanner
     components = label.b.split(/[\\\/]/n)
     markers = %w[DerivedData Intermediates.noindex Index.noindex CMakeFiles .DS_Store].map(&:b)
     components.any? { |component| markers.include?(component) } ||
-      (@workspace != "Linnet".b && components.any? { |component| component.include?(@workspace) })
+      (!%w[Linnet ZIME].map(&:b).include?(@workspace) && components.any? { |component| component.include?(@workspace) })
   end
 
   def xattrs(path, symlink)

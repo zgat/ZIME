@@ -61,4 +61,5 @@ abort "wrong architecture" unless machos.all? { |path| run("/usr/bin/lipo", "-ar
 machos.sort.each { |path| run("/usr/bin/codesign", "--force", "--sign", "-", "--timestamp=none", path) }
 [settings, target].each { |app| run("/usr/bin/codesign", "--force", "--sign", "-", "--timestamp=none", app) }
 run("/usr/bin/codesign", "--verify", "--deep", "--strict", target)
+run(File.join(root, "scripts/build-privacy"), "scan", target)
 puts "ZIME preview staged: #{version['version']} / #{version['build']}; #{machos.length} arm64 binaries; ad-hoc signatures and attribution"
