@@ -42,6 +42,7 @@ inline constexpr std::size_t kCandidateLimit = 64;
 inline constexpr char kCorrectionCandidateType[] = "linnet_correction";
 inline constexpr char kForcedRawCandidateType[] = "linnet_forced_raw";
 inline constexpr char kMixedCandidateType[] = "linnet_mixed";
+inline constexpr char kLiteralMixedCandidateType[] = "zime_literal_mixed";
 inline constexpr std::uint16_t kCountLimit = 255;
 
 enum class CaseStyle { kUnchanged, kCapitalized, kUppercase };

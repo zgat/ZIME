@@ -5,6 +5,7 @@
 #define LINNET_SMART_ENGLISH_FILTER_H_
 
 #include <rime/filter.h>
+#include <rime/dict/dictionary.h>
 #include <rime/dict/user_dictionary.h>
 
 #include <optional>
@@ -47,11 +48,14 @@ class SmartEnglishFilter : public rime::Filter {
     std::string input;
     bool pinyin_flow = false;
     bool code_token = false;
+    size_t start = 0;
+    size_t end = 0;
   };
 
   const std::string schema_id_;
   const smart_english_domain::InteractionOptions options_;
   const SmartEnglishIndex index_;
+  rime::an<rime::Dictionary> chinese_dictionary_;
   std::optional<PendingSegment> pending_segment_;
 };
 

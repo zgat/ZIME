@@ -816,6 +816,7 @@ bool ExpectSingleLetterChinesePriority(RimeApi_stdbool* api,
   const auto chinese = std::find_if(
       candidates.begin(), candidates.end(), [&](const auto& candidate) {
         return candidate.genuine_language == "linnet_zh" &&
+               !ContainsAscii(BaseText(candidate.text)) &&
                candidate.start == 0 && candidate.end == input.size();
       });
   const auto english = std::find_if(
@@ -1820,6 +1821,91 @@ void ExpectZIMEBilingualCandidateContract(RimeApi_stdbool* api) {
   api->destroy_session(english);
 }
 
+void ExpectZIMEAsciiCompletionContract(RimeApi_stdbool* api) {
+  const auto expect_first = [&](const char* schema, const char* input,
+                                const char* expected) {
+    for (const bool emoji : {false, true}) {
+      const auto session = CreateSchemaSession(api, schema);
+      api->set_option(session, "emoji", emoji);
+      ExpectFirstCandidate(api, session, input, expected);
+      api->destroy_session(session);
+    }
+  };
+  const auto learn = [&](const char* input, const char* expected, int rounds) {
+    for (int round = 0; round < rounds; ++round) {
+      const auto session = CreateSchemaSession(api, "linnet_zh_pinyin");
+      api->set_option(session, "emoji", round % 2 != 0);
+      Enter(api, session, input);
+      if (!api->select_candidate(session, CandidateIndex(api, session, expected)) ||
+          TakeCommit(api, session) != expected) {
+        Fail(std::string("ASCII completion learning failed: ") + input + " -> " + expected);
+      }
+      api->destroy_session(session);
+    }
+  };
+  const auto expect_no_incomplete_sentence = [&] {
+    for (const auto* input : {"woi", "woim", "woib", "wo'i", "shiyongcp"}) {
+      const auto session = CreateSchemaSession(api, "linnet_zh_pinyin");
+      Enter(api, session, input);
+      // Check beyond the ranked prefix: a lazy tail must not reintroduce
+      // the same unsafe sentence on a later candidate page.
+      for (const auto& row : CandidateOrigins(session, 128)) {
+        if (row.text.find("IME") != std::string::npos ||
+            row.text.find("IBM") != std::string::npos ||
+            row.text.find("CPU") != std::string::npos) {
+          Fail(std::string("incomplete acronym entered a mixed candidate: ") + input + " -> " + row.text);
+        }
+      }
+      if (std::string(input) == "woi") {
+        const auto partial = CandidateIndex(api, session, "我");
+        if (partial >= 9) Fail("rejecting unsafe mixed sentences hid the safe partial 我");
+      }
+      api->destroy_session(session);
+    }
+  };
+  for (const auto* schema : {"linnet_zh_pinyin", "linnet_en"}) {
+    expect_first(schema, "i", "I");
+    expect_first(schema, "I", "I");
+  }
+  // Complete-word history is not evidence that the user wants that word
+  // when typing a much shorter prefix. Do not erase those useful records.
+  learn("ime", "IME", 3);
+  learn("ibm", "IBM", 2);
+  expect_first("linnet_zh_pinyin", "i", "I");
+  expect_no_incomplete_sentence();
+  learn("woime", "我IME", 2);
+  learn("woibm", "我IBM", 2);
+  // Learned native mixed phrases must obey the same admission rule as new
+  // sentences; complete mixed input and Chinese abbreviations remain valid.
+  expect_no_incomplete_sentence();
+  expect_first("linnet_zh_pinyin", "woime", "我IME");
+  expect_first("linnet_zh_pinyin", "woibm", "我IBM");
+  // A deliberate choice under i can still change the default, persist, and
+  // change back. Dedicated English mode owns a different preference history.
+  learn("i", "IME", 2);
+  expect_first("linnet_zh_pinyin", "i", "IME");
+  expect_first("linnet_en", "i", "I");
+  api->finalize();
+  api->initialize(nullptr);
+  expect_first("linnet_zh_pinyin", "i", "IME");
+  expect_no_incomplete_sentence();
+  learn("i", "I", 3);
+  expect_first("linnet_zh_pinyin", "i", "I");
+
+  const auto partial = CreateSchemaSession(api, "linnet_zh_pinyin");
+  Enter(api, partial, "woi");
+  if (!api->select_candidate(partial, CandidateIndex(api, partial, "我")))
+    Fail("could not partially select 我 from woi");
+  const auto remainder = CandidateOrigins(partial);
+  if (remainder.empty() || remainder.front().text != "I" ||
+      remainder.front().start != 2 || remainder.front().end != 3 ||
+      !api->select_candidate(partial, 0) || TakeCommit(api, partial) != "我I") {
+    Fail("safe partial selection must retain i and commit 我I without expansion");
+  }
+  api->destroy_session(partial);
+  std::cout << "ZIME ASCII exact/completion ranking, mixed admission and learning: PASS\n";
+}
+
 void ExpectZIMEChineseRankingContract(RimeApi_stdbool* api) {
   const auto inspect = [&](const std::string& label, const char* input) {
     const auto session = CreateSchemaSession(api, "linnet_zh_pinyin");
@@ -1911,6 +1997,16 @@ void ExpectZIMEChineseRankingContract(RimeApi_stdbool* api) {
 }
 
 void ExpectZIMERankingPersisted(RimeApi_stdbool* api) {
+  for (const auto& [mode, expected] : {
+      std::make_pair("linnet_zh_pinyin", "牛"), std::make_pair("linnet_en", "niu")}) {
+    const auto transposed = CreateSchemaSession(api, mode);
+    ExpectFirstCandidate(api, transposed, "nui", expected);
+    api->destroy_session(transposed);
+  }
+  const auto literal = CreateSchemaSession(api, "linnet_zh_pinyin");
+  api->set_option(literal, "emoji", false);
+  ExpectFirstCandidate(api, literal, "wovabc", "握vabc");
+  api->destroy_session(literal);
   for (const auto& [input, chosen] : {
       std::make_pair("key", "可以"), std::make_pair("what", "我好爱他")}) {
     const auto session = CreateSchemaSession(api, "linnet_zh_pinyin");
@@ -2285,6 +2381,288 @@ void SetSchemaBool(RimeApi_stdbool* api,
   if (!updated || !closed) {
     Fail("could not update schema boolean fixture");
   }
+}
+
+void ExpectZIMETranspositionContract(RimeApi_stdbool* api) {
+  constexpr char schema[] = "linnet_zh_pinyin";
+  const auto owner = CreateSchemaSession(api, schema);
+  auto* config = rime::Service::instance().GetSession(owner)->schema()->config();
+  const auto algebra = config->GetList("speller/algebra");
+  size_t rules = 0;
+  for (size_t i = 0; algebra && i < algebra->size(); ++i) {
+    const auto value = rime::As<rime::ConfigValue>(algebra->GetAt(i));
+    if (value && value->str() == "derive/^([jqxnlm])iu$/$1ui/") {
+      ++rules;
+      if (i + 2 != algebra->size()) Fail("iu/ui correction must precede final ASCII entity folding");
+    }
+  }
+  if (rules != 1) Fail("Core projection did not add exactly one iu/ui rule to the retained language pack");
+  const int old_size = rime::Service::instance().GetSession(owner)->schema()->page_size();
+  for (int size = 3; size <= 9; ++size) {
+    SetSchemaString(api, schema, "menu/page_size", std::to_string(size).c_str());
+    for (const auto& [typo, canonical] : {
+        std::make_pair("nui", "niu"), std::make_pair("lui", "liu"),
+        std::make_pair("jui", "jiu"), std::make_pair("qui", "qiu"),
+        std::make_pair("xui", "xiu"), std::make_pair("mui", "miu"),
+        std::make_pair("nuinai", "niunai")}) {
+      const auto session = CreateSchemaSession(api, schema);
+      api->set_option(session, "emoji", size % 2 != 0);
+      Enter(api, session, canonical);
+      const auto expected = CandidateOrigins(session).front().text;
+      Enter(api, session, typo);
+      const auto rows = CandidateOrigins(session);
+      if (rows.empty() || rows.front().text != expected || rows.front().end != std::strlen(typo) ||
+          rows.front().start != 0 || rows.front().genuine_language != "linnet_zh")
+        Fail(std::string("Chinese transposition did not retain canonical full-span ranking: ") + typo);
+      ExpectNoCommit(api, session, "transposition preview");
+      if (!api->process_key(session, '1', 0) || TakeCommit(api, session) != expected)
+        Fail("numeric selection failed to commit the corrected Chinese word");
+      ExpectNoCommit(api, session, "duplicate transposition commit");
+      api->destroy_session(session);
+    }
+  }
+  SetSchemaString(api, schema, "menu/page_size", std::to_string(old_size).c_str());
+  api->destroy_session(owner);
+  const auto edit = CreateSchemaSession(api, schema);
+  for (const auto& [input, expected] : {
+      std::make_pair("dui", "对"), std::make_pair("shui", "水"),
+      std::make_pair("hui", "会"), std::make_pair("tui", "退"),
+      std::make_pair("diu", "丢"), std::make_pair("nu", "努"),
+      std::make_pair("nv", "女")}) {
+    ExpectCandidate(api, edit, input, expected);
+  }
+  Enter(api, edit, "nui");
+  if (CandidateIndex(api, edit, "nui") >= CandidateIndex(api, edit, "niu"))
+    Fail("exact English spelling must precede its unlearned transposition alias");
+  if (!api->process_key(edit, XK_Return, 0) || TakeCommit(api, edit) != "nui")
+    Fail("Return corrected the original input implicitly");
+  Enter(api, edit, "nui");
+  api->process_key(edit, XK_BackSpace, 0);
+  if (CandidateOrigins(edit).front().text != "努") Fail("deleting i did not restore nu");
+  api->clear_composition(edit);
+  Enter(api, edit, "nui");
+  api->set_option(edit, "traditionalization", true);
+  api->clear_composition(edit);
+  Enter(api, edit, "lui");
+  ExpectCandidate(api, edit, "lui", "劉");
+  api->destroy_session(edit);
+  const auto fallback = CreateSchemaSession(api, schema);
+  ExpectFirstCandidate(api, fallback, "shii", "是i");
+  ExpectCandidate(api, fallback, "shii", "shii");
+  api->destroy_session(fallback);
+  const auto english = CreateSchemaSession(api, "linnet_en");
+  ExpectFirstCandidate(api, english, "nui", "nui");
+  ExpectFirstCandidate(api, english, "niu", "niu");
+  api->destroy_session(english);
+  const auto learn = [&](const char* mode, const char* input, const char* text, int count) {
+    for (int i = 0; i < count; ++i) {
+      const auto session = CreateSchemaSession(api, mode);
+      api->set_option(session, "emoji", i % 2 != 0);
+      Enter(api, session, input);
+      if (!api->select_candidate(session, CandidateIndex(api, session, text)) || TakeCommit(api, session) != text)
+        Fail("could not learn a transposition candidate");
+      api->destroy_session(session);
+    }
+  };
+  const auto first = [&](const char* mode, const char* expected) {
+    const auto session = CreateSchemaSession(api, mode);
+    ExpectFirstCandidate(api, session, "nui", expected);
+    api->destroy_session(session);
+  };
+  // Native canonical niu counts are not choices made for nui. Exact words,
+  // aliases and Chinese share a learnable order under the actual input.
+  learn(schema, "nui", "nui", 12);
+  first(schema, "nui");
+  learn(schema, "niu", "niu", 30);
+  first(schema, "nui");
+  learn(schema, "nui", "niu", 15);
+  first(schema, "niu");
+  learn(schema, "nui", "牛", 20);
+  first(schema, "牛");
+  const auto switch_owner = CreateSchemaSession(api, schema);
+  SetSchemaBool(api, schema, "linnet_english_interaction/learning_enabled", false);
+  first(schema, "牛");
+  learn(schema, "nui", "nui", 30);
+  SetSchemaBool(api, schema, "linnet_english_interaction/learning_enabled", true);
+  api->destroy_session(switch_owner);
+  first(schema, "牛");
+  learn("linnet_en", "nui", "niu", 40);
+  first("linnet_en", "niu");
+  first(schema, "牛");
+  const auto explicit_case = CreateSchemaSession(api, schema);
+  ExpectFirstCandidate(api, explicit_case, "NUI", "NUI");
+  api->destroy_session(explicit_case);
+  std::cout << "ZIME Chinese transposition: retained-pack projection, full-span selection, raw Return, editing, traditional, English exact/alias and rare-word fallback: PASS\n";
+}
+
+void ExpectZIMELiteralMixedContract(RimeApi_stdbool* api) {
+  constexpr char schema[] = "linnet_zh_pinyin";
+  constexpr char literal_type[] = "zime_literal_mixed";
+  const auto prefix_counts = [&] {
+    const auto session = CreateSchemaSession(api, schema);
+    api->set_option(session, "emoji", false);
+    Enter(api, session, "wo");
+    std::map<std::string, int> counts;
+    for (const auto& row : CandidateOrigins(session)) {
+      if (row.text == "我" || row.text == "握") counts[row.text] = row.commit_count;
+    }
+    api->destroy_session(session);
+    return counts;
+  };
+  const auto before_counts = prefix_counts();
+  const auto owner = CreateSchemaSession(api, schema);
+  const int old_size = rime::Service::instance().GetSession(owner)->schema()->page_size();
+  for (int page_size = 3; page_size <= 9; ++page_size) {
+    SetSchemaString(api, schema, "menu/page_size", std::to_string(page_size).c_str());
+    for (const auto& [input, expected] : {
+        std::make_pair("wov", "我v"), std::make_pair("woi", "我i"),
+        std::make_pair("woim", "我im"), std::make_pair("woib", "我ib"),
+        std::make_pair("wo'v", "我v"), std::make_pair("nihaov", "你好v"),
+        std::make_pair("nihaoi", "你好i"), std::make_pair("wovabc", "我vabc")}) {
+      const auto session = CreateSchemaSession(api, schema);
+      api->set_option(session, "emoji", page_size % 2 != 0);
+      Enter(api, session, input);
+      const auto rows = CandidateOrigins(session, 128);
+      if (rows.empty() || rows.front().text != expected || rows.front().genuine_type != literal_type ||
+          rows.front().start != 0 || rows.front().end != std::strlen(input)) {
+        Fail(std::string("literal mixed candidate must cover the entire input: ") + input);
+      }
+      RimeContext_stdbool context = {};
+      RIME_STRUCT_INIT(RimeContext_stdbool, context);
+      if (!api->get_context(session, &context) || !context.composition.preedit ||
+          std::string(context.composition.preedit) != input)
+        Fail("literal fallback preedit hid or replaced its raw suffix");
+      api->free_context(&context);
+      if (std::string(input) == "wov" && CandidateIndex(api, session, "我") >= static_cast<size_t>(page_size))
+        Fail("whole-input fallback hid first-page manual partial selection");
+      ExpectNoCommit(api, session, "literal candidate presentation");
+      if (!api->process_key(session, '1', 0) || TakeCommit(api, session) != expected ||
+          (api->get_input(session) && *api->get_input(session)))
+        Fail("one numeric choice must commit the whole mixed text exactly once");
+      ExpectNoCommit(api, session, "duplicate literal mixed commit");
+      api->destroy_session(session);
+    }
+  }
+  SetSchemaString(api, schema, "menu/page_size", std::to_string(old_size).c_str());
+  api->destroy_session(owner);
+
+  const auto no_fallback = [&](const char* mode, const char* input) {
+    const auto session = CreateSchemaSession(api, mode);
+    // Direct composition also checks recognizer-owned code tokens without
+    // interpreting digits as choices or punctuation as commit keystrokes.
+    api->set_input(session, input);
+    for (const auto& row : CandidateOrigins(session)) {
+      if (row.genuine_type == literal_type) Fail(std::string("literal fallback displaced valid routing: ") + input);
+    }
+    api->destroy_session(session);
+  };
+  for (const auto* input : {"wox", "wohao", "nh", "nihao", "nihoa", "key", "hello", "i",
+                             "woime", "woibm", "xuexicsjiting", "woV", "x7", "wov7", "foo@example.com"})
+    no_fallback(schema, input);
+  for (const auto* input : {"wov", "woi", "woim", "nihaov"}) no_fallback("linnet_en", input);
+
+  const auto edited = CreateSchemaSession(api, schema);
+  Enter(api, edited, "wov");
+  api->process_key(edited, XK_BackSpace, 0);
+  if (std::string(api->get_input(edited)) != "wo" || CandidateOrigins(edited).front().text != "我")
+    Fail("deleting the literal suffix did not restore normal pinyin");
+  api->process_key(edited, 'i', 0);
+  api->process_key(edited, 'm', 0);
+  api->process_key(edited, 'e', 0);
+  const auto complete = CandidateOrigins(edited);
+  if (complete.empty() || complete.front().text != "我IME" || complete.front().genuine_type == literal_type)
+    Fail("continuing a literal suffix did not restore complete native mixed matching");
+  api->clear_composition(edited);
+  Enter(api, edited, "wov");
+  if (!api->process_key(edited, XK_Return, 0) || TakeCommit(api, edited) != "wov")
+    Fail("Return must still commit the original input rather than the mixed candidate");
+  Enter(api, edited, "wov");
+  api->process_key(edited, XK_Escape, 0);
+  ExpectNoCommit(api, edited, "cancel literal mixed composition");
+  Enter(api, edited, "houlaiiv");
+  api->set_option(edited, "traditionalization", true);
+  const auto traditional = CandidateOrigins(edited);
+  if (traditional.empty() || traditional.front().text != "後來iv")
+    Fail("traditional conversion changed or lost the literal suffix");
+  api->destroy_session(edited);
+
+  const auto partial = CreateSchemaSession(api, schema);
+  Enter(api, partial, "nihaowov");
+  api->set_caret_pos(partial, 5);
+  if (!api->select_candidate(partial, CandidateIndex(api, partial, "你好")))
+    Fail("could not select the confirmed prefix before mixed fallback");
+  const auto remainder = CandidateOrigins(partial);
+  if (remainder.empty() || remainder.front().text != "我v" || remainder.front().start != 5 ||
+      remainder.front().end != 8 || !api->process_key(partial, '1', 0) || TakeCommit(api, partial) != "你好我v")
+    Fail("mixed fallback after a confirmed prefix used the wrong range");
+  Enter(api, partial, "wov");
+  if (!api->select_candidate_with_text(partial, 0, "translation fixture") ||
+      TakeCommit(api, partial) != "translation fixture" || (api->get_input(partial) && *api->get_input(partial)))
+    Fail("explicit translation selection left or duplicated the literal suffix");
+  api->destroy_session(partial);
+
+  const auto learn = [&](const char* expected, int rounds) {
+    for (int round = 0; round < rounds; ++round) {
+      const auto session = CreateSchemaSession(api, schema);
+      api->set_option(session, "emoji", round % 2 != 0);
+      Enter(api, session, "wovabc");
+      if (!api->select_candidate(session, CandidateIndex(api, session, expected)) || TakeCommit(api, session) != expected)
+        Fail("literal mixed choice could not be learned");
+      api->destroy_session(session);
+    }
+  };
+  // The page-size matrix selected 我vabc seven times. An alternative can
+  // overtake it and persist without modifying the wo -> 我/握 dictionary codes.
+  learn("握vabc", 8);
+  api->finalize();
+  api->initialize(nullptr);
+  const auto learned = CreateSchemaSession(api, schema);
+  api->set_option(learned, "emoji", false);
+  ExpectFirstCandidate(api, learned, "wovabc", "握vabc");
+  api->destroy_session(learned);
+  const auto switch_owner = CreateSchemaSession(api, schema);
+  SetSchemaBool(api, schema, "linnet_english_interaction/learning_enabled", false);
+  const auto disabled = CreateSchemaSession(api, schema);
+  ExpectFirstCandidate(api, disabled, "wovabc", "我vabc");
+  api->destroy_session(disabled);
+  learn("握vabc", 8);  // Disabled choices must not be saved.
+  SetSchemaBool(api, schema, "linnet_english_interaction/learning_enabled", true);
+  api->destroy_session(switch_owner);
+  learn("我vabc", 2);
+  const auto relearned = CreateSchemaSession(api, schema);
+  ExpectFirstCandidate(api, relearned, "wovabc", "我vabc");
+  api->destroy_session(relearned);
+  learn("握vabc", 3);  // Leave a non-default preference for the fresh-process probe.
+  // A lower-ranked alternative learned on a larger page must still be first
+  // after reducing the visible rows, with manual prefix selection preserved.
+  const auto size_owner = CreateSchemaSession(api, schema);
+  SetSchemaString(api, schema, "menu/page_size", "9");
+  auto size_session = CreateSchemaSession(api, schema);
+  Enter(api, size_session, "wov");
+  const auto large_rows = CandidateOrigins(size_session);
+  if (large_rows.size() < 4 || large_rows[3].genuine_type != literal_type)
+    Fail("large-page literal learning fixture lacks alternatives");
+  const auto alternative = large_rows[3].text;
+  // Exceed the seven page-size selections plus the earlier prefix/translation
+  // selections of 我v; this checks ranking rather than an accidental tie.
+  for (int round = 0; round < 12; ++round) {
+    if (!api->select_candidate(size_session, CandidateIndex(api, size_session, alternative)) ||
+        TakeCommit(api, size_session) != alternative)
+      Fail("large-page literal alternative could not be learned");
+    Enter(api, size_session, "wov");
+  }
+  api->destroy_session(size_session);
+  SetSchemaString(api, schema, "menu/page_size", "3");
+  size_session = CreateSchemaSession(api, schema);
+  ExpectFirstCandidate(api, size_session, "wov", alternative);
+  Enter(api, size_session, "wov");
+  if (CandidateIndex(api, size_session, "我") >= 3)
+    Fail("learned literal ranking hid first-page manual partial selection");
+  api->destroy_session(size_session);
+  SetSchemaString(api, schema, "menu/page_size", std::to_string(old_size).c_str());
+  api->destroy_session(size_owner);
+  if (prefix_counts() != before_counts) Fail("literal mixed learning polluted native Chinese prefix counts");
+  std::cout << "ZIME literal mixed fallback: full-span numeric commit, raw Return, 3-9 rows, preedit, editing, partial prefix, traditional, translation and learning: PASS\n";
 }
 
 void ExpectDeployedMenuPageSize(RimeApi_stdbool* api,
@@ -3421,10 +3799,17 @@ void ExpectDirectShiftSmartEnglish(RimeApi_stdbool* api) {
   const auto partial_origins = CandidateOrigins(partial_composing);
   const auto partial_session =
       rime::Service::instance().GetSession(partial_composing);
-  if (partial_origins.empty() || partial_origins.front().start != 0 ||
-      partial_origins.front().end >= std::strlen(kPartialInput) ||
+  // A whole-span literal fallback may now precede native partial choices.
+  // Highlight an actual partial choice so this remains a partial-exit test.
+  const auto partial_choice = std::find_if(partial_origins.begin(), partial_origins.end(),
+      [&](const auto& row) { return row.start == 0 && row.end < std::strlen(kPartialInput); });
+  if (partial_choice == partial_origins.end() ||
       !partial_session || !partial_session->context()) {
     Fail("direct Shift partial-match fixture lost its untranslated suffix");
+  }
+  if (!api->highlight_candidate(partial_composing,
+          std::distance(partial_origins.begin(), partial_choice))) {
+    Fail("direct Shift partial-match fixture could not highlight its partial choice");
   }
   const std::string partial_preview = partial_session->context()->GetCommitText();
   if (partial_preview.empty() || partial_preview == kPartialInput) {
@@ -7855,7 +8240,10 @@ int main(int argc, char** argv) {
   }
 
   if (zime_bilingual_probe) {
+    ExpectZIMETranspositionContract(api);
     ExpectZIMEBilingualCandidateContract(api);
+    ExpectZIMEAsciiCompletionContract(api);
+    ExpectZIMELiteralMixedContract(api);
     ExpectZIMEChineseRankingContract(api);
     api->finalize();
     std::cout << "rime_smoke_test: ZIME bilingual candidate contract: PASS\n";
@@ -7916,6 +8304,8 @@ int main(int argc, char** argv) {
     ExpectSupplementalExtendedChineseCoverage(api);
     ExpectNativeMixedInput(api);
     BenchmarkSchema(api, "linnet_zh_pinyin", "xuexicsjiting");
+    BenchmarkSchema(api, "linnet_zh_pinyin", "wov");
+    BenchmarkSchema(api, "linnet_zh_pinyin", "nui");
     api->finalize();
     std::cout << "rime_smoke_test: modeless mixed input: PASS\n";
     return 0;

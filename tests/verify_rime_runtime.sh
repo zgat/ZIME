@@ -178,6 +178,15 @@ fi
 RIME_LOG_DIR="${logs}" \
 DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
   bin/rime_deployer --build "${user}" "${shared}" "${user}/build" >/dev/null
+if [[ "${runtime_probe}" == --mixed-input-probe ]]; then
+  # The legacy mixed matrix directly selects inherited profiles. Compile
+  # those test-only schemas without changing the product's two-schema list.
+  for profile in linnet_zh linnet_zh_flypy linnet_zh_mspy linnet_zh_sogou linnet_zh_abc linnet_zh_ziguang linnet_zh_jiajia; do
+    DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
+      bin/rime_deployer --compile "${shared}/${profile}.schema.yaml" \
+        "${user}" "${shared}" "${user}/build" >/dev/null
+  done
+fi
 for fixture_schema in \
   linnet_pinyin_limit_64.schema.yaml \
   linnet_pinyin_limit_65.schema.yaml; do

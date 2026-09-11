@@ -17,6 +17,7 @@
 #include <functional>
 #include <limits>
 #include <map>
+#include <set>
 #include <utility>
 #include <vector>
 
@@ -40,6 +41,68 @@ constexpr double kEstablishedChineseAbbreviationMinimumLexicalWeight =
 // override weak Chinese parses in Chinese mode (raw frequency >= 1 million).
 // Explicit capitalization and the dedicated English mode retain their routes.
 constexpr double kCommonEnglishMinimumLexicalWeight = -4.605170185988091;
+
+bool ChineseDictionaryPhrase(const an<Phrase>& phrase) {
+  return phrase && phrase->language() && phrase->language()->name() == "linnet_zh";
+}
+
+// Dictionary provenance is not a language: the combined Chinese dictionary
+// also imports IBM, IME, CPU, etc. They must not inherit Chinese-intent priority.
+string AsciiEntity(const string& text) {
+  string result;
+  bool letter = false;
+  for (unsigned char byte : text) {
+    if (byte >= 'A' && byte <= 'Z') byte += 'a' - 'A';
+    if (byte >= 'a' && byte <= 'z') letter = true;
+    else if (byte < '0' || byte > '9') return {};
+    result += byte;
+  }
+  return letter ? result : string();
+}
+
+bool AsciiDictionaryPhrase(const an<Candidate>& candidate) {
+  const auto phrase = As<Phrase>(Candidate::GetGenuineCandidate(candidate));
+  return ChineseDictionaryPhrase(phrase) && !AsciiEntity(phrase->text()).empty();
+}
+
+bool HasIncompleteAsciiSyllable(const an<Candidate>& candidate,
+                                const string& input,
+                                const an<Dictionary>& dictionary) {
+  const auto phrase = As<Phrase>(Candidate::GetGenuineCandidate(candidate));
+  if (!dictionary || !ChineseDictionaryPhrase(phrase)) return false;
+  bool has_non_ascii = false, has_ascii_letter = false;
+  for (unsigned char c : phrase->text()) {
+    has_non_ascii = has_non_ascii || c >= 0x80;
+    has_ascii_letter = has_ascii_letter ||
+        (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z');
+  }
+  // Ordinary Chinese abbreviations and standalone English completions stay
+  // unchanged and need no dictionary decoding.
+  if (!has_non_ascii || !has_ascii_letter) return false;
+  vector<string> syllables;
+  if (!dictionary->Decode(phrase->code(), &syllables)) return false;
+  auto spans = phrase->spans();
+  size_t start = phrase->start();
+  for (const auto& syllable : syllables) {
+    const size_t end = spans.NextStop(start);
+    const auto entity = AsciiEntity(syllable);
+    // linnet_english_entities uses uppercase canonical codes as a marker;
+    // normal pinyin syllables are lowercase. Use that identity, not token
+    // boundaries in the surface text (which can join adjacent entities).
+    if (!entity.empty() && syllable != entity) {
+      if (end <= start || end > input.size()) return true;
+      const auto part = input.substr(start, end - start);
+      const auto first = part.find_first_not_of(" '");
+      const auto last = part.find_last_not_of(" '");
+      if (first == string::npos || AsciiEntity(part.substr(first, last - first + 1)) != entity)
+        return true;
+    }
+    start = end;
+  }
+  // Check native code/spans, not the surface string. This also covers a
+  // previously learned mixed phrase and multi-entity/generated sentences.
+  return false;
+}
 
 struct MixedTextShape {
   std::size_t entity_start = std::string::npos;
@@ -290,25 +353,33 @@ void DisplayLearningFilter::OnCommit(Context* context) {
 
 an<Translation> DisplayLearningFilter::Apply(an<Translation> translation, CandidateList*) {
   if (!translation) return New<FifoTranslation>();
-  // Ordinary typing and disabled learning stay lazy. Emoji is the only
-  // conversion that introduces a separately learned display variant.
-  if (!dictionary_ || !engine_->context()->get_option("emoji"))
+  if (!dictionary_ && (translation->exhausted() ||
+      !HasCandidateType(translation->Peek(), kLiteralMixedCandidateType)))
     return New<SmartEnglishTailTranslation>(translation, false, false, DisplayCandidate);
   auto result = New<FifoTranslation>();
   struct Row { an<Candidate> candidate; int count = 0; };
   std::vector<Row> rows;
   bool has_emoji = false;
+  bool has_english_alternative = false;
+  bool has_literal_mixed = false;
+  const auto& input = engine_->context()->input();
   for (size_t index = 0; index < kCandidateLimit && !translation->exhausted(); ++index) {
     auto candidate = DisplayCandidate(translation->Peek());
     if (!candidate) break;
     has_emoji = has_emoji || candidate->type() == "zime_emoji";
+    has_literal_mixed = has_literal_mixed || HasCandidateType(candidate, kLiteralMixedCandidateType);
+    has_english_alternative = has_english_alternative ||
+        ((AsciiDictionaryPhrase(candidate) || IsLinnetEnglishPhrase(Candidate::GetGenuineCandidate(candidate))) &&
+         candidate->end() <= input.size() &&
+         candidate->end() > candidate->start() &&
+         AsciiEntity(candidate->text()) != AsciiEntity(input.substr(
+             candidate->start(), candidate->end() - candidate->start())));
     const auto phrase = As<Phrase>(Candidate::GetGenuineCandidate(candidate));
     rows.push_back({candidate, phrase ? std::max(0, phrase->entry().commit_count) : 0});
     translation->Next();
   }
-  if (dictionary_ && has_emoji) {
+  if (dictionary_ && (has_emoji || has_english_alternative || has_literal_mixed)) {
     std::map<string, std::map<string, int>> counts;
-    const auto& input = engine_->context()->input();
     for (auto& row : rows) {
       const auto& candidate = row.candidate;
       if (candidate->end() > input.size() || candidate->end() <= candidate->start()) continue;
@@ -324,7 +395,12 @@ an<Translation> DisplayLearningFilter::Apply(an<Translation> translation, Candid
         }
         found = counts.emplace(code, std::move(values)).first;
       }
-      row.count = std::max(row.count, found->second[candidate->text()]);
+      const int choice_count = found->second[candidate->text()];
+      // Native English counts belong to the canonical code, not this prefix
+      // or transposed alias. Only a choice for this input may override the
+      // exact-match baseline (i -> IME, nui -> niu), regardless of emoji.
+      row.count = has_english_alternative && !AsciiEntity(candidate->text()).empty()
+          ? choice_count : std::max(row.count, choice_count);
     }
     // Keep custom phrases, literal input and partial-match boundaries intact.
     for (auto begin = rows.begin(); begin != rows.end();) {
@@ -341,6 +417,18 @@ an<Translation> DisplayLearningFilter::Apply(an<Translation> translation, Candid
       begin = end;
     }
   }
+  if (has_literal_mixed) {
+    // Page size controls presentation, not which literal choices can learn.
+    // Rank the same bounded pool first, then keep one native partial choice
+    // on the first page; all remaining mixed alternatives stay reachable.
+    const auto partial = std::find_if(rows.begin(), rows.end(), [&](const Row& row) {
+      return row.candidate->start() == rows.front().candidate->start() &&
+          row.candidate->end() < rows.front().candidate->end() && !IsRawCandidate(row.candidate);
+    });
+    const auto first_page_mixed = std::clamp(engine_->schema()->page_size() - 1, 1, 8);
+    if (partial != rows.end() && std::distance(rows.begin(), partial) > first_page_mixed)
+      std::rotate(rows.begin() + first_page_mixed, partial, std::next(partial));
+  }
   for (const auto& row : rows) result->Append(row.candidate);
   return result + New<SmartEnglishTailTranslation>(translation, false, false, DisplayCandidate);
 }
@@ -349,7 +437,14 @@ SmartEnglishFilter::SmartEnglishFilter(const Ticket& ticket)
     : Filter(ticket),
       schema_id_(ticket.schema ? ticket.schema->schema_id() : string()),
       options_(InteractionOptions::Load(ticket.schema)),
-      index_(PredictEngineComponent::Shared()->GetInstance(ticket)) {}
+      index_(PredictEngineComponent::Shared()->GetInstance(ticket)) {
+  if (engine_ && schema_id_ != kSmartEnglishSchema) {
+    if (auto component = Dictionary::Require("dictionary")) {
+      chinese_dictionary_.reset(component->Create(Ticket(engine_, "translator")));
+      if (chinese_dictionary_ && !chinese_dictionary_->Load()) chinese_dictionary_.reset();
+    }
+  }
+}
 
 an<Translation> SmartEnglishFilter::Apply(an<Translation> translation,
                                            CandidateList*) {
@@ -357,6 +452,13 @@ an<Translation> SmartEnglishFilter::Apply(an<Translation> translation,
   if (!translation || !engine_) return result;
 
   Context* context = engine_->context();
+  // One lazy admission boundary covers both the ranked prefix and all later
+  // pages. Reject wo+i -> 我IME before it can displace the safe partial 我;
+  // keep wo+ime -> 我IME and every ordinary Chinese abbreviation.
+  translation = New<SmartEnglishTailTranslation>(translation, false, false,
+      [dictionary = chinese_dictionary_, input = context->input()](const an<Candidate>& candidate) {
+        return HasIncompleteAsciiSyllable(candidate, input, dictionary) ? nullptr : candidate;
+      });
   const auto pending_segment =
       std::exchange(pending_segment_, std::nullopt);
   const string ranking_input =
@@ -372,7 +474,7 @@ an<Translation> SmartEnglishFilter::Apply(an<Translation> translation,
     std::uint16_t session_count = 0;
     int commit_count = 0;
     bool raw = false, exact = false, ambiguous_english = false,
-         chinese = false, mixed = false,
+         chinese = false, mixed = false, ascii_dictionary = false,
          strong_chinese_collision = false;
   };
   std::vector<RankedCandidate> candidates;
@@ -407,16 +509,16 @@ an<Translation> SmartEnglishFilter::Apply(an<Translation> translation,
     const auto phrase = rime::As<Phrase>(item.genuine);
     item.commit_count = phrase ? std::max(0, phrase->entry().commit_count) : 0;
     item.mixed = IsMixedChineseCandidate(item.genuine);
-    item.chinese = !item.mixed && phrase && phrase->language() &&
-                   phrase->language()->name() == "linnet_zh";
+    item.ascii_dictionary = AsciiDictionaryPhrase(item.genuine);
+    item.chinese = !item.mixed && !item.ascii_dictionary && ChineseDictionaryPhrase(phrase);
     item.exact = !input_word.empty() && item.word == input_word &&
-                 IsLinnetEnglishPhrase(item.genuine) &&
+                 (IsLinnetEnglishPhrase(item.genuine) || item.ascii_dictionary) &&
                  (!phrase || phrase->is_exact_match()) &&
                  item.candidate->type() != "linnet_correction";
     // A table phrase whose spelling differs from the live segment reached us
     // through a derived spelling or completion key, not direct English input.
     item.ambiguous_english = !input_word.empty() && item.word != input_word &&
-                             IsLinnetEnglishPhrase(item.genuine);
+                             (IsLinnetEnglishPhrase(item.genuine) || item.ascii_dictionary);
     has_exact = has_exact || item.exact;
     has_ambiguous_english = has_ambiguous_english || item.ambiguous_english;
     has_mixed = has_mixed || item.mixed;
@@ -427,6 +529,20 @@ an<Translation> SmartEnglishFilter::Apply(an<Translation> translation,
     if (static_rank != static_ranks.end()) {
       item.static_rank = static_rank->second;
     }
+  }
+  // Exact English spelling precedes its derived aliases in the cold-start
+  // order. Stay inside same-span English runs: do not cross Chinese, custom
+  // or partial choices. The display learner can still override this baseline
+  // when the user explicitly chooses an alias for this particular input.
+  for (auto begin = candidates.begin(); begin != candidates.end();) {
+    const auto english = [](const auto& item) { return item.exact || item.ambiguous_english; };
+    if (!english(*begin)) { ++begin; continue; }
+    auto end = std::next(begin);
+    while (end != candidates.end() && english(*end) &&
+           end->genuine->start() == begin->genuine->start() &&
+           end->genuine->end() == begin->genuine->end()) ++end;
+    std::stable_partition(begin, end, [](const auto& item) { return item.exact; });
+    begin = end;
   }
   // Chinese mode owns lowercase intent. A common English word can lead only
   // when there is no established or learned Chinese word for the same span.
@@ -564,7 +680,7 @@ an<Translation> SmartEnglishFilter::Apply(an<Translation> translation,
         auto insertion = exact;
         while (insertion != candidates.begin()) {
           const auto previous_candidate = std::prev(insertion);
-          if (!previous_candidate->chinese ||
+          if ((!previous_candidate->chinese && !previous_candidate->ascii_dictionary) ||
               previous_candidate->genuine->start() !=
                   exact->genuine->start() ||
               previous_candidate->genuine->end() != exact->genuine->end()) {
@@ -649,6 +765,69 @@ an<Translation> SmartEnglishFilter::Apply(an<Translation> translation,
                                             requested_case,
                                             sentence_boundary);
       };
+  // A partial Chinese match is not a whole-input candidate. When there is no
+  // credible full-span result, retain the unmatched spelling literally instead
+  // of inventing an English completion or requiring a second selection.
+  // Native full Chinese/mixed/custom results still bypass the fallback.
+  // English must also be credible when a complete Chinese prefix exists.
+  const bool has_complete_chinese_prefix = pending_segment && std::any_of(
+      candidates.begin(), candidates.end(), [&](const auto& item) {
+        const auto phrase = As<Phrase>(item.genuine);
+        return item.chinese && phrase && phrase->is_exact_match() &&
+            phrase->spelling_type() <= kFuzzySpelling &&
+            phrase->start() == pending_segment->start &&
+            phrase->end() >= phrase->start() + 2 && phrase->end() < pending_segment->end;
+      });
+  if (pending_segment && schema_id_ != kSmartEnglishSchema &&
+      !is_pinyin_flow && !is_code_token && !explicit_english_case &&
+      std::none_of(candidates.begin(), candidates.end(), [&](const auto& item) {
+        if (item.raw || item.candidate->start() != pending_segment->start ||
+            item.candidate->end() != pending_segment->end) return false;
+        // Rare ASCII dictionary hits and derived aliases must not prevent a
+        // complete Chinese syllable + literal suffix from being offered.
+        // Keep common exact English, native Chinese/mixed and custom routes.
+        return !has_complete_chinese_prefix || !(item.exact || item.ambiguous_english) ||
+            (item.exact && common_exact_english);
+      })) {
+    const auto is_prefix = [&](const auto& item) {
+      const auto phrase = As<Phrase>(item.genuine);
+      return ChineseDictionaryPhrase(phrase) && phrase->is_exact_match() &&
+          phrase->start() == pending_segment->start &&
+          phrase->end() > phrase->start() && phrase->end() < pending_segment->end &&
+          std::any_of(phrase->text().begin(), phrase->text().end(),
+                      [](unsigned char byte) { return byte >= 0x80; });
+    };
+    size_t prefix_end = pending_segment->start;
+    for (const auto& item : candidates) {
+      if (is_prefix(item)) prefix_end = std::max(prefix_end, item.genuine->end());
+    }
+    const auto suffix = pending_segment->input.substr(prefix_end - pending_segment->start);
+    const bool literal_letters = !suffix.empty() &&
+        std::all_of(suffix.begin(), suffix.end(), [](unsigned char byte) {
+          return (byte >= 'a' && byte <= 'z') || (byte >= 'A' && byte <= 'Z');
+        });
+    if (prefix_end > pending_segment->start && literal_letters) {
+      // Keep the learning pool independent of page size. The display filter
+      // reserves a first-page native partial slot after ranking this pool.
+      // Never drain the lazy tail or materialize thousands of prefixes.
+      constexpr size_t limit = 8;
+      std::set<string> emitted;
+      for (const auto& item : candidates) {
+        if (!is_prefix(item) || item.genuine->end() != prefix_end) continue;
+        const string text = item.genuine->text() + suffix;
+        if (!emitted.insert(text).second) continue;
+        // This is not a dictionary Phrase or a shadow of the shorter prefix:
+        // its text AND consumed range include the raw suffix. Display-choice
+        // learning owns it, so a selection never teaches wo -> 我v to Rime.
+        auto literal = New<SimpleCandidate>(kLiteralMixedCandidateType,
+            pending_segment->start, pending_segment->end, text, string(),
+            pending_segment->input);
+        literal->set_quality(item.candidate->quality());
+        result->Append(literal);
+        if (emitted.size() >= limit) break;
+      }
+    }
+  }
   for (auto& item : candidates) {
     if (const auto projected = projector(item.candidate)) {
       result->Append(projected);
@@ -692,7 +871,8 @@ bool SmartEnglishFilter::AppliesToSegment(Segment* segment) {
       composition_input.substr(segment->start,
                                segment->end - segment->start),
       segment->HasTag("linnet_pinyin"),
-      segment->HasTag("zz_code_token")};
+      segment->HasTag("zz_code_token"),
+      segment->start, segment->end};
   return true;
 }
 

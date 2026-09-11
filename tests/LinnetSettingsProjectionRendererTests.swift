@@ -14,6 +14,7 @@ struct LinnetSettingsProjectionRendererTests {
       try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
       testDefaultInteractionProjection()
       testAlphanumericSegmentorProjection()
+      testFullPinyinTranspositionProjection()
       testDisplayLearningProjection()
       testThemeFamilyAndAppearanceMapping()
       try testIndependentSelectionAndCorners()
@@ -68,6 +69,15 @@ struct LinnetSettingsProjectionRendererTests {
           text.contains("\"zime_display_learning/enabled\": \(enabled)")
         else { fail("display learning must occur once before the native uniquifier and honor its mode learning policy") }
       }
+    }
+  }
+
+  private static func testFullPinyinTranspositionProjection() {
+    let projections = LinnetSettingsProjectionRenderer.renderProjections(document: .default)
+    for name in LinnetSettingsProjectionRenderer.chineseCustomFiles + [LinnetSettingsProjectionRenderer.englishCustomFile] {
+      guard let text = projections[name],
+        text.contains("\"speller/algebra/@before last\": \"derive/^([jqxnlm])iu$/$1ui/\"") == (name == "linnet_zh_pinyin.custom.yaml")
+      else { fail("iu/ui correction must only augment full pinyin before English entity folding") }
     }
   }
 

@@ -4,8 +4,9 @@ ZIME 是一款面向 Apple Silicon、macOS 13 及以上版本的本地优先双�
 它把候选原文和翻译分开显示：候选主文本是实际输入内容，灰色副文本是本地
 释义；只有用户主动切换到译文候选并确认时，译文才会上屏。
 
-当前版本：[0.1.17 开发预览](https://github.com/zgat/ZIME/releases/tag/v0.1.17)。
-提供完整 ZIP、PKG 和 Core-only ZIP。此次更新万象词库与 LTS 模型，推荐完整包。
+当前版本：[0.1.20 开发预览](https://github.com/zgat/ZIME/releases/tag/v0.1.20)。
+提供完整 ZIP、PKG 和 Core-only ZIP。本次修复拼音纠错、混合输入和候选学习；
+已有 0.1.17 完整词库的用户可只更新 Core，首次安装请选择完整包。
 仍为未公证的 Ad-hoc 预览；GitHub 自动生成的 Source code 归档不是输入法安装器。
 
 ## 功能
@@ -82,8 +83,8 @@ CC-CEDICT 124,988 条源词条、四类带清单校验的离线数据包和万�
 ## 安装与构建
 
 下载选择、首次安装、保留词频的升级流程与限制见
-[ZIME 安装说明](docs/ZIME-INSTALL.md)；本次上游更新见
-[0.1.17 版本说明](docs/releases/ZIME-0.1.17.md)。
+[ZIME 安装说明](docs/ZIME-INSTALL.md)；本次修复见
+[0.1.20 版本说明](docs/releases/ZIME-0.1.20.md) 与 [更新日志](CHANGELOG.md)。
 实现边界和行为合同见 [ZIME 设计说明](docs/ZIME.md)。
 
 准备锁定的依赖和数据后，可执行：
@@ -130,6 +131,11 @@ scripts/build-zime-delivery /absolute/preview/ZIME.app /absolute/output/director
 并加入在线来源标签、完整 API 译文上屏和无损本地词库解析。
 见 [0.1.16 版本说明](docs/releases/ZIME-0.1.16.md) 与
 [翻译解析验证](docs/ZIME-TRANSLATION-SOURCES-2026-09-08.md)。
+
+0.1.18–0.1.20 修复 `i` 被英文缩写补全抢占、`woi` 过度组句，以及 `nui` 缺少中文
+换位纠错的问题；新增 `wov → 我v` 这类保留尾串的完整混输候选。别名和补全按实际
+输入、当前模式学习，不污染原生中文前缀；已有词库可通过 Core 更新获得修复。
+见 [0.1.20 版本说明](docs/releases/ZIME-0.1.20.md)。
 
 ## 上游与许可证
 

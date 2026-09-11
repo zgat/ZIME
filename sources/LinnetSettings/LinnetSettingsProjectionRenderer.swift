@@ -48,6 +48,7 @@ enum LinnetSettingsProjectionRenderer {
     )
     for schemaID in LinnetSettingsContract.ChineseProfile.allCases.map(\.schemaID) {
       if let schemaCustom = renderChineseSchemaCustom(
+        schemaID: schemaID,
         appearance: document.appearance,
         input: document.input,
         english: document.english
@@ -252,12 +253,20 @@ private extension LinnetSettingsProjectionRenderer {
   }
 
   private static func renderChineseSchemaCustom(
+    schemaID: String,
     appearance: LinnetSettingsDocument.Appearance,
     input: LinnetSettingsDocument.Input,
     english: LinnetSettingsDocument.English
   ) -> String? {
     var entries = alphanumericSegmentorProjection(chinese: true)
     entries += displayLearningProjection(chinese: true, enabled: input.chineseLearningPolicy != .disabled)
+    if schemaID == LinnetSettingsContract.ChineseProfile.fullPinyin.schemaID {
+      // Core-owned compatibility for retained language packs. Insert before
+      // ASCII entity folding so uppercase dictionary codes are not corrected.
+      // Only initials without a valid -ui syllable qualify: dui/gui/hui/etc.
+      // retain their ordinary readings, and double-pinyin layouts are untouched.
+      entries.append(("speller/algebra/@before last", quoted("derive/^([jqxnlm])iu$/$1ui/")))
+    }
     appendCandidateLayout(
       appearance.chineseCandidateLayout,
       defaultLayout: .horizontal,
