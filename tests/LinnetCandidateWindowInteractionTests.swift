@@ -2349,7 +2349,7 @@ struct LinnetCandidateWindowInteractionTests {
         .font: NSFont.systemFont(ofSize: 40, weight: .semibold),
         .foregroundColor: ink,
       ])
-    ("译文默认只展示；切换到译文后，数字键选中上屏" as NSString).draw(
+    ("译文默认只展示；切换到译文后，空格或数字键选中上屏" as NSString).draw(
       at: NSPoint(x: 66, y: 542),
       withAttributes: [
         .font: NSFont.systemFont(ofSize: 22),
@@ -2383,7 +2383,7 @@ struct LinnetCandidateWindowInteractionTests {
           x: originX + (availableWidth - panelWidth) / 2,
           y: 395 - panelHeight, width: panelWidth, height: panelHeight))
     }
-    ("Tab 切换原文 / 译文　·　数字键选词　·　Enter 输入原文" as NSString).draw(
+    ("Tab 切换原文 / 译文　·　空格 / 数字选词　·　Enter 输入原文" as NSString).draw(
       at: NSPoint(x: 64, y: 90),
       withAttributes: [
         .font: NSFont.systemFont(ofSize: 23, weight: .medium),

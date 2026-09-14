@@ -315,23 +315,23 @@ class LinnetInteractionProcessor : public Processor {
     }
 
     if (IsPlainKey(key) && !context->get_option("ascii_mode") &&
-        (key.keycode() == XK_Return || key.keycode() == XK_KP_Enter ||
-         key.keycode() == XK_space)) {
-      const bool add_space = key.keycode() == XK_space &&
-          (schema_id_ != kSmartEnglishSchema || options_.space_adds_trailing_space);
+        (key.keycode() == XK_Return || key.keycode() == XK_KP_Enter)) {
       // The same core owner is used by IMK's explicit raw-input shortcut.
       // It preserves already-selected prefixes, never learns a highlighted
       // candidate, and dismisses zero-input predictions without committing them.
       const bool committed = context->CommitRawInput();
       HardStop(context);
       if (!committed) return kRejected;
-      if (add_space) engine_->CommitText(" ");
       return kAccepted;
     }
 
     if (!context->composition().empty() &&
         context->composition().back().HasTag("prediction")) {
       return ProcessPrediction(context, key);
+    }
+    if (key.keycode() == XK_space && IsPlainKey(key) &&
+        !context->get_option("ascii_mode")) {
+      return CommitSpaceSelection(context);
     }
     const ProcessResult alphanumeric = ProcessAlphanumericDigit(context, key);
     if (alphanumeric != kNoop) return alphanumeric;
@@ -659,6 +659,29 @@ class LinnetInteractionProcessor : public Processor {
     context->Highlight(target);
     return CommitCurrentSelection(context, PostCommitPrediction::kPreserve,
                                   false);
+  }
+
+  ProcessResult CommitSpaceSelection(Context* context) const {
+    if (!context || context->input().empty()) return kRejected;
+    const bool add_space = schema_id_ == kSmartEnglishSchema &&
+        options_.space_adds_trailing_space;
+    if (CommitCurrentSelection(context, PostCommitPrediction::kPreserve, add_space)) {
+      // Selection may only confirm a prefix. Leave the tail composing and do
+      // not insert a separator in front of it. Only a completed English word
+      // consumes the optional boundary; its next candidate must not add two.
+      if (context->input().empty()) {
+        if (add_space) engine_->CommitText(" ");
+      } else {
+        context->set_property(kSuppressFollowingSpaceProperty, "");
+      }
+      return kAccepted;
+    }
+    // Unmatched input without a menu remains recoverable, but never substitute
+    // a different hidden candidate for the unavailable highlighted item.
+    const bool committed = context->CommitRawInput();
+    HardStop(context);
+    if (committed && add_space) engine_->CommitText(" ");
+    return committed ? kAccepted : kRejected;
   }
 
   bool CommitCurrentSelection(Context* context,

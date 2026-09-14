@@ -129,7 +129,7 @@ struct ZIMEKeyboardShortcutSettings: View {
         }
       }
       if let error { Text(error).font(.caption).foregroundStyle(.red) }
-      Text("Number keys 1–9 select candidates. Return submits the original input, even on the translation side. Click a shortcut to record a different binding.")
+      Text("Space selects the highlighted candidate; number keys 1–9 select by position. Return submits the original input, even on the translation side. Click a shortcut to record a different binding.")
         .font(.caption).foregroundStyle(.secondary)
       Text("Smart completion fills the selected English suggestion into marked input. Return submits that input; completion never switches translation sides.")
         .font(.caption).foregroundStyle(.secondary)

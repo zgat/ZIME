@@ -13,7 +13,12 @@ cd "$(dirname "$0")/.."
     !raw.include?("selectCandidate") && !raw.include?("highlighted")
   abort "candidate-confirmation shortcut returned" if host.include?(".commitCandidate")
   native = File.read("plugins/smart_english/smart_english.cc")
-  abort "Return/Space candidate-confirmation owner returned" if native.include?("CommitSpaceSelection")
+  raw_native = native[/if \(IsPlainKey\(key\) && !context->get_option\("ascii_mode"\) &&(.*?)\n    \}/m, 1]
+  abort "Return lost raw-only semantics" unless raw_native &&
+    raw_native.include?("XK_Return") && raw_native.include?("XK_KP_Enter") &&
+    raw_native.include?("CommitRawInput") && !raw_native.include?("XK_space")
+  abort "Space lost selected-candidate semantics" unless native.include?("return CommitSpaceSelection(context)") &&
+    host.include?("selectCandidate(absoluteIndex: presented.items[presented.highlightedItemIndex].absoluteIndex)")
   abort "native original-input owner missing" unless native.include?("context->CommitRawInput()")
   abort "numeric translated-candidate selection disappeared" unless
     host.include?("selectCandidate(absoluteIndex: presented.items[index].absoluteIndex)")

@@ -5443,6 +5443,15 @@ void ExpectChineseTabPolicy(RimeApi_stdbool* api) {
   SetSchemaString(api, kSchema, kPolicyKey, "smart_complete");
 }
 
+bool HighlightForSpace(RimeApi_stdbool* api, RimeSessionId session, size_t index) {
+  // The native API returns false when the requested row is already selected.
+  // Verify the resulting selection rather than treating a no-op as failure.
+  api->highlight_candidate(session, index);
+  const auto ctx = rime::Service::instance().GetSession(session)->context();
+  return !ctx->composition().empty() && ctx->GetSelectedCandidate() &&
+      ctx->composition().back().selected_index == index;
+}
+
 void ExpectImmediateEnglishSpaceCommit(RimeApi_stdbool* api) {
   for (const char uppercase : {'F', 'I'}) {
     const RimeSessionId shifted = CreateSchemaSession(api, "linnet_en");
@@ -5502,7 +5511,7 @@ void ExpectImmediateEnglishSpaceCommit(RimeApi_stdbool* api) {
   const RimeSessionId correction = CreateSchemaSession(api, "linnet_en");
   Enter(api, correction, "cluod");
   const size_t corrected = NormalizedCandidateIndex(api, correction, "cloud");
-  if (!api->highlight_candidate(correction, corrected) ||
+  if (!HighlightForSpace(api, correction, corrected) ||
       !api->process_key(correction, XK_space, 0) ||
       TakeCommit(api, correction) != "cloud ") {
     Fail("Space did not immediately commit the selected correction and boundary");
@@ -5513,7 +5522,7 @@ void ExpectImmediateEnglishSpaceCommit(RimeApi_stdbool* api) {
   Enter(api, phrase, "earlyaccess");
   const size_t phrase_index =
       NormalizedCandidateIndex(api, phrase, "early access");
-  if (!api->highlight_candidate(phrase, phrase_index) ||
+  if (!HighlightForSpace(api, phrase, phrase_index) ||
       !api->process_key(phrase, XK_space, 0) ||
       TakeCommit(api, phrase) != "early access ") {
     Fail("Space did not immediately commit a multi-word English candidate");
@@ -6962,9 +6971,11 @@ void ExpectFormalProfileCommitKeys(RimeApi_stdbool* api,
     const std::string reason = schema_id + " active Space";
     const RimeSessionId session = CreateSchemaSession(api, schema_id.c_str());
     Enter(api, session, input);
+    const auto expected = Candidates(api, session).front().text +
+        (schema_id == "linnet_en" ? " " : "");
     if (!api->process_key(session, XK_space, 0) ||
-        TakeCommit(api, session, reason) != input + " ") {
-      Fail(reason + " did not submit the raw spelling with one literal space");
+        TakeCommit(api, session, reason) != expected) {
+      Fail(reason + " did not select the highlighted candidate");
     }
     ExpectNoCommit(api, session, "duplicate " + reason);
     api->destroy_session(session);
@@ -7822,8 +7833,13 @@ void ExpectZIMENumericAndRawCommit(RimeApi_stdbool* api) {
     ExpectNoCommit(api, session, "emoji-enabled literal candidate");
     const auto choose = [&](const std::string& text) {
       Enter(api, session, "xiaolian");
-      if (!api->select_candidate(session, CandidateIndex(api, session, text)) || TakeCommit(api, session) != text)
-        Fail("emoji learning fixture could not commit " + text);
+      if (!HighlightForSpace(api, session, CandidateIndex(api, session, text)))
+        Fail("emoji learning fixture could not highlight " + text);
+      const bool accepted = api->process_key(session, XK_space, 0);
+      const auto committed = TakeOptionalCommit(api, session);
+      if (!accepted || committed != text)
+        Fail("emoji Space commit: expected=" + text + " actual=" + committed +
+             " accepted=" + std::to_string(accepted) + " input=" + api->get_input(session));
     };
     for (int index = 0; index < 3; ++index) choose("😀");
     Enter(api, session, "xiaolian");
@@ -7919,7 +7935,7 @@ void ExpectZIMENumericAndRawCommit(RimeApi_stdbool* api) {
   std::cout << "ZIME segment translations: partial tail, marked text, source prefix, raw exit and isolation: PASS\n";
   for (const char* schema : {"linnet_zh_pinyin", "linnet_en"}) {
     for (const char* input : {"key", "nihao", "shuru", "iMe", "Cluod", "x70"}) {
-      for (const int key : {0, XK_Return, XK_KP_Enter, XK_space}) {
+      for (const int key : {0, XK_Return, XK_KP_Enter}) {
         const auto session = CreateSchemaSession(api, schema);
         if (!api->set_input(session, input)) Fail("raw commit fixture could not set input");
         const auto before = CandidateOrigins(session);
@@ -7927,9 +7943,9 @@ void ExpectZIMENumericAndRawCommit(RimeApi_stdbool* api) {
         api->highlight_candidate_on_current_page(session, 1);
         ExpectNoCommit(api, session, "highlight before original input");
         const bool handled = key == 0 ? api->commit_raw_input(session) : api->process_key(session, key, 0);
-        const std::string expected = std::string(input) + (key == XK_space ? " " : "");
+        const std::string expected = input;
         if (!handled || TakeCommit(api, session) != expected)
-          Fail("Return/Space/API selected a candidate instead of raw input: " + std::string(schema) + "/" + input);
+          Fail("Return/API selected a candidate instead of raw input: " + std::string(schema) + "/" + input);
         ExpectNoCommit(api, session, "duplicate raw commit");
         ExpectMenuEmpty(api, session, "raw commit must not retain predictions");
         if (!std::string(api->get_input(session)).empty()) Fail("raw commit retained input");
@@ -7973,7 +7989,7 @@ void ExpectZIMENumericAndRawCommit(RimeApi_stdbool* api) {
     }
     api->destroy_session(idle);
   }
-  for (const int key : {XK_Return, XK_KP_Enter, XK_space}) {
+  for (const int key : {XK_Return, XK_KP_Enter}) {
     const auto partial = CreateSchemaSession(api, "linnet_zh_pinyin");
     Enter(api, partial, "xiazhouni");
     api->set_caret_pos(partial, 7);
@@ -7985,7 +8001,7 @@ void ExpectZIMENumericAndRawCommit(RimeApi_stdbool* api) {
         !api->select_candidate(partial, static_cast<size_t>(prefix - partial_rows.begin())))
       Fail("full-pinyin fixture could not explicitly select its prefix");
     if (!api->process_key(partial, key, 0) ||
-        TakeCommit(api, partial) != std::string("下周ni") + (key == XK_space ? " " : ""))
+        TakeCommit(api, partial) != "下周ni")
       Fail("raw submission changed a previously selected Chinese prefix");
     api->destroy_session(partial);
     const auto prediction = CreatePassivePrediction(api, "raw key prediction exit");
@@ -7998,12 +8014,70 @@ void ExpectZIMENumericAndRawCommit(RimeApi_stdbool* api) {
   SetSchemaBool(api, "linnet_en", "linnet_english_interaction/space_adds_trailing_space", false);
   const auto no_space = CreateSchemaSession(api, "linnet_en");
   Enter(api, no_space, "cluod");
-  if (!api->process_key(no_space, XK_space, 0) || TakeCommit(api, no_space) != "cluod")
+  if (!HighlightForSpace(api, no_space, CandidateIndex(api, no_space, "cloud")) ||
+      !api->process_key(no_space, XK_space, 0) || TakeCommit(api, no_space) != "cloud")
     Fail("Space trailing-space preference was lost");
   api->destroy_session(no_space);
   SetSchemaBool(api, "linnet_en", "linnet_english_interaction/space_adds_trailing_space", true);
   api->destroy_session(owner);
-  std::cout << "ZIME numeric selection and original-input submission: Return/keypad/API/Space, raw casing, no learning, caret, partial prefix, idle and prediction: PASS\n";
+  std::cout << "ZIME numeric/Space selection and original-input submission: Return/keypad/API, raw casing, no learning, caret, partial prefix, idle and prediction: PASS\n";
+}
+
+void ExpectZIMESpaceSelection(RimeApi_stdbool* api) {
+  for (const char* schema : {"linnet_zh_pinyin", "linnet_en"}) {
+    const bool english = std::string(schema) == "linnet_en";
+    const auto owner = CreateSchemaSession(api, schema);
+    const auto old_size = rime::Service::instance().GetSession(owner)->schema()->page_size();
+    for (int page_size = 3; page_size <= 9; ++page_size) {
+      SetSchemaString(api, schema, "menu/page_size", std::to_string(page_size).c_str());
+      for (const int highlight : {0, 1, page_size + 1}) {
+        const auto session = CreateSchemaSession(api, schema);
+        Enter(api, session, english ? "a" : "shi");
+        if (!HighlightForSpace(api, session, highlight)) Fail("Space fixture cannot highlight another page");
+        const auto ctx = rime::Service::instance().GetSession(session)->context();
+        const auto selected = ctx->GetSelectedCandidate();
+        if (!selected) Fail("Space fixture has no highlighted candidate");
+        const auto expected = selected->text() + (english ? " " : "");
+        if (!api->process_key(session, XK_space, 0) || TakeCommit(api, session) != expected)
+          Fail("Space selected the first or wrong-page candidate: " + std::string(schema));
+        ExpectNoCommit(api, session, "Space duplicate commit");
+        api->destroy_session(session);
+      }
+    }
+    SetSchemaString(api, schema, "menu/page_size", std::to_string(old_size).c_str());
+    api->destroy_session(owner);
+  }
+  for (const auto& pair : std::vector<std::pair<std::string, std::string>>{
+         {"key", "可以"}, {"wov", "我v"}, {"x70", "x70"}, {"nui", "牛"}}) {
+    const auto session = CreateSchemaSession(api, "linnet_zh_pinyin");
+    // Set the existing literal as a whole: with nine rows, typing 7 itself
+    // is intentionally a numeric selection, not an alphanumeric suffix.
+    if (pair.first == "x70") api->set_input(session, pair.first.c_str());
+    else Enter(api, session, pair.first);
+    if (!HighlightForSpace(api, session, CandidateIndex(api, session, pair.second)) ||
+        !api->process_key(session, XK_space, 0) || TakeCommit(api, session) != pair.second)
+      Fail("Space lost mixed input, spelling correction or Chinese abbreviation: " + pair.first);
+    api->destroy_session(session);
+  }
+  for (bool translate_prefix : {false, true}) {
+    const auto session = CreateSchemaSession(api, "linnet_zh_pinyin");
+    Enter(api, session, "xiazhouni");
+    api->set_caret_pos(session, 7);
+    const auto prefix = CandidateIndex(api, session, "下周");
+    if (translate_prefix) {
+      if (!api->select_candidate_with_text(session, prefix, "next week")) Fail("Space translated prefix fixture failed");
+    } else if (!HighlightForSpace(api, session, prefix) || !api->process_key(session, XK_space, 0)) {
+      Fail("Space could not confirm a partial Chinese candidate");
+    }
+    ExpectNoCommit(api, session, "partial Space must retain the unselected tail");
+    if (!HighlightForSpace(api, session, CandidateIndex(api, session, "你")) ||
+        !api->process_key(session, XK_space, 0) ||
+        TakeCommit(api, session) != (translate_prefix ? "next week你" : "下周你"))
+      Fail("Space lost a confirmed source/translated prefix or inserted a separator into it");
+    api->destroy_session(session);
+  }
+  ExpectImmediateEnglishSpaceCommit(api);
+  std::cout << "ZIME Space: highlighted candidate, pages 3-9, mixed input, partial prefixes and English spacing: PASS\n";
 }
 
 }  // namespace
@@ -8177,6 +8251,7 @@ int main(int argc, char** argv) {
   if (zime_shortcuts_probe) {
     ExpectZIMERecordedShortcutBridge(api);
     ExpectZIMENumericAndRawCommit(api);
+    ExpectZIMESpaceSelection(api);
     api->finalize();
     return 0;
   }

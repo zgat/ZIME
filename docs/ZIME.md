@@ -98,8 +98,8 @@ Old pass/navigate Tab behavior leaves completion unbound; old smart completion
 receives Option-Tab. Rime's legacy fixed Tab action is
 always projected as pass so it cannot compete with the recorded Host binding.
 
-On the translation side, arrow keys move the highlight and 1–9 commit a row
-directly. The configured 3–9 row page size applies to translations too; all
+On the translation side, arrow keys move the highlight, Space selects the
+highlighted row, and 1–9 select a row directly. The configured 3–9 row page size applies to translations too; all
 alternatives remain reachable through paging instead of being truncated at
 nine rows. Unavailable numeric rows never select an invisible source candidate.
 Escape or the toggle key returns to source candidates. If no available
@@ -107,10 +107,13 @@ definition exists, the source list remains active and ZIME reports
 “无译文”. Definitions are never appended automatically. Outside composition,
 these candidate shortcuts pass through to the application.
 
-Space also submits original input rather than selecting a candidate; it adds
-a space by default, with the existing Smart English trailing-space preference
-still available. Return and Space dismiss zero-input predictions without
-committing a suggestion, even after arrow navigation. Mouse and accessibility
+Space selects the highlighted source or translation candidate. Chinese source
+candidates and translations receive no additional separator; translations retain
+their exact commit text. Independent Smart English source candidates honor the
+trailing-space preference. Partial selection confirms only the chosen segment,
+retaining the unselected tail without inserting a space. Return dismisses
+zero-input predictions and passes through; Space dismisses them and inserts a
+literal space, even after arrow navigation. Mouse and accessibility
 candidate selection remain supported. Numeric selection and its page boundaries
 are unchanged, including the literal alphanumeric behavior described above.
 

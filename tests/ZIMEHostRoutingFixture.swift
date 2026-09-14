@@ -88,6 +88,28 @@ final class FixtureController {
     precondition(owner.handleBilingualKeyDown(key(kVK_ANSI_1, "1"), modifiers: []) == true)
     precondition(owner.rimeAPI.chosen == page.items[0].sourceAbsoluteIndex &&
       owner.rimeAPI.translation == page.items[0].text && !owner.bilingualTranslationMode)
+    owner.bilingualTranslationMode = true
+    fixtureDelegate.panel!.candidateSnapshot = page
+    let highlighted = page.items[page.highlightedItemIndex]
+    precondition(owner.handleBilingualKeyDown(key(kVK_Space, " "), modifiers: []) == true)
+    precondition(owner.rimeAPI.chosen == highlighted.sourceAbsoluteIndex &&
+      owner.rimeAPI.translation == highlighted.commitOverride && owner.rawCommits == 1)
+    owner.rimeAPI.chosen = nil
+    precondition(owner.handleBilingualKeyDown(key(kVK_Space, " "), modifiers: []) == nil,
+      "source-side Space must reach the native selector")
+    owner.bilingualTranslationMode = true
+    for flags: NSEvent.ModifierFlags in [.command, .option, .control, .shift] {
+      precondition(owner.handleBilingualKeyDown(key(kVK_Space, " ", flags), modifiers: flags) == nil)
+      precondition(owner.rimeAPI.chosen == nil)
+    }
+    fixtureDelegate.panel!.candidateSnapshot = .init(items: [], currentPage: 0,
+      pageSize: 5, highlightedItemIndex: 0, isLastPage: true)
+    precondition(owner.handleBilingualKeyDown(key(kVK_Space, " "), modifiers: []) == true)
+    precondition(owner.rimeAPI.chosen == nil, "empty translation menu must not select a hidden source")
+    owner.hasPendingRimeInput = false
+    precondition(owner.handleBilingualKeyDown(key(kVK_Space, " "), modifiers: []) == nil)
+    precondition(!owner.bilingualTranslationMode, "idle Space retained stale translation mode")
+    owner.hasPendingRimeInput = true
     for details in ["", "你 [ni3]\nyou (informal, as opposed to courteous 您[nin2])"] {
       let ni = FixtureController.CandidateSnapshot(items: [
         .init(absoluteIndex: 7, page: 1, indexOnPage: 2, text: "你",
@@ -99,9 +121,9 @@ final class FixtureController {
       let translated = owner.projectTranslationCandidates(from: ni)
       precondition(translated.items.map(\.text) == ["you"] && translated.items[0].commitOverride == "you")
       fixtureDelegate.panel!.candidateSnapshot = translated
-      precondition(owner.handleBilingualKeyDown(key(kVK_ANSI_1, "1"), modifiers: []) == true)
+      precondition(owner.handleBilingualKeyDown(key(kVK_Space, " "), modifiers: []) == true)
       precondition(owner.rimeAPI.chosen == 7 && owner.rimeAPI.translation == "you",
-        "numeric selection committed hover notes instead of the displayed core translation")
+        "Space committed hover notes instead of the displayed core translation")
     }
     for label in ["ai", "腾讯", "百度", "DeepL"] {
       let raw = "  you (informal) / yourself; yours\n" + String(repeating: "完整译文", count: 100) + "  "
@@ -116,10 +138,13 @@ final class FixtureController {
       precondition(translated.items.count == 1 && translated.items[0].text == raw
         && translated.items[0].comment == "\(label):你" && translated.items[0].commitOverride == raw)
       fixtureDelegate.panel!.candidateSnapshot = translated
-      precondition(owner.handleBilingualKeyDown(key(kVK_ANSI_1, "1"), modifiers: []) == true)
-      precondition(owner.rimeAPI.chosen == 8 && owner.rimeAPI.translation == raw,
-        "online numeric commit split, trimmed or included the source label")
+      for event in [key(kVK_ANSI_1, "1"), key(kVK_Space, " ")] {
+        owner.bilingualTranslationMode = true
+        precondition(owner.handleBilingualKeyDown(event, modifiers: []) == true)
+        precondition(owner.rimeAPI.chosen == 8 && owner.rimeAPI.translation == raw,
+          "online numeric/Space commit split, trimmed, appended spacing or included the source label")
+      }
     }
-    print("ZIME production Host routing: missing digits, modified arrows, raw Return, paged identity and complete source-labeled online commits: PASS")
+    print("ZIME production Host routing: missing digits, Space highlight/idle/modifiers, raw Return, paged identity and complete online commits: PASS")
   }
 }

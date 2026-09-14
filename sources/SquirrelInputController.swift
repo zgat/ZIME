@@ -604,7 +604,7 @@ extension SquirrelInputController {
     }
   }
 
-  /// Numeric keys select candidates; the raw-input binding bypasses both the
+  /// Numeric keys and Space select candidates; the raw-input binding bypasses both the
   /// source and translation highlight. Idle/client keys stay local.
   private func handleBilingualKeyDown(
     _ event: NSEvent,
@@ -658,7 +658,7 @@ extension SquirrelInputController {
           input: input, candidates: source.items.map(\.text), highlighted: source.highlightedItemIndex)
       else { return true }
       // Replace marked input only. No selection notifier, user-learning write
-      // or client insertText occurs until numeric selection or raw submission.
+      // or client insertText occurs until candidate selection or raw submission.
       _ = completed.withCString { rimeAPI.set_input(session, $0) }
       rimeUpdate()
       return true
@@ -672,6 +672,18 @@ extension SquirrelInputController {
       bilingualTranslationMode = false
       bilingualCandidates.reset()
       rimeUpdate()
+      return true
+    }
+    if event.keyCode == UInt16(kVK_Space) {
+      guard hasPendingRimeInput else {
+        bilingualTranslationMode = false
+        bilingualCandidates.reset()
+        return nil
+      }
+      guard let presented,
+        presented.items.indices.contains(presented.highlightedItemIndex)
+      else { return true }
+      _ = selectCandidate(absoluteIndex: presented.items[presented.highlightedItemIndex].absoluteIndex)
       return true
     }
     if let digit = event.charactersIgnoringModifiers?.first?.wholeNumberValue,
@@ -688,9 +700,9 @@ extension SquirrelInputController {
     if [UInt16(kVK_PageDown), UInt16(kVK_ANSI_Equal)].contains(event.keyCode) {
       return page(up: false)
     }
-    // The native raw-input owner handles an unbound Return or Space. Leave
+    // The native raw-input owner handles an unbound Return. Leave
     // translation mode first so no hidden source/translation is selected.
-    if [UInt16(kVK_Return), UInt16(kVK_ANSI_KeypadEnter), UInt16(kVK_Space)].contains(event.keyCode),
+    if [UInt16(kVK_Return), UInt16(kVK_ANSI_KeypadEnter)].contains(event.keyCode),
       shortcutModifiers.isEmpty {
       bilingualTranslationMode = false
       bilingualCandidates.reset()

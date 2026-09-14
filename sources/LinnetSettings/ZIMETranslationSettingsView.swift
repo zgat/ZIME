@@ -29,7 +29,7 @@ struct ZIMETranslationSettingsView: View {
             .accessibilityIdentifier("settings.translation.enabled")
           Text("开启并应用后，缺少本地译文的当前页候选词会发送给下方服务，可能产生费用。不会发送前后文、剪贴板、应用名称或已输入的文档。关闭时不发请求。")
             .font(.caption).foregroundStyle(.secondary)
-          Text("本地有可用译义时不请求在线服务。在线候选显示来源，例如“腾讯:you”或“ai:you”；切换到译文后用数字选中，会完整提交服务返回的译文字段，来源标签不上屏。过长或无效响应整体拒收，不截断译文。")
+          Text("本地有可用译义时不请求在线服务。在线候选显示来源，例如“腾讯:you”或“ai:you”；切换到译文后用数字或空格选中，会完整提交服务返回的译文字段，来源标签不上屏。过长或无效响应整体拒收，不截断译文。")
             .font(.caption).foregroundStyle(.secondary)
           Picker("服务商", selection: $model.configuration.provider) {
             ForEach(ZIMETranslationConfiguration.Provider.allCases, id: \.self) { provider in
