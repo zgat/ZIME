@@ -28,10 +28,10 @@ final class ForegroundFixture: NSObject {
     // XCTest operates this normal UI; only the unsandboxed fixture owns the
     // Host-like open. Sandboxed NSWorkspace discards both arguments and HOME.
     let settingsURL = Bundle.main.bundleURL.deletingLastPathComponent()
-      .appendingPathComponent("Linnet.app/Contents/Applications/Settings.app")
+      .appendingPathComponent("ZIME.app/Contents/Applications/Settings.app")
     let isolatedHome = "/private/tmp/linnet-settings-ui-uat-active-\(getuid())"
     guard Bundle(url: settingsURL)?.bundleIdentifier ==
-      "io.github.ares-x.inputmethod.Linnet.settings-ui-uat.settings",
+      "com.zime.inputmethod.ZIME.local-build.settings",
       FileManager.default.fileExists(
         atPath: isolatedHome + "/.linnet-settings-ui-uat-fixture")
     else {

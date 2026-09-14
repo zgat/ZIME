@@ -4,7 +4,7 @@
 # --verify checks the real embedded Settings bytes against a disposable home;
 # a frozen candidate is copied to a disposable standard App path because
 # production Settings intentionally recognizes only installed `.app` Hosts.
-# --ui-test runs SettingsUITests with a separate UAT bundle identity and the
+# --ui-test runs SettingsUITests with the non-production local-build identity and the
 # one fixed home required by the UI-test contract. Installed-product UAT is a
 # later artifact boundary and is not claimed by either mode.
 
@@ -55,7 +55,10 @@ if [[ "${run_ui_tests}" == true ]]; then
     fail "Settings UI tests require macOS Developer Mode; run DevToolsSecurity -enable first"
 fi
 
-uat_host_identifier="io.github.ares-x.inputmethod.Linnet.settings-ui-uat"
+# Exercise the real local-build release policy, not Linnet's network updater.
+# This identity is never the installed product. An existing development-domain
+# preference file is a refusal boundary, not something the fixture may erase.
+uat_host_identifier="com.zime.inputmethod.ZIME.local-build"
 uat_settings_identifier="${uat_host_identifier}.settings"
 uat_test_identifier="${uat_host_identifier}.SettingsUITests"
 uat_home="/private/tmp/linnet-settings-ui-uat-active-$(id -u)"
@@ -170,6 +173,20 @@ standalone_executable="${product_root}/${standalone_name}/Contents/MacOS/Setting
 standalone_uuid="$(dwarfdump --uuid "${standalone_executable}" | awk '{print $2 ":" $3}')"
 [[ "${embedded_uuid}" == "${standalone_uuid}" ]] ||
   fail "embedded Settings does not match the fresh Settings build UUID"
+
+if [[ "${run_ui_tests}" == true ]]; then
+  test_account_home="$(/usr/bin/dscl . -read "/Users/$(id -un)" NFSHomeDirectory | awk 'NR == 1 { print $2 }')"
+  [[ "${test_account_home}" == /* && "${test_account_home}" != / ]] ||
+    fail "could not resolve isolated test account"
+  for domain in "${uat_host_identifier}" "${uat_settings_identifier}" \
+    "${uat_test_identifier}" "${uat_host_identifier}.foreground"; do
+    preference="${test_account_home}/Library/Preferences/${domain}.plist"
+    if [[ -e "${preference}" || -L "${preference}" ]] ||
+      /usr/bin/defaults read "${domain}" >/dev/null 2>&1; then
+      fail "isolated UI account has existing development preferences; refusing cleanup: ${domain}"
+    fi
+  done
+fi
 
 fixture="$(mktemp -d /tmp/linnet-visible-settings.XXXXXX)"
 fixture="$(cd "${fixture}" && pwd -P)"

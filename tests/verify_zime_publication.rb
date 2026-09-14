@@ -100,6 +100,7 @@ Dir.mktmpdir("zime-publication-", "/tmp") do |fixture|
   FileUtils.mkdir_p(File.join(real_tree, "data"))
   FileUtils.mkdir_p(File.join(real_tree, "runtime"))
   File.write(File.join(real_tree, "data/word"), "fixture")
+  File.write(File.join(real_tree, "安装说明.md"), "UTF-8 archive name fixture")
   File.symlink("../data/word", File.join(real_tree, "runtime/word"))
   archive = File.join(fixture, "fixture.zip")
   ZIMERelease.run("/usr/bin/ditto", "-c", "-k", "--keepParent", real_tree, archive)

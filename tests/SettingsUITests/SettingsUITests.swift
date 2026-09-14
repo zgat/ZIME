@@ -4,18 +4,18 @@ import XCTest
 
 final class SettingsUITests: XCTestCase {
   private let isolatedBundleIdentifier =
-    "io.github.ares-x.inputmethod.Linnet.settings-ui-uat.settings"
+    "com.zime.inputmethod.ZIME.local-build.settings"
 
   override func setUpWithError() throws {
     continueAfterFailure = false
   }
 
   @MainActor
-  func testFourSettingsPagesRemainAlive() throws {
+  func testFiveSettingsPagesRemainAlive() throws {
     let app = try launchSettings()
     defer { app.terminate() }
 
-    for name in ["Appearance", "Input", "Dictionary", "Data & Updates"] {
+    for name in ["Appearance", "Input", "翻译", "Dictionary", "Local Data"] {
       clickTab(name, in: app)
       XCTAssertNotEqual(app.state, .notRunning, "Settings exited after opening \(name)")
     }
@@ -85,7 +85,7 @@ final class SettingsUITests: XCTestCase {
     let foregroundURL = Bundle.main.bundleURL.deletingLastPathComponent()
       .appending(path: "ForegroundFixture.app", directoryHint: .isDirectory)
     XCTAssertEqual(Bundle(url: foregroundURL)?.bundleIdentifier,
-      "io.github.ares-x.inputmethod.Linnet.settings-ui-uat.foreground")
+      "com.zime.inputmethod.ZIME.local-build.foreground")
     let coveringApp = XCUIApplication(url: foregroundURL)
     coveringApp.launchEnvironment = app.launchEnvironment
     coveringApp.launchArguments = ["-ApplePersistenceIgnoreState", "YES"]
@@ -252,16 +252,8 @@ final class SettingsUITests: XCTestCase {
     defer { app.terminate() }
 
     clickTab("Input", in: app)
-    try selectEachPopUpOption([
-      "Natural Code",
-      "Full Pinyin",
-      "Flypy Double Pinyin",
-      "Microsoft Double Pinyin",
-      "Sogou Double Pinyin",
-      "Intelligent ABC",
-      "Ziguang Double Pinyin",
-      "Jiajia Pinyin",
-    ], in: app)
+    XCTAssertTrue(app.staticTexts["Full Pinyin"].exists)
+    XCTAssertFalse(app.popUpButtons["Chinese scheme"].exists)
     try selectEachPopUpOption([
       "Enhanced learning (Recommended)",
       "Standard learning",
@@ -270,7 +262,6 @@ final class SettingsUITests: XCTestCase {
     try selectEachPopUpOption(["Semicolon (;)", "Vertical bar (|)"], in: app)
     for label in [
       "Suggest emoji candidates",
-      "Output traditional Chinese by default",
       "Use English punctuation by default",
     ] {
       try clickCheckBox(label, in: app)
@@ -285,7 +276,7 @@ final class SettingsUITests: XCTestCase {
       "Show Smart English context suggestions",
       "Capitalize sentence starts",
       "Learn from English selections",
-      "Add a trailing space when Space submits original input",
+      "Add a trailing space when Space selects an English candidate",
     ] {
       try clickCheckBox(label, in: app)
     }
@@ -295,6 +286,47 @@ final class SettingsUITests: XCTestCase {
     XCTAssertFalse(app.popUpButtons["Tab key"].exists)
     XCTAssertFalse(app.popUpButtons["Commit translation"].exists)
 
+  }
+
+  @MainActor
+  func testTranslationDraftControlsDoNotRequestOrSaveCredentials() throws {
+    let app = try launchSettings()
+    defer { app.terminate() }
+    clickTab("翻译", in: app)
+    let annotations = app.checkBoxes["settings.translation.fullAnnotations"]
+    try reveal(annotations, named: "Full translation annotations", in: app)
+    let original = String(describing: annotations.value)
+    annotations.click()
+    XCTAssertNotEqual(String(describing: annotations.value), original)
+    try selectEachPopUpOption(
+      ["DeepL", "百度翻译", "腾讯翻译", "OpenAI 兼容接口"],
+      identifier: "settings.translation.provider", in: app)
+    XCTAssertTrue(app.textFields["settings.translation.endpoint"].exists)
+    XCTAssertTrue(app.textFields["settings.translation.model"].exists)
+    XCTAssertTrue(app.secureTextFields["settings.translation.key"].exists)
+    // Draft-only UI: never press Test Connection, Apply or credential deletion.
+    app.windows.firstMatch.buttons["_XCUI:CloseWindow"].click()
+    let discard = app.sheets.buttons["Discard Changes"].firstMatch
+    XCTAssertTrue(discard.waitForExistence(timeout: 3))
+    discard.click()
+  }
+
+  @MainActor
+  func testShortcutRecorderRejectsConflictsAndCancelsRecording() throws {
+    let app = try launchSettings()
+    defer { app.terminate() }
+    clickTab("Input", in: app)
+    let reset = app.buttons["Reset candidate shortcuts"]
+    try reveal(reset, named: "Reset candidate shortcuts", in: app)
+    reset.click()
+    let complete = app.buttons["settings.shortcuts.smartComplete"]
+    let original = String(describing: complete.value)
+    complete.click()
+    app.typeKey(.tab, modifierFlags: [])
+    XCTAssertTrue(app.staticTexts[
+      "This shortcut is already assigned to another candidate action."].exists)
+    app.typeKey(.escape, modifierFlags: [])
+    XCTAssertEqual(String(describing: complete.value), original)
   }
 
   @MainActor
@@ -331,69 +363,10 @@ final class SettingsUITests: XCTestCase {
 
     clickTab("Local Data", in: app)
 
-    let coreUpdate = app.descendants(matching: .any)["settings.data.coreUpdate"]
-    try reveal(coreUpdate, named: "Core update", in: app)
-    XCTAssertTrue(coreUpdate.exists, "The always-present Core update card is missing")
-    let activationActions = app.buttons.matching(NSPredicate(
-      format: "label IN %@",
-      ["Apply Installed Update…", "Try Apply Again…"]))
-    XCTAssertEqual(
-      activationActions.count,
-      1,
-      "Core update must expose exactly one stable activation action")
-    XCTAssertTrue(
-      app.descendants(matching: .any)["settings.data.core.running"].exists,
-      "Core update did not explicitly expose the running Core identity")
-    XCTAssertTrue(
-      app.descendants(matching: .any)["settings.data.core.installed"].exists,
-      "Core update did not explicitly expose the installed Core identity")
-
-    let checkAgain = app.buttons["Check Again"]
-    try reveal(checkAgain, named: "Check Again", in: app)
-    try waitUntilEnabled(checkAgain, timeout: 30)
-    checkAgain.click()
-    try waitUntilEnabled(checkAgain, timeout: 30)
-
-    try selectEachPopUpOption([
-      "GitHub (Direct)",
-      "GH-Proxy Public Mirror (Third-party)",
-    ], identifier: "settings.data.downloadSource", in: app)
-    XCTAssertTrue(app.links["Open GH-Proxy Service Information"].exists)
-    try selectEachPopUpOption(
-      ["Custom Mirror…"],
-      identifier: "settings.data.downloadSource",
-      in: app)
-
-    let mirror = app.textFields["Custom mirror base URL"]
-    try replaceText(
-      in: mirror,
-      named: "Custom mirror base URL",
-      with: "http://mirror.example.com/",
-      in: app)
-    XCTAssertEqual(mirror.value as? String, "http://mirror.example.com/")
-    let useCustomMirror = app.buttons["Use Custom Mirror"]
-    XCTAssertTrue(useCustomMirror.exists)
-    XCTAssertFalse(useCustomMirror.isEnabled)
-    try replaceText(
-      in: mirror,
-      named: "Custom mirror base URL",
-      with: "https://mirror.example.com/",
-      in: app)
-    XCTAssertEqual(mirror.value as? String, "https://mirror.example.com/")
-    try waitUntilEnabled(useCustomMirror, timeout: 3)
-    useCustomMirror.click()
-    XCTAssertNotEqual(app.state, .notRunning)
-    try replaceText(
-      in: mirror,
-      named: "Custom mirror base URL",
-      with: "https://second-mirror.example.com/",
-      in: app)
-    XCTAssertEqual(mirror.value as? String, "https://second-mirror.example.com/")
-    try waitUntilEnabled(useCustomMirror, timeout: 3)
-    try selectEachPopUpOption(
-      ["GitHub (Direct)"],
-      identifier: "settings.data.downloadSource",
-      in: app)
+    XCTAssertFalse(app.descendants(matching: .any)["settings.data.coreUpdate"].exists)
+    XCTAssertTrue(app.links["settings.data.zimeReleases"].exists)
+    XCTAssertFalse(app.buttons["Check Again"].exists)
+    XCTAssertFalse(app.popUpButtons["settings.data.downloadSource"].exists)
 
     try expandDisclosure("Manual recovery & transfer", in: app)
 
@@ -450,10 +423,9 @@ final class SettingsUITests: XCTestCase {
     try waitUntilEnabled(refresh, timeout: 10)
     try openAndCancelPanel(button: "Save…", title: "Export ZIME Diagnostics", in: app)
 
-    XCTAssertTrue(app.buttons["Update Language Data"].exists)
-    try expandDisclosure("iCloud Drive sync", in: app)
-    XCTAssertTrue(app.checkBoxes["Sync learned words with iCloud Drive"].exists)
-    XCTAssertTrue(app.buttons["Sync Learning Now"].exists)
+    XCTAssertFalse(app.buttons["Update Language Data"].exists)
+    XCTAssertFalse(app.checkBoxes["Sync learned words with iCloud Drive"].exists)
+    XCTAssertFalse(app.buttons["Sync Learning Now"].exists)
     XCTAssertTrue(app.buttons["Open Data Folder"].exists)
     XCTAssertTrue(app.buttons["Copy Report"].exists)
 
@@ -467,15 +439,14 @@ final class SettingsUITests: XCTestCase {
   }
 
   @MainActor
-  func testDataPageKeepsUpdatesVisibleAndProgressivelyDisclosesDataTools() throws {
+  func testDataPageKeepsReleaseLinkVisibleAndDisclosesLocalTools() throws {
     let app = try launchSettings()
     defer { app.terminate() }
 
     clickTab("Local Data", in: app)
 
-    let coreUpdate = app.descendants(matching: .any)["settings.data.coreUpdate"]
-    try reveal(coreUpdate, named: "Core update", in: app)
-    XCTAssertTrue(coreUpdate.exists, "The version and update controls are not always present")
+    XCTAssertTrue(app.links["settings.data.zimeReleases"].exists)
+    XCTAssertFalse(app.descendants(matching: .any)["settings.data.coreUpdate"].exists)
 
     let rows: [(group: String, hiddenControl: XCUIElement)] = [
       ("Manual recovery & transfer", app.buttons["Import Existing"]),

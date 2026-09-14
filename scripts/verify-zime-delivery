@@ -2,6 +2,7 @@
 # Read-only inspection of archives; PackageKit scripts are never executed.
 require "tmpdir"
 require "fileutils"
+require "find"
 require "rexml/document"
 require_relative "lib/zime_release"
 root = File.expand_path("..", __dir__)
@@ -55,6 +56,14 @@ begin
     end
     ZIMERelease.check(File.binread(File.join(full, "zime-install-helper")) == File.binread(File.join(core, "zime-install-helper")) &&
       File.binread(File.join(full, "zime-install-helper")) == File.binread(File.join(root, "build/zime-install-helper")), "helper mismatch")
+  ensure
+    # Installed packs intentionally have read-only directories. Restore write
+    # permission only on this invocation's disposable directories, never links,
+    # before mktmpdir removes them. Do not mask the original verification error.
+    Find.find(temp) do |path|
+      info = File.lstat(path)
+      File.chmod(info.mode | 0700, path) if info.directory? && info.uid == Process.uid
+    end
   end
   puts "ZIME delivery: PASS (manifest, SHA256, provenance, Ad-hoc signatures, Full/Core/PKG equality, staged user-only PKG, offline data; no installation)"
 rescue ZIMERelease::Invalid, KeyError, JSON::ParserError, Errno::ENOENT => e

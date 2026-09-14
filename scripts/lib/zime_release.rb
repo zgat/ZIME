@@ -83,15 +83,22 @@ module ZIMERelease
     end
   end
   def preflight_zip(archive)
-    names = run("/usr/bin/zipinfo", "-1", archive).lines.map(&:chomp)
+    # Apple's old zipinfo replaces some UTF-8 bytes with '?'. libarchive
+    # preserves delivery names, including 安装说明.md, without lossy decoding.
+    names = run("/usr/bin/bsdtar", "-tf", archive).lines.map(&:chomp)
     safe_zip_names(names)
-    rows = run("/usr/bin/zipinfo", "-l", archive).lines.select { |line| line.match?(/\A[dl-][rwx-]{9}\s/) }
+    rows = run("/usr/bin/bsdtar", "-tvf", archive).lines
     check(rows.size == names.size, "unsupported archive entry type or mode")
     links = {}
     rows.zip(names).each do |row, name|
-      fields = row.split(/\s+/, 10)
-      check(fields.last.strip == name, "ambiguous archive inventory")
-      links[name] = run("/usr/bin/unzip", "-p", archive, name) if row.start_with?("l")
+      check(row.match?(/\A[dl-][rwx-]{9}\s/), "unsupported archive entry type or mode")
+      entry = row.split(/\s+/, 9).last.to_s.chomp
+      if row.start_with?("l")
+        check(entry.start_with?(name + " -> "), "ambiguous archive link")
+        links[name] = entry.delete_prefix(name + " -> ")
+      else
+        check(entry == name, "ambiguous archive inventory")
+      end
     end
     safe_zip_links(names, links)
   end

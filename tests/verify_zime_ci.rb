@@ -56,6 +56,27 @@ workflows = %w[commit-ci.yml pull-request-ci.yml release-ci.yml].to_h do |name|
   [name, YAML.load_file(File.join(root, ".github/workflows", name))]
 end
 validate(workflows)
+%w[verify_zime_coverage.sh verify_zime_online.sh verify_zime_acceptance.rb].each do |name|
+  path = File.join(root, "tests", name)
+  ZIMERelease.regular(path)
+  ZIMERelease.check(File.executable?(path), "missing executable test: #{name}")
+end
+ui = File.read(File.join(root, "tests/SettingsUITests/SettingsUITests.swift"))
+%w[testFiveSettingsPagesRemainAlive testTranslationDraftControlsDoNotRequestOrSaveCredentials
+   testShortcutRecorderRejectsConflictsAndCancelsRecording
+   testDataPageKeepsReleaseLinkVisibleAndDisclosesLocalTools].each do |test|
+  ZIMERelease.check(ui.include?("func #{test}("), "missing current Settings workflow: #{test}")
+end
+ZIMERelease.check(ui.include?('"com.zime.inputmethod.ZIME.local-build.settings"') &&
+  ui.include?('"ZIME.app"') && !ui.include?('"Data & Updates"') &&
+  !ui.include?('"Natural Code"'), "Settings UI fixture regained retired product controls")
+fixture = File.read(File.join(root, "tests/verify_visible_settings_fixture.sh"))
+ZIMERelease.check(fixture.include?("isolated UI account has existing development preferences") &&
+  fixture.include?('LINNET_ISOLATED_UI_TEST_DESKTOP'), "UI fixture lost its isolation/refusal boundaries")
+ZIMERelease.run("ruby", File.join(root, "tests/verify_zime_acceptance.rb"), "--self-test")
+output, error, status = Open3.capture3("bash", File.join(root, "tests/verify_zime_online.sh"))
+ZIMERelease.check(status.exitstatus == 64 && (output + error).include?("NOT_EXERCISED"),
+  "online test no longer refuses implicit credential/network access")
 mutations = [
   ->(w) { w["pull-request-ci.yml"]["permissions"]["contents"] = "write" },
   ->(w) { w["release-ci.yml"]["on"] = {"push" => {}} },
