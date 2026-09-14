@@ -3,10 +3,8 @@
 面向 Apple Silicon、macOS 13 及以上版本的本地优先双语输入法。
 输入中文看英文释义，输入英文看中文释义；译文默认只在候选框展示，主动切换并选中后才会上屏。
 
-[下载 0.1.20 开发预览](https://github.com/zgat/ZIME/releases/tag/v0.1.20) ·
+[下载 0.1.21 开发预览](https://github.com/zgat/ZIME/releases/tag/v0.1.21) ·
 [安装说明](docs/ZIME-INSTALL.md) · [更新日志](CHANGELOG.md)
-
-以下按键说明对应 0.1.21 本地预览；当前公开安装包仍为 0.1.20。
 
 ![中英文候选与逐行释义](resources/readme/bilingual-features.png)
 
@@ -78,7 +76,7 @@ GitHub 自动生成的 Source code ZIP/TAR 是源码，不是安装包。
 
 ## 更新公告
 
-- **0.1.21（本地预览，未发布）**：空格上屏高亮候选，支持原文与译文；Enter 仍提交原始输入。[验证](docs/ZIME-SPACE-SELECTION-2026-09-14.md)
+- **0.1.21**：空格上屏高亮候选，支持原文与译文；Enter 仍提交原始输入。[详情](docs/releases/ZIME-0.1.21.md)
 - **0.1.20**：修复拼音纠错与候选学习，支持 `wov → 我v` 等完整混输候选。[详情](docs/releases/ZIME-0.1.20.md)
 - **0.1.17**：更新万象词库和 LTS 模型，提供完整 ZIP、PKG 与 Core 更新包。[详情](docs/releases/ZIME-0.1.17.md)
 

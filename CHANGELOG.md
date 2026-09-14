@@ -4,13 +4,13 @@
 README、文档、CI、构建及发布脚本调整不属于版本更新。继承的 Squirrel 历史请查阅
 [Squirrel changelog](https://github.com/rime/squirrel/blob/master/CHANGELOG.md)。
 
-## ZIME 0.1.21 — 2026-09-14（未发布）
+## ZIME 0.1.21 — 2026-09-14
 
 - 空格上屏当前高亮候选，支持中文、英文、Emoji 和译文，以及翻页后的选中项；Enter 仍提交原始输入。
 - 中文候选与译文不额外附加空格；独立英文原文候选保留尾随空格开关。分段选词保留尚未选择的尾串。
 - 空闲或仅有下一词预测时，空格仍作为普通空格，不误选预测候选。
 
-验证范围见 [空格选词验证](docs/ZIME-SPACE-SELECTION-2026-09-14.md)。
+下载与验证范围见 [0.1.21 版本说明](docs/releases/ZIME-0.1.21.md)。
 
 ## ZIME 0.1.20 — 2026-09-11
 
