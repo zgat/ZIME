@@ -2241,9 +2241,9 @@ struct LinnetCandidateWindowInteractionTests {
     bilingualOutputPath: String
   ) {
     guard let source = try? String(contentsOfFile: yamlPath, encoding: .utf8),
-      let paper = parseThemeSamples(source)["linnet_paper_light"]
+      let palette = parseThemeSamples(source)["linnet_glass_light"]
     else {
-      failures.append("README product gallery could not resolve Paper Light")
+      failures.append("README product gallery could not resolve Soft Gray Light")
       return
     }
     guard let chineseStatus = renderStatusNotice("中"),
@@ -2271,7 +2271,7 @@ struct LinnetCandidateWindowInteractionTests {
         .font: NSFont.systemFont(ofSize: 40, weight: .semibold),
         .foregroundColor: ink,
       ])
-    ("以下三枚提示均由当前 SquirrelPanel / SquirrelView 真实渲染" as NSString).draw(
+    ("中文、智能英文与原始 ASCII，共用 macOS 输入源菜单" as NSString).draw(
       at: NSPoint(x: 66, y: 382),
       withAttributes: [
         .font: NSFont.systemFont(ofSize: 22),
@@ -2291,8 +2291,8 @@ struct LinnetCandidateWindowInteractionTests {
           .font: NSFont.systemFont(ofSize: 30, weight: .semibold),
           .foregroundColor: ink,
         ])
-      let noticeWidth = CGFloat(column.2.pixelsWide) * 2
-      let noticeHeight = CGFloat(column.2.pixelsHigh) * 2
+      let noticeWidth = column.2.size.width * 2
+      let noticeHeight = column.2.size.height * 2
       drawBitmap(
         column.2,
         in: NSRect(
@@ -2319,22 +2319,18 @@ struct LinnetCandidateWindowInteractionTests {
     writeReadmeBitmap(
       modeBitmap, outputPath: inputModesOutputPath, label: "README input-mode image")
 
-    let reverseItems = [
-      ("帅", "handsome; graceful"),
-      ("摔", "fall; throw down"),
-      ("甩", "fling; throw"),
-    ]
+    let reverseItems = readmeChineseItems(["你", "拟", "泥"])
     let englishItems = [
       ("cloud", "/klaʊd/ · n. 云；云端；云状物"),
       ("cloudy", "多云的；阴天的"),
       ("cloudless", "无云的；晴朗的"),
       ("cloudburst", "暴雨"),
     ]
-    let reverseInput = "shuai"
+    let reverseInput = "ni"
     guard let reverse = renderProductCandidatePanel(
-      sample: paper, preedit: reverseInput, items: reverseItems),
+      sample: palette, preedit: reverseInput, items: reverseItems),
       let english = renderProductCandidatePanel(
-        sample: paper, preedit: "cloud", items: englishItems)
+        sample: palette, preedit: "cloud", items: englishItems)
     else {
       failures.append("README product gallery could not render bilingual candidates")
       return
@@ -2347,21 +2343,21 @@ struct LinnetCandidateWindowInteractionTests {
     NSGraphicsContext.current = bilingualContext
     NSColor(srgbRed: 0.985, green: 0.989, blue: 0.989, alpha: 1).setFill()
     NSRect(origin: .zero, size: bilingualSize).fill()
-    ("双语能力，直接看真实候选窗" as NSString).draw(
+    ("中文与英文，逐项查看译文" as NSString).draw(
       at: NSPoint(x: 64, y: 582),
       withAttributes: [
         .font: NSFont.systemFont(ofSize: 40, weight: .semibold),
         .foregroundColor: ink,
       ])
-    ("候选、选中态、释义和输入串均由当前产品渲染链生成" as NSString).draw(
+    ("译文默认只展示；切换到译文后，数字键选中上屏" as NSString).draw(
       at: NSPoint(x: 66, y: 542),
       withAttributes: [
         .font: NSFont.systemFont(ofSize: 22),
         .foregroundColor: secondary,
       ])
     let panels: [(String, String, NSBitmapImageRep)] = [
-      ("01 · 每个中文候选都有英文释义", "输入 \(reverseInput)，译文默认不上屏", reverse),
-      ("02 · Smart English", "补全、IPA、中文释义与原始输入", english),
+      ("中文 → 英文", "示例输入 \(reverseInput) · 本地核心释义", reverse),
+      ("英文 → 中文", "示例输入 cloud · 补全与中文释义", english),
     ]
     for (index, panel) in panels.enumerated() {
       let originX = CGFloat(64 + index * 660)
@@ -2378,16 +2374,22 @@ struct LinnetCandidateWindowInteractionTests {
           .foregroundColor: secondary,
         ])
       let availableWidth = CGFloat(590)
-      let scale = min(1.55, availableWidth / CGFloat(panel.2.pixelsWide))
-      let panelWidth = CGFloat(panel.2.pixelsWide) * scale
-      let panelHeight = CGFloat(panel.2.pixelsHigh) * scale
+      let scale = min(1.55, availableWidth / panel.2.size.width, 225 / panel.2.size.height)
+      let panelWidth = panel.2.size.width * scale
+      let panelHeight = panel.2.size.height * scale
       drawBitmap(
         panel.2,
         in: NSRect(
           x: originX + (availableWidth - panelWidth) / 2,
-          y: 190, width: panelWidth, height: panelHeight))
+          y: 395 - panelHeight, width: panelWidth, height: panelHeight))
     }
-    ("真实产品渲染 · Paper Light · 20 pt" as NSString).draw(
+    ("Tab 切换原文 / 译文　·　数字键选词　·　Enter 输入原文" as NSString).draw(
+      at: NSPoint(x: 64, y: 90),
+      withAttributes: [
+        .font: NSFont.systemFont(ofSize: 23, weight: .medium),
+        .foregroundColor: ink,
+      ])
+    ("雾灰浅色 · 当前候选窗组件渲染 · 演示词条，非实时排序" as NSString).draw(
       at: NSPoint(x: 64, y: 46),
       withAttributes: [
         .font: NSFont.systemFont(ofSize: 20),
@@ -2428,7 +2430,7 @@ struct LinnetCandidateWindowInteractionTests {
     let ink = NSColor(srgbRed: 0.15, green: 0.18, blue: 0.22, alpha: 1)
     ("颜色、选中效果与窗口角形，分开设置" as NSString).draw(at: NSPoint(x: 48, y: 818),
       withAttributes: [.font: NSFont.systemFont(ofSize: 32, weight: .medium), .foregroundColor: ink])
-    ("雾灰（原“原生玻璃”）· 常规字重 · 真实候选窗渲染" as NSString).draw(at: NSPoint(x: 49, y: 778),
+    ("雾灰 · 浅色 / 深色 · 常规字重" as NSString).draw(at: NSPoint(x: 49, y: 778),
       withAttributes: [.font: NSFont.systemFont(ofSize: 21), .foregroundColor: NSColor.darkGray])
     let variants: [(SquirrelTheme.SelectionStyle, Bool, String)] = [
       (.tile, true, "整行变色 · 圆角"), (.tile, false, "整行变色 · 直角"),
@@ -2443,14 +2445,14 @@ struct LinnetCandidateWindowInteractionTests {
         guard let palette = samples["linnet_glass_\(mode)"],
           let panel = renderProductCandidatePanel(
             sample: appearanceSample(palette, style: variant.0, rounded: variant.1),
-            preedit: "", items: [("你", "you (informal)"), ("你好", "hello; hi"), ("工作", "work; job")]) else {
+            preedit: "", items: readmeChineseItems(["你", "你好", "工作"])) else {
           failures.append("appearance gallery failed to render")
           continue
         }
-        let scale = min(1, 475 / CGFloat(panel.pixelsWide))
-        let height = CGFloat(panel.pixelsHigh) * scale
+        let scale = min(1.15, 475 / panel.size.width)
+        let height = panel.size.height * scale
         drawBitmap(panel, in: NSRect(x: x, y: top - 24 - CGFloat(modeIndex) * 135 - height,
-          width: CGFloat(panel.pixelsWide) * scale, height: height))
+          width: panel.size.width * scale, height: height))
       }
     }
     NSGraphicsContext.restoreGraphicsState()
@@ -2460,46 +2462,60 @@ struct LinnetCandidateWindowInteractionTests {
   private static func makeReadmeRegionalGallery(yamlPath: String, outputPath: String) {
     guard let yaml = try? String(contentsOfFile: yamlPath, encoding: .utf8) else { return }
     let samples = parseThemeSamples(yaml)
-    let size = NSSize(width: 1360, height: 760)
+    let size = NSSize(width: 1360, height: 540)
     guard let (bitmap, context) = bitmapSurface(size: size, failure: "regional glossary gallery") else { return }
     NSGraphicsContext.saveGraphicsState()
     NSGraphicsContext.current = context
     NSColor(srgbRed: 0.96, green: 0.96, blue: 0.97, alpha: 1).setFill()
     NSRect(origin: .zero, size: size).fill()
     let ink = NSColor(srgbRed: 0.12, green: 0.12, blue: 0.13, alpha: 1)
-    ("词义与注释分层，保留简繁词条的归属" as NSString).draw(at: NSPoint(x: 52, y: 675),
+    ("核心词义直接显示，完整注释按需查看" as NSString).draw(at: NSPoint(x: 52, y: 455),
       withAttributes: [.font: NSFont.systemFont(ofSize: 36, weight: .semibold), .foregroundColor: ink])
-    ("澄蓝浅色 / 深色 · 当前候选窗渲染 · 20 pt" as NSString).draw(at: NSPoint(x: 54, y: 632),
+    ("澄蓝浅色 / 深色 · 简繁字形独立查译文" as NSString).draw(at: NSPoint(x: 54, y: 412),
       withAttributes: [.font: NSFont.systemFont(ofSize: 22), .foregroundColor: NSColor.darkGray])
-    let lexicon = ZIMELocalLexicon(url: URL(fileURLWithPath: "resources/zime-cedict.sqlite3"))
     let variants = [
-      ("linnet_macos_light", "简体：通用 + 大陆", ZIMELocalLexicon.RegionProfile.mainland),
-      ("linnet_macos_dark", "繁体：通用 + 港澳台 / 新马", .traditionalRegions)
+      ("linnet_macos_light", "简体词条", ZIMELocalLexicon.RegionProfile.mainland),
+      ("linnet_macos_dark", "繁体词条", .traditionalRegions)
     ]
     for (index, variant) in variants.enumerated() {
       let x = CGFloat(54 + index * 660)
-      let words = index == 0 ? ["你", "发", "帅"] : ["你", "妳", "髮"]
-      let items = words.map { word in
-        let annotation = lexicon.annotation(for: word, region: variant.2)
-        return (word, LinnetCandidatePresentation.bilingualComment(displayText: annotation.displayText,
-          translations: annotation.translations, detailText: annotation.detailText))
-      }
+      let words = index == 0 ? ["你", "费城", "土豆"] : ["妳", "費城", "德士"]
+      let items = readmeChineseItems(words, region: variant.2)
       guard let sample = samples[variant.0], let panel = renderProductCandidatePanel(sample: sample,
         preedit: "", items: items) else {
         failures.append("regional gallery could not render \(variant.0)")
         continue
       }
-      (variant.1 as NSString).draw(at: NSPoint(x: x, y: 560),
+      (variant.1 as NSString).draw(at: NSPoint(x: x, y: 340),
         withAttributes: [.font: NSFont.systemFont(ofSize: 25, weight: .medium), .foregroundColor: ink])
-      let scale = min(1.2, 580 / CGFloat(panel.pixelsWide))
-      let width = CGFloat(panel.pixelsWide) * scale
-      let height = CGFloat(panel.pixelsHigh) * scale
-      drawBitmap(panel, in: NSRect(x: x, y: 510 - height, width: width, height: height))
+      let scale = min(1.5, 580 / panel.size.width)
+      let width = panel.size.width * scale
+      let height = panel.size.height * scale
+      drawBitmap(panel, in: NSRect(x: x, y: 290 - height, width: width, height: height))
     }
-    ("词条展示样例 · 相同译义合并 · 辨义限定保留 · 拼音引用和长说明在悬停详情中" as NSString)
-      .draw(at: NSPoint(x: 54, y: 80), withAttributes: [.font: NSFont.systemFont(ofSize: 23), .foregroundColor: ink])
+    ("设置 → 翻译 → 勾选“翻译显示完整注释”，悬停查看原始词义和注释" as NSString)
+      .draw(at: NSPoint(x: 54, y: 76), withAttributes: [.font: NSFont.systemFont(ofSize: 23), .foregroundColor: ink])
+    ("不同含义用 / 分隔；地区只影响释义偏好，不屏蔽候选字形。" as NSString)
+      .draw(at: NSPoint(x: 54, y: 32), withAttributes: [.font: NSFont.systemFont(ofSize: 22), .foregroundColor: NSColor.darkGray])
     NSGraphicsContext.restoreGraphicsState()
     writeReadmeBitmap(bitmap, outputPath: outputPath, label: "README regional glossary gallery")
+  }
+
+  // Use the actual local parser and comment envelope. Readme fixtures must not
+  // preserve obsolete annotations such as you (informal) after a lexicon update.
+  private static func readmeChineseItems(
+    _ words: [String], region: ZIMELocalLexicon.RegionProfile = .mainland
+  ) -> [(String, String)] {
+    let lexicon = ZIMELocalLexicon(url: URL(fileURLWithPath: "resources/zime-cedict.sqlite3"))
+    return words.map { word in
+      let annotation = lexicon.annotation(for: word, region: region)
+      require(!annotation.translations.isEmpty, "README sample has no local translation: \(word)")
+      if word == "你" || word == "妳" {
+        require(annotation.translations == ["you"], "README second-person sample regained usage notes")
+      }
+      return (word, LinnetCandidatePresentation.bilingualComment(displayText: annotation.displayText,
+        translations: annotation.translations, detailText: annotation.detailText))
+    }
   }
 
   private static func renderProductCandidatePanel(
@@ -2526,8 +2542,9 @@ struct LinnetCandidateWindowInteractionTests {
     theme.cornerRadius = sample.cornerRadius
     theme.hilitedCornerRadius = sample.highlightedCornerRadius
     theme.selectionStyle = sample.selectionStyle
+    theme.inlinePreedit = true
     theme.linear = false
-    theme.showPaging = false
+    theme.showPaging = true
     theme.linespace = LinnetCandidatePresentation.candidateRowSpacing
     theme.candidateFormat = "[label] [candidate]"
     theme.attrs = [.font: candidateFont, .foregroundColor: sample.primary]
@@ -2538,11 +2555,15 @@ struct LinnetCandidateWindowInteractionTests {
     theme.labelHighlightedAttrs = [
       .font: labelFont, .foregroundColor: sample.selectedLabel,
     ]
-    theme.commentAttrs = [.font: detailFont, .foregroundColor: sample.primary]
+    theme.commentAttrs = [.font: detailFont, .foregroundColor: sample.label,
+      .baselineOffset: LinnetCandidatePresentation.secondaryBaselineOffset(
+        primaryFont: candidateFont, secondaryFont: detailFont, baseOffset: 0, verticalText: false, placement: .inline)]
     theme.commentHighlightedAttrs = [
-      .font: detailFont, .foregroundColor: sample.selectedPrimary,
+      .font: detailFont, .foregroundColor: sample.selectedLabel,
+      .baselineOffset: LinnetCandidatePresentation.secondaryBaselineOffset(
+        primaryFont: candidateFont, secondaryFont: detailFont, baseOffset: 0, verticalText: false, placement: .inline),
     ]
-    theme.detailAttrs = [.font: detailFont, .foregroundColor: sample.primary]
+    theme.detailAttrs = [.font: detailFont, .foregroundColor: sample.label]
     theme.preeditAttrs = [.font: candidateFont, .foregroundColor: sample.primary]
     theme.preeditHighlightedAttrs = theme.preeditAttrs
     let firstParagraph = NSMutableParagraphStyle()
@@ -2565,10 +2586,12 @@ struct LinnetCandidateWindowInteractionTests {
       pageSize: items.count,
       currentPage: 0,
       isLastPage: true)
+    // The Host keeps inline preedit in the client application, not the panel.
+    let displayedPreedit = theme.inlinePreedit ? "" : preedit
     _ = panel.update(
-      preedit: preedit,
-      selRange: NSRange(location: 0, length: preedit.utf16.count),
-      caretPos: preedit.utf16.count,
+      preedit: displayedPreedit,
+      selRange: NSRange(location: 0, length: displayedPreedit.utf16.count),
+      caretPos: displayedPreedit.utf16.count,
       candidates: snapshot,
       highlighted: 0,
       update: true,
@@ -2683,8 +2706,15 @@ struct LinnetCandidateWindowInteractionTests {
 
   private static func bitmapSnapshot(of view: NSView?) -> NSBitmapImageRep? {
     guard let view,
-      let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds)
+      let bitmap = NSBitmapImageRep(bitmapDataPlanes: nil,
+        pixelsWide: Int(ceil(view.bounds.width * 2)),
+        pixelsHigh: Int(ceil(view.bounds.height * 2)),
+        bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+        colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)
     else { return nil }
+    // Render at 2 px/pt before composing the sheet, instead of enlarging a
+    // 1x screenshot. Logical dimensions remain independent of the host screen.
+    bitmap.size = view.bounds.size
     view.cacheDisplay(in: view.bounds, to: bitmap)
     return bitmap
   }
@@ -2758,10 +2788,10 @@ struct LinnetCandidateWindowInteractionTests {
     NSGraphicsContext.current = context
     NSColor(srgbRed: 0.985, green: 0.989, blue: 0.989, alpha: 1).setFill()
     NSRect(origin: .zero, size: sheetSize).fill()
-    ("八套候选窗主题 · 当前产品真实渲染" as NSString).draw(
+    ("八套配色 · 浅色与深色" as NSString).draw(
       at: NSPoint(x: 50, y: 1020),
       withAttributes: [.font: titleFont, .foregroundColor: ink])
-    ("由 data/squirrel.yaml 通过当前 SquirrelView 生成 · 20 pt · Light / Dark" as NSString)
+    ("主题只改变颜色，选中效果与窗口角形独立设置" as NSString)
       .draw(
         at: NSPoint(x: 52, y: 980),
         withAttributes: [.font: subtitleFont, .foregroundColor: secondary])
