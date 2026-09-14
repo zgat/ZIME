@@ -1,78 +1,64 @@
-name: Linnet pull request CI
-on: [pull_request]
+name: ZIME pull request CI
+"on": [pull_request]
 permissions:
   contents: read
-
 concurrency:
-  group: linnet-pr-${{ github.event.pull_request.number }}
+  group: zime-pr-${{ github.event.pull_request.number }}
   cancel-in-progress: true
-
 jobs:
   product:
-    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, macos-26]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 120
     steps:
-      - name: Checkout last commit
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
           persist-credentials: false
-          # Keep all five source submodules on the lock-owning build path.
           submodules: false
-
-      - name: Restore locked build cache once
-        uses: ./.github/actions/restore-locked-build-cache
+      - uses: ./.github/actions/restore-locked-build-cache
         with:
           save: false
-
-      - name: Restore incremental Swift owner tests read-only
-        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25  # v5.1.0
+      - uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
         with:
           path: build/swift-unit-cache
-          key: linnet-swift-units-v1-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
-          restore-keys: |
-            linnet-swift-units-v1-${{ runner.os }}-${{ runner.arch }}-
-
-      - name: Install declared build tools once
-        run: scripts/install_ci_build_tools.sh quality
-
-      - name: Strict Swift lint
-        run: scripts/run_swiftlint.sh
-
+          key: zime-swift-units-v2-${{ matrix.os }}-${{ runner.arch }}-${{ github.sha }}
+          restore-keys: zime-swift-units-v2-${{ matrix.os }}-${{ runner.arch }}-
+      - run: scripts/install_ci_build_tools.sh quality
+      - run: scripts/run_swiftlint.sh
+      - run: tests/verify_release_automation.sh && tests/verify_publication_owner.sh
       - name: Check language-data release identity changes
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           set -euo pipefail
-          git diff --name-only "${BASE_SHA}"...HEAD |
-            package/data_release_metadata check-source-change
-          previous="$(mktemp)"
-          trap 'rm -f "${previous}"' EXIT
-          if git show "${BASE_SHA}:config/linnet-data-releases.json" >"${previous}" 2>/dev/null; then
-            package/data_release_metadata check-monotonic \
-              "${previous}" config/linnet-data-releases.json
+          baseline="${BASE_SHA:-HEAD^}"
+          if git cat-file -e "${baseline}^{commit}" 2>/dev/null; then
+            git diff --name-only "${baseline}" HEAD | package/data_release_metadata check-source-change
+            previous="$(mktemp)"
+            trap 'rm -f "$previous"' EXIT
+            if git show "${baseline}:config/linnet-data-releases.json" > "$previous" 2>/dev/null; then
+              package/data_release_metadata check-monotonic "$previous" config/linnet-data-releases.json
+            fi
           fi
-
-      - name: Check release and publication owners
-        run: tests/verify_release_automation.sh && tests/verify_publication_owner.sh
-
-      - name: Hydrate and verify locked inputs once
-        run: ./action-install.sh
-
-      - name: Build the unsigned local product once
-        run: make --no-print-directory release
-
-      - name: Verify App and package owners
-        run: tests/verify_development.sh app
-
-      - name: Verify visible Settings workflow
-        run: tests/verify_visible_settings_fixture.sh --ui-test
-
-      - name: Verify Swift owner contracts
-        run: tests/verify_development.sh swift
-
-      - name: Verify Rime and all input profiles
-        run: tests/verify_development.sh rime
-
-      - name: Check unused production code
-        run: scripts/run_periphery.sh
+      - run: ./action-install.sh
+      - run: make --no-print-directory release
+      - run: tests/verify_development.sh app
+      - run: tests/verify_development.sh core
+      - run: tests/verify_visible_settings_fixture.sh --ui-test
+      - run: tests/verify_zime_coverage.sh
+      - run: scripts/run_periphery.sh
+      - name: Retain scoped evidence even on failure
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: zime-evidence-${{ matrix.os }}
+          path: |
+            build/settings-ui-results/
+            build/zime-coverage/run.*/report.txt
+            build/zime-coverage/run.*/summary.json
+            build/zime-coverage/run.*/html/
+          retention-days: 3

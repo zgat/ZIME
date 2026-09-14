@@ -11,7 +11,7 @@ cd "${repo_root}"
 runtime_probe="${1:-}"
 probes=(
   --zime-bilingual-probe --zime-alphanumeric-probe --zime-case-probe
-  --zime-shortcuts-probe --zime-paging-probe --mixed-input-probe
+  --zime-shortcuts-probe --zime-paging-probe --zime-soak-probe --mixed-input-probe
   --mixed-latency-probe --warm-session-probe --cold-client-probe
   --profile-key-matrix-probe --fast-config-reload-probe --live-sync-probe
 )

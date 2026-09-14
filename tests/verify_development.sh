@@ -37,6 +37,13 @@ if [[ "${profile}" == core ]]; then
   tests/verify_english_data_projection.sh
 fi
 
+if [[ "${run_swift}" -eq 1 ]]; then
+  tests/verify_publication_owner.sh
+  tests/verify_release_automation.sh
+  tests/verify_zime_installer.sh
+  tests/verify_zime_privacy.sh
+fi
+
 if [[ "${run_app}" -eq 1 ]]; then
   host_app="${repo_root}/build/Local/Build/Products/Release/ZIME.app"
   standalone_settings="${repo_root}/build/Local/Build/Products/Release/Settings.app"
@@ -110,18 +117,12 @@ verify_inputs_predate() {
     } | LC_ALL=C sort -u
   )
 
-  bash -n action-build.sh action-install.sh package/installer-scripts/postinstall \
-    package/installer-scripts/complete-postinstall
-  tests/verify_runtime_footprint.sh
-  LINNET_LIFECYCLE_CANDIDATE_APP="${host_app}" tests/verify_package_lifecycle.sh
+  # ZIME's staged ZIP/PKG transaction is not the inherited CMS installer.
+  tests/verify_zime_app.sh "${host_app}" local
   tests/verify_visible_settings_fixture.sh --verify local
-  tests/verify_release_metadata.sh
-  tests/verify_package_architecture.sh
   make --no-print-directory english-data-generator
   tests/verify_english_data_projection.sh
   ruby tests/generate_m2_fixtures.rb --check
-  APP_PATH="${host_app}" LANGUAGE_DATA_ROOT="${repo_root}/data/plum" \
-    tests/verify_input_process_offline.sh
   scripts/build-privacy scan "${host_app}"
 fi
 
@@ -143,7 +144,7 @@ if [[ "${run_rime}" -eq 1 ]]; then
   ruby tests/verify_profile_golden.rb
   tests/verify_chinese_learning_policy.sh
   tests/verify_rime_runtime.sh
-  for probe in --zime-shortcuts-probe --zime-bilingual-probe --zime-alphanumeric-probe --zime-case-probe --zime-paging-probe --profile-key-matrix-probe; do
+  for probe in --zime-shortcuts-probe --zime-bilingual-probe --zime-alphanumeric-probe --zime-case-probe --zime-paging-probe --profile-key-matrix-probe --zime-soak-probe; do
     tests/verify_rime_runtime.sh "${probe}"
   done
 fi

@@ -36,7 +36,10 @@ chmod 444 "${fixture}/external/sentinel"
 chmod 555 "${fixture}/external"
 external_before="$(stat -f '%Lp' "${fixture}/external" "${fixture}/external/sentinel")"
 sentinel_before="$(shasum -a 256 "${fixture}/external/sentinel")"
-xcrun swiftc -warnings-as-errors "${repo_root}/tests/LinnetTestScratch.swift" \
+mkdir -p "${repo_root}/build/swift-module-cache"
+xcrun swiftc -warnings-as-errors -target arm64-apple-macosx13.0 \
+  -module-cache-path "${repo_root}/build/swift-module-cache" \
+  "${repo_root}/tests/LinnetTestScratch.swift" \
   "${repo_root}/tests/SwiftTestScratchProbe.swift" -o "${fixture}/probe"
 
 failed=0

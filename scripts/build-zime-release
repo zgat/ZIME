@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# Build a local candidate only. Never install, register, upload or publish it.
+set -euo pipefail
+root="$(cd "$(dirname "$0")/.." && pwd -P)"
+[[ $# -eq 2 ]] || { echo "usage: $0 LOCAL_APP NEW_OUTPUT_DIRECTORY" >&2; exit 64; }
+cd "${root}"
+[[ -z "$(git status --porcelain=v1 --untracked-files=all)" ]] || { echo "release requires a clean source checkout" >&2; exit 1; }
+[[ ! -e "$2" && ! -L "$2" ]] || { echo "release output must not exist" >&2; exit 1; }
+revision="$(git rev-parse HEAD)"
+source_app="$(cd "$1" && pwd -P)"
+[[ "${source_app}" == "${root}/build/Local/Build/Products/Release/ZIME.app" ]] || {
+  echo "candidate must use the canonical fresh local build" >&2
+  exit 1
+}
+# Includes the successful composite-build marker and source freshness check.
+tests/verify_development.sh app
+scratch="$(mktemp -d /tmp/zime-release.XXXXXX)"
+trap '[[ "${scratch}" == /tmp/zime-release.* ]] && rm -rf -- "${scratch}"' EXIT
+scripts/stage-zime-preview "${source_app}" "${scratch}/ZIME.app"
+scripts/build-zime-delivery "${scratch}/ZIME.app" "$2"
+model="$(ruby -rjson -e 'puts JSON.parse(File.read("upstreams.lock.json")).fetch("sources").fetch("rime_lmdg_grammar").fetch("asset")')"
+[[ "${model}" =~ ^[A-Za-z0-9._-]+\.gram$ ]]
+cp "data/chinese/grammar/${model}" "$2/${model}"
+[[ "$(git rev-parse HEAD)" == "${revision}" &&
+   -z "$(git status --porcelain=v1 --untracked-files=all)" ]] || {
+  echo "source changed during candidate build; do not publish this output" >&2
+  exit 1
+}
+ruby -r "${root}/scripts/lib/zime_release" -e '
+  root, dir, revision = ARGV
+  value = ZIMERelease.manifest(root, dir, revision)
+  File.write(File.join(dir, "manifest.json"), JSON.pretty_generate(value) + "\n", mode: "wx")
+  File.write(File.join(dir, "SHA256SUMS"), ZIMERelease.checksums(value), mode: "wx")
+' "${root}" "$2" "${revision}"
+scripts/verify-zime-delivery "$2" "${revision}"

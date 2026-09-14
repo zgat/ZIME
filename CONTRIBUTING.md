@@ -25,7 +25,8 @@ no_download=1 ./action-build.sh release
 ```
 
 此入口包含 Swift 设置／候选窗、翻译与 Host 提交、英文数据投影、静态约束、
-默认原生回归，以及空格选词、双语排序、数字混输、大小写和分页专项。
+默认原生回归，以及空格选词、双语排序、数字混输、大小写、分页和会话压力专项。
+还包括 ZIME 发布/CI 契约、安装事务回滚、隐私回归。
 兼容方案通过独立测试环境验证，不会加入默认输入模式列表。
 `--zime-bilingual-probe` 只检查双语候选与学习，不代表所有输入行为均已通过。
 
@@ -37,6 +38,10 @@ no_download=1 ./action-build.sh release
 
 外观与候选窗测试需要可用的 macOS 图形会话。若因环境限制跳过，请在 Pull Request
 中注明原因与验证范围；`--skip-appearance-preview` 只算部分通过，不是完整验收。
+
+覆盖率用 `./tests/verify_zime_coverage.sh` 生成，明确限定测量模块，不是全项目百分比。
+实际安装附件检查见 [发布指南](docs/release.md)；真实应用、跨系统、双屏截图及在线
+服务验收见 [验收清单](docs/ZIME-ACCEPTANCE.md)。历史 Linnet CMS 记录不是 ZIME 发布授权。
 
 ## Pull Request
 

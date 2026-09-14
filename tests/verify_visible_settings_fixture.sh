@@ -132,12 +132,16 @@ fi
 
 case "${product_profile}" in
   local)
+    product_name="$(sed -n 's/^LINNET_PRODUCT_NAME = //p' config/LinnetProduct.xcconfig)"
+    product_identifier="$(sed -n 's/^LINNET_BUNDLE_IDENTIFIER = //p' config/LinnetProduct.xcconfig)"
     product_root="${repo_root}/build/Local/Build/Products/Release"
+    host_name="${product_name}.app"
     standalone_name="Settings.app"
-    expected_host_identifier="io.github.ares-x.inputmethod.Linnet.local-build"
-    expected_settings_identifier="io.github.ares-x.inputmethod.Linnet.local-build.settings"
+    expected_host_identifier="${product_identifier}.local-build"
+    expected_settings_identifier="${expected_host_identifier}.settings"
     ;;
   candidate)
+    product_name=Linnet
     product_root="${repo_root}/build/Candidate.noindex/Release"
     host_name="Linnet.candidate"
     standalone_name="Settings.candidate"
@@ -148,7 +152,7 @@ esac
 host_app="${product_root}/${host_name:-Linnet.app}"
 settings_app="${host_app}/Contents/Applications/Settings.app"
 settings_executable="${settings_app}/Contents/MacOS/Settings"
-[[ -d "${host_app}" && ! -L "${host_app}" ]] || fail "fresh Release Linnet.app is missing"
+[[ -d "${host_app}" && ! -L "${host_app}" ]] || fail "fresh Release ${product_name}.app is missing"
 [[ -d "${settings_app}" && ! -L "${settings_app}" ]] || fail "embedded Settings.app is missing"
 [[ -x "${settings_executable}" && ! -L "${settings_executable}" ]] ||
   fail "embedded Settings executable is missing"
@@ -183,7 +187,7 @@ ui_test_completed=false
 terminate_fixture_apps() {
   local executable process_id remaining=0
   for executable in \
-      "${fixture}/DerivedData/Build/Products/Debug/Linnet.app/Contents/Applications/Settings.app/Contents/MacOS/Settings" \
+      "${fixture}/DerivedData/Build/Products/Debug/${product_name}.app/Contents/Applications/Settings.app/Contents/MacOS/Settings" \
       "${fixture}/DerivedData/Build/Products/Debug/ForegroundFixture.app/Contents/MacOS/ForegroundFixture"; do
     while read -r process_id; do
       [[ -n "${process_id}" ]] || continue
@@ -337,7 +341,7 @@ else
   isolated_home="${fixture}/home"
 fi
 isolated_support="${isolated_home}/Library/Application Support"
-runtime_root="${isolated_support}/Linnet"
+runtime_root="${isolated_support}/${product_name}"
 isolated_tmp="${fixture}/tmp"
 mkdir -p "${isolated_home}/Library/Preferences" \
   "${isolated_home}/Library/Caches" "${isolated_home}/Library/Logs" \
@@ -390,6 +394,19 @@ protected_content_paths=(
   "${real_user_home}/Library/Application Support/Linnet/UserData/linnet_zh_jiajia.custom.yaml"
   "${real_user_home}/Library/Application Support/Linnet/Runtime/Active/activation.json"
 )
+# Keep the inherited product protected too; neither test mode owns live ZIME data.
+for path in "${protected_paths[@]}"; do
+  [[ "${path}" != *'/Application Support/Linnet'* ]] ||
+    protected_paths+=("${path/\/Application Support\/Linnet/\/Application Support\/ZIME}")
+done
+for path in "${protected_content_paths[@]}"; do
+  [[ "${path}" != *'/Application Support/Linnet'* ]] ||
+    protected_content_paths+=("${path/\/Application Support\/Linnet/\/Application Support\/ZIME}")
+done
+for domain in com.zime.inputmethod.ZIME com.zime.inputmethod.ZIME.settings com.zime.translation; do
+  protected_paths+=("${real_user_home}/Library/Preferences/${domain}.plist")
+  protected_content_paths+=("${real_user_home}/Library/Preferences/${domain}.plist")
+done
 metadata_fingerprint() {
   local path
   for path in "${protected_paths[@]}"; do
@@ -501,7 +518,7 @@ fi
 
 HOME="${isolated_home}" CFFIXED_USER_HOME="${isolated_home}" TMPDIR="${isolated_tmp}/" \
   "${probe}" "${probe_settings_app}" "${isolated_home}" \
-    "${expected_settings_identifier}" "${expected_host_identifier}"
+    "${expected_settings_identifier}" "${expected_host_identifier}" "${product_name}"
 [[ "$(metadata_fingerprint)" == "${before_fingerprint}" ]] ||
   fail "fixed-home probe changed a protected real-user path"
 [[ "$(content_fingerprint)" == "${before_content_fingerprint}" ]] ||

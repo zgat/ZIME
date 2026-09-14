@@ -364,6 +364,15 @@ debug: $(DEPS_CHECK) verify-rime-binaries
 	mkdir -p $(DERIVED_DATA_PATH)
 	$(call build-linnet-app,Debug)
 
+ifeq ($(shell sed -n 's/^LINNET_PRODUCT_NAME = //p' config/LinnetProduct.xcconfig),ZIME)
+.PHONY: package archive community community-verified
+community community-verified:
+	@echo "ZIME uses the explicit Ad-hoc preview path; use make archive, not the legacy CMS target." >&2
+	@false
+
+package archive: release linnet-pack-tool zime-install-helper
+	scripts/build-zime-release "$(LOCAL_RELEASE_PRODUCTS)/ZIME.app" "$(ARCHIVE_OUTPUT_DIR)"
+else
 community: release
 	$(call finalize-linnet-candidate)
 
@@ -391,6 +400,7 @@ archive: package
 	SOURCE_DATE_EPOCH=1704067200 bash package/make_archive \
 		"$(CANDIDATE_RELEASE_APP)" \
 		"$(ARCHIVE_OUTPUT_DIR)"
+endif
 
 # No build target may mutate the developer machine. Users install the produced
 # PKG explicitly with macOS Installer after checksum verification.

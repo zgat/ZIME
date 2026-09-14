@@ -5,6 +5,14 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+# Historical CMS acceptance belongs only to the Linnet identity. ZIME has its
+# own real publication gate; an unknown identity must never skip verification.
+product_id="$(sed -n 's/^LINNET_BUNDLE_IDENTIFIER = //p' "${repo_root}/config/LinnetProduct.xcconfig")"
+case "${product_id}" in
+  com.zime.inputmethod.ZIME) exec ruby "${repo_root}/tests/verify_zime_publication.rb" "$@" ;;
+  io.github.ares-x.inputmethod.Linnet) ;;
+  *) echo "unknown publication identity: ${product_id}" >&2; exit 1 ;;
+esac
 verifier="${repo_root}/package/verify_publication_artifacts"
 asset_manifest="${repo_root}/package/release_asset_manifest"
 publisher="${repo_root}/package/publish_github_release"

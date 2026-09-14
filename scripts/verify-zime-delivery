@@ -1,0 +1,63 @@
+#!/usr/bin/env ruby
+# Read-only inspection of archives; PackageKit scripts are never executed.
+require "tmpdir"
+require "fileutils"
+require "rexml/document"
+require_relative "lib/zime_release"
+root = File.expand_path("..", __dir__)
+abort "usage: verify-zime-delivery DIRECTORY SOURCE_REVISION" unless ARGV.size == 2
+directory, revision = ARGV
+directory = File.expand_path(directory)
+begin
+  doc = ZIMERelease.verify_manifest(root, directory, revision)
+  version = doc.fetch("version")
+  prefix = "ZIME-#{version}-arm64"
+  Dir.mktmpdir("zime-delivery-check-", "/tmp") do |temp|
+    %w[full core].each do |kind|
+      archive = File.join(directory, prefix + (kind == "core" ? "-core.zip" : ".zip"))
+      ZIMERelease.preflight_zip(archive)
+      ZIMERelease.run("/usr/bin/ditto", "-x", "-k", archive, File.join(temp, kind))
+    end
+    full = File.join(temp, "full", prefix)
+    core = File.join(temp, "core", prefix + "-core")
+    ZIMERelease.check(Dir.children(core).sort == %w[LICENSE.txt ZIME.app update-zime-app zime-install-helper 安装说明.md].sort, "Core contains unexpected files")
+    ZIMERelease.check(Dir.children(full).sort == %w[LICENSE.txt ZIME.app ZIME-Data install-zime uninstall-zime update-zime-app zime-install-helper 安装说明.md].sort, "full ZIP inventory mismatch")
+    ZIMERelease.verify_app(root, File.join(full, "ZIME.app"), "release", revision)
+    ZIMERelease.verify_app(root, File.join(core, "ZIME.app"), "release", revision)
+    ZIMERelease.check(ZIMERelease.tree_digest(File.join(full, "ZIME.app")) == ZIMERelease.tree_digest(File.join(core, "ZIME.app")), "Full/Core App bytes differ")
+    ZIMERelease.run(File.join(root, "build/zime-install-helper"), "check", File.join(full, "ZIME.app"), File.join(full, "ZIME-Data"))
+    pkg = File.join(temp, "pkg")
+    signature, error, status = Open3.capture3("/usr/sbin/pkgutil", "--check-signature", File.join(directory, prefix + ".pkg"))
+    ZIMERelease.check(status.exitstatus == 1 && (signature + error).include?("Status: no signature"),
+      "PKG signing policy differs from unsigned preview")
+    ZIMERelease.run("/usr/sbin/pkgutil", "--expand-full", File.join(directory, prefix + ".pkg"), pkg)
+    xml = REXML::Document.new(File.read(File.join(pkg, "Distribution")))
+    domains = xml.elements["installer-gui-script/domains"]
+    options = xml.elements["installer-gui-script/options"]
+    ZIMERelease.check(domains && domains.attributes["enable_currentUserHome"] == "true" &&
+      domains.attributes["enable_localSystem"] == "false" && domains.attributes["enable_anywhere"] == "false" &&
+      options && options.attributes["hostArchitectures"] == "arm64", "PKG domain or architecture mismatch")
+    component = File.join(pkg, "ZIME-component.pkg")
+    info = REXML::Document.new(File.read(File.join(component, "PackageInfo"))).root
+    ZIMERelease.check(info.attributes["identifier"] == "com.zime.inputmethod.ZIME.staged.pkg" &&
+      info.attributes["version"] == version, "PKG receipt identity/version mismatch")
+    payload = File.join(component, "Payload")
+    staged = File.join(payload, "Library/Application Support/ZIME Installer", version)
+    ZIMERelease.check(!File.exist?(File.join(payload, "Library/Input Methods")), "PKG must not overwrite the live App")
+    ZIMERelease.check(ZIMERelease.tree_digest(full) == ZIMERelease.tree_digest(staged), "PKG/ZIP payload mismatch")
+    %w[postinstall zime-install-helper].each do |name|
+      expected = name == "postinstall" ? File.join(root, "package/zime-installer-scripts/postinstall") : File.join(root, "build/zime-install-helper")
+      ZIMERelease.check(File.binread(File.join(component, "Scripts", name)) == File.binread(expected), "PKG #{name} mismatch")
+    end
+    ZIMERelease.check(File.read(File.join(component, "Scripts/version")).strip == version, "PKG script version mismatch")
+    %w[install-zime uninstall-zime update-zime-app].each do |name|
+      ZIMERelease.check(File.binread(File.join(full, name)) == File.binread(File.join(root, "scripts", name)), "ZIP #{name} mismatch")
+    end
+    ZIMERelease.check(File.binread(File.join(full, "zime-install-helper")) == File.binread(File.join(core, "zime-install-helper")) &&
+      File.binread(File.join(full, "zime-install-helper")) == File.binread(File.join(root, "build/zime-install-helper")), "helper mismatch")
+  end
+  puts "ZIME delivery: PASS (manifest, SHA256, provenance, Ad-hoc signatures, Full/Core/PKG equality, staged user-only PKG, offline data; no installation)"
+rescue ZIMERelease::Invalid, KeyError, JSON::ParserError, Errno::ENOENT => e
+  warn "ZIME delivery: FAIL: #{e.message}"
+  exit 1
+end

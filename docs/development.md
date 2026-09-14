@@ -194,151 +194,28 @@ native Rime 与 Periphery。commit CI 采用同一条串行链，但只允许手
 也不会把并行墙钟误当成额度用量。首个真实 Actions 样本仍须记录墙钟、runner minutes
 和 cache 命中，未执行前不宣称云端加速百分比。连续 PR 更新只保留最新一次。
 
-## 构建
-
-普通本地 Release：
+## 构建与打包
 
 ```bash
 ./action-build.sh release
-```
-
-已有完整校验输入后的离线构建：
-
-```bash
+# 已准备完整锁定输入时：
 no_download=1 ./action-build.sh release
 ```
 
-该路径：
+本地输出在 `build/Local/Build/Products/Release/ZIME.app`，使用隔离的
+`.local-build` 身份，未签名、不安装、不改变当前输入源。
+Host 构建投影避免生成 Launch Services 注册任务；Settings 保留独立的本地身份。
 
-- 从锁定源码构建 arm64 librime 与 plugin；
-- 构建 Smart English 原生 plugin 和确定性数据；
-- staging 当前 schema、字典、Lua、OpenCC 和 grammar；
-- 构建本地 unsigned development App；
-- 不安装、注册、启用或选择输入源；
-- 不创建公开 PKG，也不授权发布。
-
-本地构建保留正式 `Linnet.xcodeproj` 的标准 App target，只在 DerivedData 中生成一份
-构建投影：Host target 使用不产生 Launch Services 注册任务的 bundle product type，
-同时强制输出 `.app`、`APPL`、Mach-O executable 和 `PkgInfo`；Settings 继续使用标准
-App target 与独立的 `.local-build.settings` 身份。构建前后不会调用 `lsregister` 清理，
-也不会触碰已安装 Linnet 的 TIS 授权。Periphery 复用同一个构建 owner。
-
-`build/Local/Build/Products` 永远只保存 unsigned 的 `.local-build` 身份，不会再被原地改写成
-生产输入源，也不会被打包。`community` 只在 `build/Candidate.noindex/Intermediates.noindex` 中短暂
-建立 `.app` staging，复制本地产物后才投影正式 bundle ID、release metadata 与固定 CMS
-签名；全部校验通过后以不可发现的 `Linnet.candidate` / `Settings.candidate` 目录冻结。
-`verify_product`、PKG 和 ZIP 只消费这份候选，打包时才在一次性工作目录中重建
-`Linnet.app`。因此构建树不会留下第二个可被 Launch Services 发现的生产 App，Xcode
-产物路径和可安装生产身份也不会在两种身份间切换。
-
-普通贡献者运行到 `release` 即可，不需要证书或 Keychain。正式 `archive` lane
-由 macOS release Action 使用仓库钉住的固定 community CMS leaf；缺少精确身份时
-会在打包前失败，不会回退到 ad-hoc。维护者 Mac 上的同身份 `archive` 只作预检，
-不能成为候选或上传源。旧 `candidate` lane 与自定义 UAT 签名 profile 已删除；
-任何可安装候选只认固定 production CMS identity。
-
-## 社区版打包
-
-### 一次性配置本机预检签名身份
-
-本地预检身份属于维护者工具，不属于 Linnet 产品数据，README 的离线卸载命令也不会清理它。先把固定
-P12 和它的一行密码分别放到以下仓库外路径，两者都必须是当前用户拥有、权限为
-`0600` 的普通文件：
-
-- `~/Library/Application Support/Linnet Maintainer/Signing/community-cms/community-cms.p12`
-- `~/Library/Application Support/Linnet Maintainer/Signing/community-cms/p12-password`
-
-只在这台 Mac 从未配置过该身份时运行一次：
+当前 ZIME 不使用 Linnet 的 CMS 发布授权。干净工作树可通过以下命令生成
+Ad-hoc App、完整 ZIP / 当前用户 PKG / Core ZIP、模型及 manifest / SHA256SUMS：
 
 ```bash
-scripts/provision-community-signing
+make archive ARCHIVE_OUTPUT_DIR="/absolute/path/to/new-zime-delivery"
 ```
 
-这个唯一 provisioning owner 会核对仓库钉住的 SHA-1/SHA-256，随机生成 Linnet
-专用 Keychain 密码，配置 `/usr/bin/codesign` 的访问分区，完成一次非交互签名探针，
-再把 Keychain 锁回。输出固定为
-`~/Library/Keychains/Linnet-Community-CMS.keychain-db` 和权限 `0600` 的
-`~/Library/Application Support/Linnet Maintainer/Signing/community-cms/keychain-password`。
-任一输出已经存在都会直接停止；命令没有 replace、repair 或 delete 模式。失败时只
-清理本次创建的精确目标并恢复原 Keychain 搜索列表。P12 密码和随机 Keychain 密码都
-不是 macOS 登录密码；如果配置或之后的 `archive` 弹出密码框，应取消并排查，不要
-输入登录密码、删除既有目标或重复运行配置命令。本地预检 signer 只消费这两个固定输出。
-
-发布维护者可以在自己的 Mac 上预检固定 production CMS 打包。前提是：
-
-- 工作树已经形成一个干净的本地 commit，`LINNET_CANDIDATE_REVISION` 精确等于 HEAD；
-- focused、`tests/verify_development.sh` 和普通 `./action-build.sh release` 已通过；
-- 固定生产 Keychain 已一次性配置，且脚本能从权限 `0600` 的仓库外密码文件
-  非交互解锁；
-- 输出目录是贡献者新建的空绝对目录。
-
-```bash
-export LINNET_CANDIDATE_REVISION="$(git rev-parse HEAD)"
-export ARCHIVE_OUTPUT_DIR=/absolute/path/to/new-empty-output
-
-./action-build.sh archive
-```
-
-`archive` 会沿同一链生成并验证固定 CMS leaf 的 App、未签名的 Complete/Core
-两个 PKG、确定性语言包和 sidecar；卸载命令从对应版本源码标签读取，不是发布资产。
-不要另写脚本重签或修补输出。由于 CMS
-签名时间会改变字节，这个本地产物不是正式发布候选；正式安装验收必须下载
-`release-ci` 直接写入三个 Draft GitHub Releases 的同一 manifest 产物原字节。
-
-### 本地安装验收与 macOS 安全检查
-
-社区安装包没有 Apple Developer ID，也没有 Apple 公证。只有在独立确认精确 source
-revision、Draft Release SHA-256 和候选 metadata 后，才可以使用 macOS 的单次标准信任流程：
-
-1. 在 Finder 中按住 Control 点击或右键点击已经校验的 PKG，选择“打开”。
-2. 如果系统只报告无法验证开发者或无法检查恶意软件，打开 **系统设置 → 隐私与安全性**，在安全性区域选择 **仍要打开 / Open Anyway**；该按钮通常只在打开尝试后约一小时内出现，具体界面以 [Apple 的当前说明](https://support.apple.com/guide/mac-help/mh40616/mac) 为准。
-3. 再次核对显示的文件名并确认；macOS 可能要求当前账户的登录密码。
-4. 如果提示文件损坏、包含恶意软件，或身份、文件名、摘要与本地候选不一致，立即停止，不要继续安装。
-
-不得用 `xattr` 清除隔离属性、关闭 Gatekeeper 或修改系统安全策略。公开用户流程使用同一套 Finder / 隐私与安全性确认，不提供绕过系统保护的命令。
-
-随后在自己的测试账户完成 clean Complete 首装：它只注册，随后由用户完成
-唯一一次真正的注销/登录、系统输入源添加与允许、从 macOS 输入菜单选择 Linnet
-和真实输入。
-
-旧 ad-hoc → 固定 CMS 是一次性的历史 Core lifecycle 验收，唯一记录在
-`config/linnet-community-signing.json`。其固定 leaf、bundle ID、macOS major 和
-identity classifier 的“旧迁移投影指纹”是完整失效键：任一项与当前候选失配，才在
-隔离的 legacy-seeded 账号或虚拟机中重做；四项全部匹配时不得为每个候选重复迁移。
-Host 连续性和 TIS 不变性不从这份历史指纹推断，统一由当前 package lifecycle matrix
-验证。该历史记录只闭合 legacy identity edge，不是当前候选菜单、Settings、真实输入
-或完整安装 UAT。
-
-每个精确候选仍须在同一真实账号使用 Action 生成的 Draft Release 原字节完成
-“两轮同 leaf Core”：先从前一已验收的固定 CMS 版（首次公开后即前一公开版）升级
-到候选，再把同一候选的原字节重装一次。两轮都要
-证明 Installer 无注销、无 Keychain 密码提示、登录会话不变，并保留
-enabled/selected、UserData、输入菜单、Settings 和真实输入。旧身份的历史迁移不
-授权同 leaf Core 重新 register、enable 或 select。Core preinstall 只验证候选、已安装
-App、Active data 与 package-owned read-only typed TIS 状态；脚本不关闭 Host 或任何
-用户应用，也不调用 `osascript`。Core 与 Complete 均不声明 `must-close`；安装过程
-持有 Settings 数据事务共用的 mutation lease，不关闭 Settings。运行中的 Host 必须保持同一
-PID，更新前已连接的应用与更新后新打开的应用都要继续输入。安装完成后，Settings
-必须分别显示磁盘与运行中的 version/build/revision；只有切换离开 Linnet、没有未完成
-composition 或数据事务时，Host 的 typed activation owner 才能接受自行退出。Settings
-随后只从 canonical 安装路径启动 Host，并在精确 revision 一致后报告生效；任一前提
-不满足都必须拒绝，不能强杀。Core 遇到 missing App 或 missing TIS registration 必须
-在 payload 前失败；缺失或停用的输入源由用户在系统设置中添加或启用，已有 App 的
-Complete 修复也不触碰 TIS。重复、冲突或未知 TIS 残留必须先执行 README 的离线
-完整卸载命令，并验证全量删除与注销边界。选择 Linnet 后，可从其原生输入菜单的 **Settings**
-打开设置；它是 `Linnet.app` 内嵌的 accessory App，不作为独立产品安装、不常驻
-Dock，并在最后一个窗口关闭后退出。
-
-安装器、系统设置、授权提示、输入菜单、菜单栏状态、真实候选和 Settings 的教程截图都必须来自同一冻结候选完成的这次安装 UAT。可以保留品牌图，但不能用 mock、其他 revision、局部测试窗口或另一台机器的提示冒充当前步骤；未实际出现的提示不写成已观察事实。
-
-PR 只提交源码、测试和必要文档，不提交 archive、PKG 或本机日志。PR 说明应列出
-精确 commit、manifest 集合摘要、逐文件 SHA-256、实际通过的验证和未执行项。
-安装验收不会自行创建正式版本 tag 或稳定 Release；Preview 只允许验收人显式运行
-`scripts/release-control preview /absolute/release-directory` 后公开候选 Core/data 和
-候选 Catalog。只有完整验收后显式运行
-`scripts/release-control authorize /absolute/release-directory` 后，本地才会用
-Git SSH 创建哈希控制标签。随后唯一 GitHub Action publisher 从 Release metadata
-复核同一批字节并完成发布；本地命令不能上传、编辑 Release 或推进 Catalog。
+输出目录必须尚不存在。此命令会验证实际产物，不上传、不安装，也不改动用户词库。
+详细验证、签名边界和 GitHub 发布步骤见 [发布指南](release.md)；
+[历史 Linnet 指南](legacy/linnet-release.md) 只作归档，不是 ZIME 操作指令。
 
 ## 数据维护
 
@@ -388,7 +265,8 @@ Git SSH 创建哈希控制标签。随后唯一 GitHub Action publisher 从 Rele
 
 依赖与数据已准备好后运行 `./tests/verify_development.sh core`。它串行执行
 Swift、外观／候选窗、静态约束、翻译与 Host 路由、英文数据投影，以及默认原生回归
-和六个专项（快捷键、双语、数字混输、大小写、分页、八方案兼容按键）。
+和七个专项（快捷键、双语、数字混输、大小写、分页、八方案兼容按键、会话压力回归）。
+核心入口还包含 ZIME 发布契约、CI 编排、安装回滚和隐私检查。
 `all` 额外检查已构建 App；`swift` / `rime` / `app` 可分组排查。
 这些入口不签名、不安装，也不访问正在使用的个人词库。
 
@@ -437,25 +315,18 @@ profile；`ui_test` 留空运行完整 Settings UI 套件，也可填写逗号�
 tests/verify_development.sh
 ```
 
-这是普通开发的综合门，不需要签名或安装。它覆盖 owner/source guards、package lifecycle、IPC、中文/英文 projection 和真实 Rime 行为，但不是 package architecture、签名产物或安装 UAT；package architecture 使用下一节的独立门。
+这是普通开发的综合门：核心行为加本地 App 身份、架构、资源、隐私与 Settings 隔离数据验证；不生成安装包，不等于真实输入源或安装 UAT。
 
-### Package architecture
-
-```bash
-tests/verify_package_architecture.sh
-```
-
-它可使用临时 fixture 验证 package 结构；通过不代表已生成发布 PKG。
-
-### Finalized local candidate
+### 产物、覆盖率和真实验收
 
 ```bash
-tests/verify_product.sh release
+tests/verify_zime_coverage.sh
+scripts/verify-zime-delivery "/absolute/path/to/delivery" "<full-source-revision>"
 ```
 
-该命令用于已经冻结、具有准确 release metadata 且由固定 community CMS leaf 完成
-签名的 Release App。结果仍需与可见 Settings、真实输入源、Terminal/VS Code/
-Chrome/Apple Notes/Word/Teams 六应用、安装/升级/卸载和远程发布证据分开报告。
+前者生成限定 Swift 模块的逐文件覆盖率；后者解包验证实际 ZIME 附件，不执行安装。
+完整点击、跨系统、跨应用、双屏截图和在线 API 的结果必须分别记录。
+[真实验收清单](ZIME-ACCEPTANCE.md) 提供未执行状态和验收收据检查，不能将未执行等同于通过。
 
 ## 调试与临时目录
 

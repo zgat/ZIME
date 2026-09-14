@@ -30,7 +30,7 @@ abort error unless status.success?
 probes = listed.lines.map(&:strip)
 abort "probe inventory contains duplicates" unless probes == probes.uniq
 required = %w[--profile-key-matrix-probe --zime-shortcuts-probe --zime-bilingual-probe
-  --zime-alphanumeric-probe --zime-case-probe --zime-paging-probe]
+  --zime-alphanumeric-probe --zime-case-probe --zime-paging-probe --zime-soak-probe]
 abort "required native probe is absent" unless (required - probes).empty?
 required.each do |probe|
   flag = probe.delete_prefix('--').tr('-', '_')

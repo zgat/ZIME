@@ -8,6 +8,12 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+product_id="$(sed -n 's/^LINNET_BUNDLE_IDENTIFIER = //p' "${repo_root}/config/LinnetProduct.xcconfig")"
+case "${product_id}" in
+  com.zime.inputmethod.ZIME) exec ruby "${repo_root}/tests/verify_zime_ci.rb" "$@" ;;
+  io.github.ares-x.inputmethod.Linnet) ;;
+  *) echo "unknown release identity: ${product_id}" >&2; exit 1 ;;
+esac
 control="${repo_root}/scripts/release-control"
 stager="${repo_root}/package/stage_github_release"
 publisher="${repo_root}/package/publish_github_release"

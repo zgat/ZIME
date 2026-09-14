@@ -7,6 +7,7 @@
 #include <fstream>
 #include <iostream>
 #include <map>
+#include <mach/mach.h>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -8147,7 +8148,68 @@ void ExpectFullPinyinDefaultRanking(RimeApi_stdbool* api) {
   api->destroy_session(session);
 }
 
+void ExpectZIMESessionSoak(RimeApi_stdbool* api) {
+  // Reproducible mixed edits, cancellation and raw commits across both modes.
+  // RSS is diagnostic, not a cross-machine leak verdict.
+  const std::array<const char*, 10> inputs = {
+      "nihao", "key", "wov", "nui", "hello", "cluod", "ime", "IME", "x70", "woi"};
+  uint32_t seed = 0x5a494d45;
+  const auto started = std::chrono::steady_clock::now();
+  std::vector<LatencySample> latency;
+  uint64_t first_rss = 0;
+  uint64_t final_rss = 0;
+  auto rss = []() -> uint64_t {
+    mach_task_basic_info_data_t info{};
+    mach_msg_type_number_t size = MACH_TASK_BASIC_INFO_COUNT;
+    if (task_info(mach_task_self(), MACH_TASK_BASIC_INFO,
+                  reinterpret_cast<task_info_t>(&info), &size) != KERN_SUCCESS)
+      Fail("soak could not read its own resident memory");
+    return info.resident_size;
+  };
+  for (size_t block = 0; block < 64; ++block) {
+    auto session = CreateSchemaSession(api, kProductSchemaIDs[block % 2]);
+    for (size_t iteration = 0; iteration < 64; ++iteration) {
+      seed = seed * 1664525u + 1013904223u;
+      const std::string input = inputs[(seed >> 16) % inputs.size()];
+      const auto before = std::chrono::steady_clock::now();
+      api->set_input(session, input.c_str());
+      ExpectNoCommit(api, session, "soak set-input must not commit");
+      if (!api->process_key(session, kBackSpace, 0) ||
+          !api->process_key(session, input.back(), 0) ||
+          std::string(api->get_input(session)) != input)
+        Fail("soak edit lost or reordered the raw composition");
+      if (seed & 1) {
+        if (!api->process_key(session, kReturn, 0) ||
+            TakeCommit(api, session) != input)
+          Fail("soak Return did not commit the complete original input");
+        ExpectNoCommit(api, session, "soak duplicate raw commit");
+      } else {
+        api->process_key(session, kEscape, 0);
+        ExpectNoCommit(api, session, "soak Escape committed text");
+      }
+      const char* remaining = api->get_input(session);
+      if (remaining && *remaining) Fail("soak left a stale composition");
+      latency.push_back(std::chrono::duration_cast<Nanoseconds>(
+          std::chrono::steady_clock::now() - before).count());
+      if (std::chrono::steady_clock::now() - started > std::chrono::minutes(3))
+        Fail("soak exceeded its 3-minute runtime bound");
+    }
+    api->destroy_session(session);
+    if (api->find_session(session)) Fail("soak destroyed session remains live");
+    if (block == 7) first_rss = rss();
+  }
+  final_rss = rss();
+  std::sort(latency.begin(), latency.end());
+  std::cout << "ZIME session soak: PASS; cycles=" << latency.size()
+            << "; recreated_sessions=64; seed=0x5a494d45; p99_cycle_ms="
+            << latency[latency.size() * 99 / 100] / 1000000.0
+            << "; warm_rss_bytes=" << first_rss << "; final_rss_bytes=" << final_rss
+            << " (RSS diagnostic only; not an endurance/leak certification)\n";
+}
+
 int main(int argc, char** argv) {
+  const bool zime_soak_probe =
+      argc == 4 && std::strcmp(argv[3], "--zime-soak-probe") == 0;
   const bool live_sync_probe =
       argc == 4 && std::strcmp(argv[3], "--live-sync-probe") == 0;
   const bool input_options_probe =
@@ -8207,7 +8269,7 @@ int main(int argc, char** argv) {
       argc == 4 && std::strcmp(argv[3], "--warm-session-probe") == 0;
   const bool cold_client_probe =
       argc == 4 && std::strcmp(argv[3], "--cold-client-probe") == 0;
-  if (argc != 3 && !input_options_probe && !input_switches_probe &&
+  if (argc != 3 && !zime_soak_probe && !input_options_probe && !input_switches_probe &&
       !settings_off_probe && !learning_off_probe &&
       !profile_key_matrix_probe &&
       !lifecycle_raw_exit_probe &&
@@ -8229,7 +8291,7 @@ int main(int argc, char** argv) {
          "--mixed-input-probe|--zime-bilingual-probe|--zime-paging-probe|--zime-ranking-reopen-probe|"
          "--zime-shortcuts-probe|--zime-emoji-reopen-probe|--zime-case-probe|--zime-alphanumeric-probe|"
          "--zime-english-ranking-reopen-probe|--zime-english-learning-off-probe|"
-         "--zime-chinese-learning-off-probe|"
+         "--zime-chinese-learning-off-probe|--zime-soak-probe|"
          "--mixed-learning-on-probe|"
          "--mixed-learning-off-probe|"
          "--mixed-latency-probe|--warm-session-probe|--cold-client-probe]");
@@ -8284,6 +8346,12 @@ int main(int argc, char** argv) {
   std::string expected_fresh_schema = "linnet_zh_pinyin";
   if (english_profile_probe) expected_fresh_schema = argv[5];
   ExpectFreshDefaultSchema(api, expected_fresh_schema);
+
+  if (zime_soak_probe) {
+    ExpectZIMESessionSoak(api);
+    api->finalize();
+    return 0;
+  }
 
   if (zime_ranking_reopen_probe) {
     ExpectZIMERankingPersisted(api);

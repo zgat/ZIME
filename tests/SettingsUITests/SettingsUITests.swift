@@ -432,8 +432,8 @@ final class SettingsUITests: XCTestCase {
       try cancelConfirmation("Import existing Rime / Hallelujah data?", in: app)
     }
 
-    try openAndCancelPanel(button: "Export…", title: "Export Linnet Data", in: app)
-    try openAndCancelPanel(button: "Import…", title: "Import Linnet Data", in: app)
+    try openAndCancelPanel(button: "Export…", title: "Export ZIME Data", in: app)
+    try openAndCancelPanel(button: "Import…", title: "Import ZIME Data", in: app)
 
     let restore = app.buttons["Restore"].firstMatch
     if restore.exists, restore.isEnabled {
@@ -448,7 +448,7 @@ final class SettingsUITests: XCTestCase {
     try waitUntilEnabled(refresh, timeout: 10)
     refresh.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
     try waitUntilEnabled(refresh, timeout: 10)
-    try openAndCancelPanel(button: "Save…", title: "Export Linnet Diagnostics", in: app)
+    try openAndCancelPanel(button: "Save…", title: "Export ZIME Diagnostics", in: app)
 
     XCTAssertTrue(app.buttons["Update Language Data"].exists)
     try expandDisclosure("iCloud Drive sync", in: app)
@@ -505,7 +505,7 @@ final class SettingsUITests: XCTestCase {
       "Settings UI tests must never use the real user home")
     XCTAssertTrue(FileManager.default.fileExists(
       atPath: isolatedHomeURL.appending(
-        path: "Library/Application Support/Linnet/UserData/linnet_settings.json").path))
+        path: "Library/Application Support/ZIME/UserData/linnet_settings.json").path))
 
     let settingsURL = settingsApplicationURL()
     let path = settingsURL.path
@@ -537,7 +537,7 @@ final class SettingsUITests: XCTestCase {
       .deletingLastPathComponent()
       .deletingLastPathComponent()
     return productsDirectory
-      .appending(path: "Linnet.app", directoryHint: .isDirectory)
+      .appending(path: "ZIME.app", directoryHint: .isDirectory)
       .appending(path: "Contents/Applications/Settings.app", directoryHint: .isDirectory)
   }
 

@@ -6,22 +6,24 @@ struct LinnetVisibleSettingsFixtureProbe {
   static func main() {
     do {
       let arguments = Array(CommandLine.arguments.dropFirst())
-      guard arguments.count == 4 else { throw Failure.usage }
+      guard arguments.count == 5 else { throw Failure.usage }
 
       let settingsURL = URL(fileURLWithPath: arguments[0], isDirectory: true)
         .standardizedFileURL
       let expectedHome = URL(fileURLWithPath: arguments[1], isDirectory: true)
       let expectedSettingsIdentifier = arguments[2]
       let expectedHostIdentifier = arguments[3]
+      let expectedProductName = arguments[4]
+      guard ["ZIME", "Linnet"].contains(expectedProductName) else { throw Failure.usage }
       let expectedRoot = expectedHome.appendingPathComponent(
-        "Library/Application Support/Linnet", isDirectory: true)
+        "Library/Application Support/\(expectedProductName)", isDirectory: true)
       guard let settings = Bundle(url: settingsURL),
         settings.bundleIdentifier == expectedSettingsIdentifier,
         let settingsExecutable = settings.executableURL,
         FileManager.default.isExecutableFile(atPath: settingsExecutable.path),
         let host = LinnetSettingsContract.hostBundle(startingAt: settings),
         host.bundleIdentifier == expectedHostIdentifier,
-        host.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String == "Linnet",
+        host.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String == expectedProductName,
         host.bundleURL.standardizedFileURL
           == settingsURL.deletingLastPathComponent().deletingLastPathComponent()
             .deletingLastPathComponent().standardizedFileURL,
