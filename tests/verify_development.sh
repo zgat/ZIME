@@ -1,18 +1,22 @@
 #!/usr/bin/env bash
 
-# Fast post-build development gate. It needs staged data and a compiled App but
-# no certificate, Keychain, package or installed-product mutation.
+# Unified development gate. Core checks need staged dependencies/data; app/all
+# additionally need a compiled local App. No signing or installation occurs.
 
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 cd "${repo_root}"
 
+if [[ $# -gt 1 ]]; then
+  echo "Usage: tests/verify_development.sh [all|core|app|swift|rime]" >&2
+  exit 2
+fi
 profile="${1:-all}"
 case "${profile}" in
-  all|app|swift|rime) ;;
+  all|core|app|swift|rime) ;;
   *)
-    echo "Usage: tests/verify_development.sh [all|app|swift|rime]" >&2
+    echo "Usage: tests/verify_development.sh [all|core|app|swift|rime]" >&2
     exit 2
     ;;
 esac
@@ -22,10 +26,16 @@ run_swift=0
 run_rime=0
 case "${profile}" in
   all) run_app=1; run_swift=1; run_rime=1 ;;
+  core) run_swift=1; run_rime=1 ;;
   app) run_app=1 ;;
   swift) run_swift=1 ;;
   rime) run_rime=1 ;;
 esac
+
+if [[ "${profile}" == core ]]; then
+  make --no-print-directory english-data-generator
+  tests/verify_english_data_projection.sh
+fi
 
 if [[ "${run_app}" -eq 1 ]]; then
   host_app="${repo_root}/build/Local/Build/Products/Release/ZIME.app"
@@ -133,7 +143,7 @@ if [[ "${run_rime}" -eq 1 ]]; then
   ruby tests/verify_profile_golden.rb
   tests/verify_chinese_learning_policy.sh
   tests/verify_rime_runtime.sh
-  for probe in --zime-shortcuts-probe --zime-bilingual-probe --zime-alphanumeric-probe --zime-case-probe --zime-paging-probe; do
+  for probe in --zime-shortcuts-probe --zime-bilingual-probe --zime-alphanumeric-probe --zime-case-probe --zime-paging-probe --profile-key-matrix-probe; do
     tests/verify_rime_runtime.sh "${probe}"
   done
 fi

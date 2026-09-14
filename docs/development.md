@@ -384,6 +384,17 @@ Git SSH 创建哈希控制标签。随后唯一 GitHub Action publisher 从 Rele
 
 ## 验证层级
 
+### ZIME 核心入口
+
+依赖与数据已准备好后运行 `./tests/verify_development.sh core`。它串行执行
+Swift、外观／候选窗、静态约束、翻译与 Host 路由、英文数据投影，以及默认原生回归
+和六个专项（快捷键、双语、数字混输、大小写、分页、八方案兼容按键）。
+`all` 额外检查已构建 App；`swift` / `rime` / `app` 可分组排查。
+这些入口不签名、不安装，也不访问正在使用的个人词库。
+
+`verify_zime.sh` 是静态约束检查，`--zime-bilingual-probe` 是双语专项，不能单独代表
+核心验证完成。外观测试要求 macOS 图形会话，跳过外观的结果标记为 `PARTIAL PASS`。
+
 ### Focused
 
 ```bash

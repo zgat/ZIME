@@ -18,16 +18,25 @@ git submodule update --init --recursive
 no_download=1 ./action-build.sh release
 ```
 
-提交前至少运行与改动相关的检查。完整的核心检查为：
+准备好依赖和数据后，提交前运行统一核心检查：
 
 ```sh
-./tests/verify_swift_units.sh
-./tests/verify_rime_runtime.sh --zime-bilingual-probe
-./tests/verify_english_data_projection.sh
-./tests/verify_zime.sh
+./tests/verify_development.sh core
 ```
 
-如果某项检查因环境限制无法运行，请在 Pull Request 中说明原因和已经完成的验证。
+此入口包含 Swift 设置／候选窗、翻译与 Host 提交、英文数据投影、静态约束、
+默认原生回归，以及空格选词、双语排序、数字混输、大小写和分页专项。
+兼容方案通过独立测试环境验证，不会加入默认输入模式列表。
+`--zime-bilingual-probe` 只检查双语候选与学习，不代表所有输入行为均已通过。
+
+需要检查构建出的 App 及其他开发边界时，在构建后运行 `./tests/verify_development.sh all`。
+定向排查可用 `swift` / `rime` / `app` 分组；原生专项参数用
+`./tests/verify_rime_runtime.sh --list-probes` 查看。
+默认会删除临时测试数据；排查原生失败时可加 `LINNET_KEEP_FAILED_RIME_FIXTURE=1`
+保留隔离现场，路径会随失败输出。现场可能较大，排查后请清理，不要提交到仓库。
+
+外观与候选窗测试需要可用的 macOS 图形会话。若因环境限制跳过，请在 Pull Request
+中注明原因与验证范围；`--skip-appearance-preview` 只算部分通过，不是完整验收。
 
 ## Pull Request
 

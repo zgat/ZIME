@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Static source/package contracts. Runtime Host/translation behavior belongs
+# to verify_zime_translation.sh and native probes in verify_development.sh core.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"

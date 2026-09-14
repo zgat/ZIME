@@ -635,22 +635,29 @@ ruby -e '
     "tests/verify_publication_owner.sh",
     "tests/verify_development.sh rime",
     "make --no-print-directory archive")
-  abort unless development_gate.include?("[all|app|swift|rime]")
+  abort unless development_gate.include?("[all|core|app|swift|rime]")
   abort unless development_gate.scan(/^if \[\[ "\$\{run_app\}" -eq 1 \]\]; then$/).size == 1
   abort unless development_gate.scan(/^if \[\[ "\$\{run_swift\}" -eq 1 \]\]; then$/).size == 1
   abort unless development_gate.scan(/^if \[\[ "\$\{run_rime\}" -eq 1 \]\]; then$/).size == 1
   abort unless development_gate.scan(/^\s*all\) run_app=1; run_swift=1; run_rime=1 ;;$/).size == 1
+  abort unless development_gate.scan(/^\s*core\) run_swift=1; run_rime=1 ;;$/).size == 1
+  core_start = development_gate.index(%q{if [[ "${profile}" == core ]]; then})
   app_start = development_gate.index(%q{if [[ "${run_app}" -eq 1 ]]; then})
   swift_start = development_gate.index(%q{if [[ "${run_swift}" -eq 1 ]]; then})
   rime_start = development_gate.index(%q{if [[ "${run_rime}" -eq 1 ]]; then})
-  abort unless app_start && swift_start && rime_start &&
-    app_start < swift_start && swift_start < rime_start
+  abort unless core_start && app_start && swift_start && rime_start &&
+    core_start < app_start && app_start < swift_start && swift_start < rime_start
   profile_blocks = {
+    core: development_gate[core_start...app_start],
     app: development_gate[app_start...swift_start],
     swift: development_gate[swift_start...rime_start],
     rime: development_gate[rime_start..]
   }
   required_profile_commands = {
+    core: {
+      "english-data-generator" => 1,
+      "tests/verify_english_data_projection.sh" => 1
+    },
     app: {
       "tests/verify_runtime_footprint.sh" => 1,
       "LINNET_LIFECYCLE_CANDIDATE_APP=" => 1,
@@ -664,7 +671,11 @@ ruby -e '
       "tests/verify_input_process_offline.sh" => 1,
       "scripts/build-privacy scan" => 1
     },
-    swift: { "tests/verify_swift_units.sh" => 1 },
+    swift: {
+      "tests/verify_swift_units.sh" => 1,
+      "tests/verify_zime.sh" => 1,
+      "tests/verify_zime_translation.sh" => 1
+    },
     rime: {
       "tests/verify_lua_lifetime.sh" => 1,
       "tests/verify_data_release_baseline.sh" => 1,
@@ -675,7 +686,7 @@ ruby -e '
       "tests/verify_chinese_grammar.sh" => 1,
       "ruby tests/verify_profile_golden.rb" => 1,
       "tests/verify_chinese_learning_policy.sh" => 1,
-      "tests/verify_rime_runtime.sh" => 1
+      "tests/verify_rime_runtime.sh" => 2
     }
   }
   required_profile_commands.each do |profile, markers|
@@ -683,10 +694,12 @@ ruby -e '
       abort unless profile_blocks.fetch(profile).scan(marker).size == count
     end
   end
+  command_totals = Hash.new(0)
   required_profile_commands.each_value do |markers|
-    markers.each do |marker, count|
-      abort unless development_gate.scan(marker).size == count
-    end
+    markers.each { |marker, count| command_totals[marker] += count }
+  end
+  command_totals.each do |marker, count|
+    abort unless development_gate.scan(marker).size == count
   end
   retired_candidate_source_gates = [
     "tests/verify_runtime_footprint.sh",

@@ -135,16 +135,21 @@ ZERO_FINAL_ORACLE = {
   "linnet_zh_jiajia" => {"ai" => "as", "er" => "eq"},
 }.transform_values(&:freeze).freeze
 
-def load_formal_profiles
+def verify_product_and_compatibility_profiles
   config = YAML.safe_load(File.read(DEFAULT_CONFIG, encoding: "UTF-8"), aliases: true)
   declared = config.fetch("schema_list").map { |entry| entry.fetch("schema") }
-  chinese = declared.reject { |schema| schema == "linnet_en" }
-  unless chinese == PROFILES
-    raise ProfileGoldenError, "default.yaml diverges from the reviewed profile order"
+  unless declared == %w[linnet_zh_pinyin linnet_en]
+    raise ProfileGoldenError, "default.yaml diverges from the two product modes"
+  end
+  PROFILES.each do |schema|
+    path = File.join(REPO_ROOT, "data/linnet", "#{schema}.schema.yaml")
+    unless File.file?(path)
+      raise ProfileGoldenError, "reviewed compatibility schema is missing: #{schema}"
+    end
   end
 end
 
-load_formal_profiles
+verify_product_and_compatibility_profiles
 SUPPLEMENTAL_CLASSIFICATIONS = {
   "reverse_yun" => "supplemental:pinyin_reverse",
   "v_lve" => "supplemental:v_final",
@@ -516,6 +521,13 @@ def build_active_shared(work_root)
     FileUtils.cp(source, File.join(shared, File.basename(source)), preserve: true)
   end
   FileUtils.cp(File.join(canonical, "default.yaml"), File.join(shared, "default.yaml"), preserve: true)
+  # This golden fixture covers inherited layouts, not the public mode menu.
+  # Deploy all reviewed layouts only inside its temporary shared data; mutation
+  # fixtures copy this same explicit scope and never modify product defaults.
+  default_path = File.join(shared, "default.yaml")
+  config = YAML.safe_load(File.read(default_path, encoding: "UTF-8"), aliases: true)
+  config["schema_list"] = (PROFILES + ["linnet_en"]).map { |id| {"schema" => id} }
+  File.write(default_path, YAML.dump(config), mode: "w:UTF-8")
   FileUtils.ln_s(opencc, File.join(shared, "opencc"))
   File.write(File.join(shared, "linnet_grammar_active.yaml"),
              "grammar:\n  language: wanxiang-lts-zh-hans\n", mode: "w:UTF-8")

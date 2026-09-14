@@ -25,6 +25,11 @@ README 描述当前产品；这里保留各版本的历史验证范围和实现�
 | 0.1.2 | [翻页边界与菜单栏](ZIME-0.1.2-VALIDATION.md) |
 | 0.1.1 | [词库比较、基础功能与已知限制](ZIME-0.1.1-VALIDATION.md) |
 
+## 开发验证
+
+[核心检查入口与测试修复](ZIME-TEST-GATES-2026-09-14.md) 记录当前测试分工及验收边界，
+属于开发维护，不是新的产品版本。
+
 ## README 配图
 
 配图由 `tests/LinnetCandidateWindowInteractionTests.swift` 复用当前候选窗组件生成，

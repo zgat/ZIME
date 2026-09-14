@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 
-# Native engine acceptance for the staged product data. This is intentionally
-# one real librime deployment and one smoke process; profile and grammar matrices
-# have their own focused gates and are not repeated here.
+# Native engine acceptance. Each invocation stages isolated data and builds its
+# harness once; focused probes have explicit scopes, not full-suite semantics.
 
 set -euo pipefail
 
@@ -10,21 +9,26 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 cd "${repo_root}"
 
 runtime_probe="${1:-}"
-if [[ "${1:-}" == --zime-bilingual-probe ||
-      "${1:-}" == --zime-alphanumeric-probe ||
-      "${1:-}" == --zime-case-probe ||
-      "${1:-}" == --zime-shortcuts-probe ||
-      "${1:-}" == --zime-paging-probe ||
-      "${1:-}" == --mixed-input-probe ||
-      "${1:-}" == --mixed-latency-probe ||
-      "${1:-}" == --warm-session-probe ||
-      "${1:-}" == --cold-client-probe ||
-      "${1:-}" == --profile-key-matrix-probe ||
-      "${1:-}" == --fast-config-reload-probe ||
-      "${1:-}" == --live-sync-probe ]]; then
-  :
-elif [[ $# -ne 0 ]]; then
-  echo "usage: $0 [--zime-bilingual-probe|--zime-alphanumeric-probe|--zime-case-probe|--zime-shortcuts-probe|--zime-paging-probe|--mixed-input-probe|--mixed-latency-probe|--warm-session-probe|--cold-client-probe|--profile-key-matrix-probe|--fast-config-reload-probe|--live-sync-probe]" >&2
+probes=(
+  --zime-bilingual-probe --zime-alphanumeric-probe --zime-case-probe
+  --zime-shortcuts-probe --zime-paging-probe --mixed-input-probe
+  --mixed-latency-probe --warm-session-probe --cold-client-probe
+  --profile-key-matrix-probe --fast-config-reload-probe --live-sync-probe
+)
+if [[ $# -eq 1 && "$1" == --list-probes ]]; then
+  printf '%s\n' "${probes[@]}"
+  exit 0
+fi
+if [[ $# -gt 1 ]]; then
+  echo "usage: $0 [PROBE | --list-probes] (one probe per invocation)" >&2
+  exit 64
+fi
+valid_probe=0
+for probe in "${probes[@]}"; do
+  [[ "${runtime_probe}" != "${probe}" ]] || valid_probe=1
+done
+if [[ $# -ne 0 && "${valid_probe}" -eq 0 ]]; then
+  echo "usage: $0 [PROBE | --list-probes]" >&2
   exit 64
 fi
 
@@ -32,6 +36,10 @@ scratch="$(mktemp -d /tmp/linnet-rime-runtime.XXXXXX)"
 cleanup() {
   local status=$?
   trap - EXIT INT TERM HUP
+  if [[ "${status}" -ne 0 && "${LINNET_KEEP_FAILED_RIME_FIXTURE:-0}" == 1 ]]; then
+    echo "Failed isolated Rime fixture retained: ${scratch}" >&2
+    exit "${status}"
+  fi
   [[ "${scratch}" == /tmp/linnet-rime-runtime.* ]] && /bin/rm -rf -- "${scratch}"
   exit "${status}"
 }
@@ -135,7 +143,7 @@ end_phase "stage isolated product data"
 begin_phase "compile Settings projection fixture"
 swiftc="$(xcrun --find swiftc)"
 sdk="$(xcrun --show-sdk-path)"
-"${swiftc}" -warnings-as-errors -sdk "${sdk}" \
+"${swiftc}" -warnings-as-errors -sdk "${sdk}" -module-cache-path "${repo_root}/build/test-module-cache" \
   sources/LinnetPackContract.swift \
   sources/LinnetDataChannel.swift \
   sources/LinnetDataRegistry.swift sources/LinnetDirectoryDelta.swift sources/LinnetDataRegistryTransactions.swift sources/LinnetDataRegistryStorage.swift \
@@ -169,6 +177,14 @@ if [[ "${runtime_probe}" == --profile-key-matrix-probe ]]; then
   ' "${user}/default.custom.yaml"
 fi
 
+compile_compatibility_schemas() {
+  for profile in linnet_zh linnet_zh_flypy linnet_zh_mspy linnet_zh_sogou linnet_zh_abc linnet_zh_ziguang linnet_zh_jiajia; do
+    DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
+      bin/rime_deployer --compile "${shared}/${profile}.schema.yaml" \
+        "${user}" "${shared}" "${user}/build" >/dev/null
+  done
+}
+
 begin_phase "deploy native schemas"
 make --no-print-directory smart-english-plugin
 make --no-print-directory verify-rime-binaries
@@ -178,14 +194,11 @@ fi
 RIME_LOG_DIR="${logs}" \
 DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
   bin/rime_deployer --build "${user}" "${shared}" "${user}/build" >/dev/null
-if [[ "${runtime_probe}" == --mixed-input-probe ]]; then
+if [[ -z "${runtime_probe}" || "${runtime_probe}" == --mixed-input-probe ||
+      "${runtime_probe}" == --fast-config-reload-probe ]]; then
   # The legacy mixed matrix directly selects inherited profiles. Compile
   # those test-only schemas without changing the product's two-schema list.
-  for profile in linnet_zh linnet_zh_flypy linnet_zh_mspy linnet_zh_sogou linnet_zh_abc linnet_zh_ziguang linnet_zh_jiajia; do
-    DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
-      bin/rime_deployer --compile "${shared}/${profile}.schema.yaml" \
-        "${user}" "${shared}" "${user}/build" >/dev/null
-  done
+  compile_compatibility_schemas
 fi
 for fixture_schema in \
   linnet_pinyin_limit_64.schema.yaml \
@@ -217,6 +230,9 @@ fi
 end_phase "compile native smoke harnesses"
 
 begin_phase "run native candidate matrix"
+if [[ "${LINNET_KEEP_FAILED_RIME_FIXTURE:-0}" == 1 ]]; then
+  cp -R "${user}" "${scratch}/pristine-user"
+fi
 smoke_args=("${shared}" "${user}")
 if [[ -n "${runtime_probe}" ]]; then
   smoke_args+=("${runtime_probe}")
@@ -322,7 +338,7 @@ if [[ -n "${runtime_probe}" ]]; then
   elif [[ "${runtime_probe}" == --live-sync-probe ]]; then
     echo "Linnet native Rime live synchronization: PASS"
   else
-    echo "Linnet native Rime focused mixed-input probe: PASS"
+    echo "ZIME native Rime ${runtime_probe}: PASS"
   fi
   exit 0
 fi
@@ -399,7 +415,7 @@ end_phase "verify upstream user-dictionary sync"
 # Exercise the production-shaped exact-11 configuration reload in its own
 # user directory so its same-second projections and session invalidation never
 # become implicit setup for the remaining Settings/runtime matrix.
-begin_phase "verify eight profiles and Settings projections"
+begin_phase "verify legacy-profile migration and Settings projections"
 fast_user="${scratch}/fast-user"
 mkdir "${fast_user}"
 cp -R "${user}/." "${fast_user}/"
@@ -408,22 +424,25 @@ DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
     --fast-config-reload-probe
 
 profile_cases=(
-  'vertical_bar:natural:linnet_zh:srfa'
-  'vertical_bar:full_pinyin:linnet_zh_pinyin:suanfa'
-  'vertical_bar:flypy:linnet_zh_flypy:srfa'
-  'vertical_bar:microsoft:linnet_zh_mspy:srfa'
-  'vertical_bar:sogou:linnet_zh_sogou:srfa'
-  'vertical_bar:abc:linnet_zh_abc:spfa'
-  'vertical_bar:ziguang:linnet_zh_ziguang:slfa'
-  'vertical_bar:jiajia:linnet_zh_jiajia:scfa'
-  # Profile and trigger are separate renderer facts. The Swift owner test
-  # proves the optional trigger reaches every schema; retain one native custom
-  # semicolon cross-case whose Microsoft code itself contains a semicolon.
-  'semicolon:microsoft:linnet_zh_mspy:srfa'
+  'vertical_bar:natural'
+  'vertical_bar:full_pinyin'
+  'vertical_bar:flypy'
+  'vertical_bar:microsoft'
+  'vertical_bar:sogou'
+  'vertical_bar:abc'
+  'vertical_bar:ziguang'
+  'vertical_bar:jiajia'
+  # Migrating a retired profile must preserve the independent trigger choice.
+  'semicolon:microsoft'
 )
 for profile_case in "${profile_cases[@]}"; do
-  IFS=: read -r trigger profile schema code <<<"${profile_case}"
+  IFS=: read -r trigger profile <<<"${profile_case}"
   "${scratch}/projection-fixture" profile "${profile}" "${trigger}" "${user}"
+  # The production document normalizes every retained legacy profile to full
+  # pinyin. Native compatibility layouts are exercised separately; do not
+  # expect retired Settings choices to re-enter the public schema list.
+  schema=linnet_zh_pinyin
+  code=suanfa
   DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
     bin/rime_deployer --build "${user}" "${shared}" \
       "${user}/build" >/dev/null
@@ -438,7 +457,7 @@ for profile_case in "${profile_cases[@]}"; do
         "${profile}" "${schema}" "${code}" "${prefix}" >/dev/null
 done
 
-for page_size in 3 5 7 9; do
+for page_size in 3 4 5 6 7 8 9; do
   "${scratch}/projection-fixture" page-size "${page_size}" "${user}"
   DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
     bin/rime_deployer --build "${user}" "${shared}" "${user}/build" >/dev/null
@@ -450,8 +469,8 @@ done
 "${scratch}/projection-fixture" english-learning-off "${user}"
 DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
   bin/rime_deployer --build "${user}" "${shared}" "${user}/build" >/dev/null
-rg -Fq 'prism: linnet_zh_jiajia' "${user}/build/linnet_en.schema.yaml"
-rg -Fq 'chinese_schema: linnet_zh_jiajia' "${user}/build/linnet_en.schema.yaml"
+rg -Fq 'prism: linnet_zh_pinyin' "${user}/build/linnet_en.schema.yaml"
+rg -Fq 'chinese_schema: linnet_zh_pinyin' "${user}/build/linnet_en.schema.yaml"
 rg -Fq 'enable_user_dict: false' "${user}/build/linnet_en.schema.yaml"
 rg -Fq 'learning_enabled: false' "${user}/build/linnet_en.schema.yaml"
 DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
@@ -461,8 +480,12 @@ DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
 "${scratch}/projection-fixture" english-suggestions-off "${user}"
 DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
   bin/rime_deployer --build "${user}" "${shared}" "${user}/build" >/dev/null
-rg -Fq 'prism: linnet_zh_jiajia' "${user}/build/linnet_en.schema.yaml"
-rg -Fq 'chinese_schema: linnet_zh_jiajia' "${user}/build/linnet_en.schema.yaml"
+# The following native check directly selects inherited schemas too. A normal
+# --build only refreshes the public schema graph; refresh these test-only
+# configs after projection so the check cannot read stale compiled options.
+compile_compatibility_schemas
+rg -Fq 'prism: linnet_zh_pinyin' "${user}/build/linnet_en.schema.yaml"
+rg -Fq 'chinese_schema: linnet_zh_pinyin' "${user}/build/linnet_en.schema.yaml"
 rg -Fq 'reset: 0' "${user}/build/linnet_en.schema.yaml"
 if rg -q 'spelling_correction:' "${user}/build/linnet_en.schema.yaml"; then
   echo "retired English correction switch returned to the deployed schema" >&2
@@ -494,12 +517,16 @@ for settings_schema in \
 done
 DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
   bin/rime_deployer --build "${user}" "${shared}" "${user}/build" >/dev/null
-for chinese_schema in \
-  linnet_zh linnet_zh_pinyin linnet_zh_flypy linnet_zh_mspy \
-  linnet_zh_sogou linnet_zh_abc linnet_zh_ziguang linnet_zh_jiajia; do
-  rg -Fq 'reset: 1' "${user}/build/${chinese_schema}.schema.yaml"
-  rg -Fq 'prefix: "|"' "${user}/build/${chinese_schema}.schema.yaml"
-done
+compile_compatibility_schemas
+ruby -ryaml -e '
+  ARGV.each do |path|
+    config = YAML.load_file(path)
+    abort "traditionalization projection was not deployed: #{path}" unless
+      config.fetch("switches").any? { |entry| entry["name"] == "traditionalization" && entry["reset"] == 1 }
+    abort "reverse prefix projection was not deployed: #{path}" unless
+      config.dig("linnet_pinyin", "prefix") == "|"
+  end
+' "${user}"/build/linnet_zh*.schema.yaml
 rg -Fq 'prism: linnet_zh_pinyin' "${user}/build/linnet_en.schema.yaml"
 rg -Fq 'chinese_schema: linnet_zh_pinyin' "${user}/build/linnet_en.schema.yaml"
 DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
@@ -519,7 +546,7 @@ done
 DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
   "${scratch}/rime-smoke" "${shared}" "${user}" \
     --input-switches-probe >/dev/null
-end_phase "verify eight profiles and Settings projections"
+end_phase "verify legacy-profile migration and Settings projections"
 
 # The default matrix above owns the ordinary lifecycle rows. Reuse its staged
 # data and compiled harness for the switcher-only rows instead of starting a

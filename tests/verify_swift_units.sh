@@ -299,4 +299,8 @@ end_phase "Settings data coordinator"
 begin_phase "Settings transaction IPC"
 tests/verify_settings_transaction_ipc.sh
 end_phase "Settings transaction IPC"
-echo "Linnet Swift owner tests: PASS"
+if [[ "${1:-}" == --skip-appearance-preview ]]; then
+  echo "ZIME Swift owner tests: PARTIAL PASS (appearance-preview excluded)"
+else
+  echo "ZIME Swift owner tests: PASS"
+fi

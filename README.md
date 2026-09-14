@@ -88,11 +88,7 @@ GitHub 自动生成的 Source code ZIP/TAR 是源码，不是安装包。
 
 ```sh
 no_download=1 ./action-build.sh release
-./tests/verify_zime_translation.sh
-./tests/verify_swift_units.sh
-./tests/verify_rime_runtime.sh --zime-bilingual-probe
-./tests/verify_rime_runtime.sh --zime-alphanumeric-probe
-./tests/verify_english_data_projection.sh
+./tests/verify_development.sh core
 ```
 
 生成 Ad-hoc 预览和离线安装包（预览 App 目标路径必须不存在）：
