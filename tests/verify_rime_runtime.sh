@@ -141,9 +141,10 @@ cp tests/fixtures/linnet_user.yaml \
 end_phase "stage isolated product data"
 
 begin_phase "compile Settings projection fixture"
-swiftc="$(xcrun --find swiftc)"
+source tests/swift_test_cache.sh
+linnet_swift_cache_init "${repo_root}" "${scratch}"
 sdk="$(xcrun --show-sdk-path)"
-"${swiftc}" -warnings-as-errors -sdk "${sdk}" -module-cache-path "${repo_root}/build/test-module-cache" \
+linnet_swift_compile projection-fixture -warnings-as-errors -sdk "${sdk}" \
   sources/LinnetPackContract.swift \
   sources/LinnetDataChannel.swift \
   sources/LinnetDataRegistry.swift sources/LinnetDirectoryDelta.swift sources/LinnetDataRegistryTransactions.swift sources/LinnetDataRegistryStorage.swift \
@@ -152,8 +153,7 @@ sdk="$(xcrun --show-sdk-path)"
   sources/LinnetSettings/PersonalDataValidation.swift \
   sources/LinnetSettings/LinnetSettingsDocument.swift sources/LinnetSettings/LinnetSettingsDocumentStore.swift \
   sources/LinnetSettings/LinnetSettingsProjectionRenderer.swift \
-  tests/LinnetSettingsProjectionFixture.swift \
-  -o "${scratch}/projection-fixture"
+  tests/LinnetSettingsProjectionFixture.swift
 "${scratch}/projection-fixture" default "${user}"
 for switch_key in Caps_Lock Shift_L Shift_R; do
   test "$(rg -F -c \
@@ -211,21 +211,22 @@ end_phase "deploy native schemas"
 
 begin_phase "compile native smoke harnesses"
 cxx="$(xcrun --find clang++)"
-"${cxx}" -isysroot "${sdk}" -std=c++17 -O2 -Wall -Wextra -Werror \
+ruby tests/cxx_test_cache.rb "${repo_root}/build/cxx-test-cache" "${scratch}/rime-smoke" -- \
+  "${cxx}" -isysroot "${sdk}" -std=c++17 -O2 -Wall -Wextra -Werror \
   -DGLOG_USE_GLOG_EXPORT -isystem librime/dist/include \
   -isystem build/dependencies/boost tests/rime_smoke_test.cc \
   plugins/smart_english/smart_english_index.cc \
   lib/librime.1.dylib lib/rime-plugins/librime-lua.dylib \
-  lib/rime-plugins/librime-predict.dylib -o "${scratch}/rime-smoke"
+  lib/rime-plugins/librime-predict.dylib
 
 # Reuse the canonical Chinese learning probe only where the mixed-input matrix
 # consumes it. The learned phrase is written later to an isolated user root so
 # it cannot perturb the general candidate-ranking matrix above.
 if [[ -z "${runtime_probe}" || "${runtime_probe}" == --mixed-input-probe ]]; then
-  "${cxx}" -isysroot "${sdk}" -std=c++17 -O2 -Wall -Wextra -Werror \
+  ruby tests/cxx_test_cache.rb "${repo_root}/build/cxx-test-cache" "${scratch}/auto-phrase-probe" -- \
+    "${cxx}" -isysroot "${sdk}" -std=c++17 -O2 -Wall -Wextra -Werror \
     -isystem librime/dist/include tests/auto_phrase_probe.cc \
-    lib/librime.1.dylib lib/rime-plugins/librime-lua.dylib \
-    -o "${scratch}/auto-phrase-probe"
+    lib/librime.1.dylib lib/rime-plugins/librime-lua.dylib
 fi
 end_phase "compile native smoke harnesses"
 

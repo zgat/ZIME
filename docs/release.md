@@ -11,13 +11,11 @@
 ```sh
 ./action-install.sh
 make release
-./tests/verify_development.sh all
-./tests/verify_zime_coverage.sh
-scripts/run_swiftlint.sh
-scripts/run_periphery.sh
+./tests/verify_development.sh release
 ```
 
-`all` 包括核心、安装事务、隐私和本地 App / Settings 隔离数据检查，不安装输入法。
+`release` 包括核心、安装事务、隐私、本地 App / Settings 隔离数据、严格质量和覆盖率门，
+不安装输入法。`all` 仍保留为不含严格质量/覆盖率的兼容分组；范围见 [测试分层](testing.md)。
 覆盖率报告只统计实际插桩的 Swift 模块，不是全项目百分比；报告保存在
 `build/zime-coverage/run.*/`。完整点击测试另在 CI 或明确隔离的桌面运行：
 

@@ -41,22 +41,6 @@ xcrun llvm-cov report "${objects[@]}" -instr-profile="${report}/coverage.profdat
 xcrun llvm-cov show "${objects[@]}" -instr-profile="${report}/coverage.profdata" \
   -ignore-filename-regex='/tests/|/Applications/|/usr/' -format=html \
   -output-dir="${report}/html"
-ruby -rjson -e '
-  root, dir, revision = ARGV
-  files = JSON.parse(File.read(File.join(dir, "coverage.json"))).fetch("data").flat_map { |d| d.fetch("files") }
-  abort "coverage contains unexpected source files" unless files.all? { |f| f.fetch("filename").start_with?(root + "/sources/") }
-  abort "coverage has duplicate source files" unless files.map { |f| f["filename"] }.uniq.size == files.size
-  totals = %w[lines functions regions].to_h { |kind|
-    count = files.sum { |f| f.fetch("summary").fetch(kind).fetch("count") }
-    covered = files.sum { |f| f.fetch("summary").fetch(kind).fetch("covered") }
-    abort "empty coverage: #{kind}" unless count > 0 && covered > 0
-    [kind, {"count" => count, "covered" => covered, "percent" => (100.0 * covered / count).round(2)}]
-  }
-  result = {"scope" => "selected Swift translation/settings-model/candidate-translator/installer fixtures and their production dependencies; NOT whole-project coverage",
-    "source_revision" => revision, "source_dirty" => !IO.popen(["git", "status", "--porcelain=v1"], &:read).empty?,
-    "branch_coverage" => "not measured by this Swift instrumentation",
-    "files" => files.map { |f| f["filename"].delete_prefix(root + "/") }, "totals" => totals}
-  File.write(File.join(dir, "summary.json"), JSON.pretty_generate(result) + "\n")
-  puts JSON.pretty_generate(result)
-' "${root}" "${report}" "$(git rev-parse HEAD)"
+ruby tests/verify_coverage_gate.rb
+ruby tests/zime_coverage_gate.rb "${root}" "${report}" "$(git rev-parse HEAD)"
 echo "ZIME scoped coverage: PASS; report=${report}/report.txt"

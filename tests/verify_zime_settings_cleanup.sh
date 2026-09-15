@@ -20,7 +20,6 @@ if rg -n 'Candidate browsing|Scrolling only|Expandable|Show more candidates|Show
   exit 1
 fi
 rg -Fq '.disclosureGroupStyle(LinnetSettingsDisclosureStyle())' sources/LinnetSettings/SettingsViews.swift
-rg -Fq '.contentShape(Rectangle())' sources/LinnetSettings/LinnetSettingsPage.swift
-rg -Fq '.buttonStyle(.plain)' sources/LinnetSettings/LinnetSettingsPage.swift
-rg -Fq 'LegacyCodingKeys' sources/LinnetSettings/LinnetSettingsDocument.swift
+# Keep the actual Settings view wired to the tested disclosure style. Its
+# hit regions and legacy decoding are executable Swift owner tests, not text.
 echo 'ZIME settings cleanup: PASS'

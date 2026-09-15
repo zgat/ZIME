@@ -9,14 +9,14 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 cd "${repo_root}"
 
 if [[ $# -gt 1 ]]; then
-  echo "Usage: tests/verify_development.sh [all|core|app|swift|rime]" >&2
+  echo "Usage: tests/verify_development.sh [quick|full|release|all|core|app|swift|rime]" >&2
   exit 2
 fi
 profile="${1:-all}"
 case "${profile}" in
-  all|core|app|swift|rime) ;;
+  quick|full|release|all|core|app|swift|rime) ;;
   *)
-    echo "Usage: tests/verify_development.sh [all|core|app|swift|rime]" >&2
+    echo "Usage: tests/verify_development.sh [quick|full|release|all|core|app|swift|rime]" >&2
     exit 2
     ;;
 esac
@@ -25,19 +25,22 @@ run_app=0
 run_swift=0
 run_rime=0
 case "${profile}" in
-  all) run_app=1; run_swift=1; run_rime=1 ;;
-  core) run_swift=1; run_rime=1 ;;
+  all|release) run_app=1; run_swift=1; run_rime=1 ;;
+  core|full) run_swift=1; run_rime=1 ;;
   app) run_app=1 ;;
   swift) run_swift=1 ;;
   rime) run_rime=1 ;;
 esac
 
-if [[ "${profile}" == core ]]; then
+if [[ "${profile}" == core || "${profile}" == full ]]; then
   make --no-print-directory english-data-generator
   tests/verify_english_data_projection.sh
 fi
 
-if [[ "${run_swift}" -eq 1 ]]; then
+if [[ "${run_swift}" -eq 1 || "${profile}" == quick ]]; then
+  ruby tests/verify_coverage_gate.rb
+  ruby tests/verify_cxx_test_cache.rb
+  tests/verify_rime_test_orchestration.sh
   tests/verify_publication_owner.sh
   tests/verify_release_automation.sh
   tests/verify_zime_installer.sh
@@ -126,14 +129,14 @@ verify_inputs_predate() {
   scripts/build-privacy scan "${host_app}"
 fi
 
-if [[ "${run_swift}" -eq 1 ]]; then
-  tests/verify_swift_units.sh
+if [[ "${run_swift}" -eq 1 || "${profile}" == quick ]]; then
+  if [[ "${run_swift}" -eq 1 ]]; then tests/verify_swift_units.sh; fi
   bash tests/verify_zime.sh
   bash tests/verify_zime_translation.sh
 fi
 
 if [[ "${run_rime}" -eq 1 ]]; then
-  tests/verify_rime_test_orchestration.sh
+  if [[ "${run_swift}" -eq 0 ]]; then tests/verify_rime_test_orchestration.sh; fi
   tests/verify_lua_lifetime.sh
   tests/verify_data_release_baseline.sh
   tests/verify_chinese_upstream_workflow.sh
@@ -144,9 +147,17 @@ if [[ "${run_rime}" -eq 1 ]]; then
   ruby tests/verify_profile_golden.rb
   tests/verify_chinese_learning_policy.sh
   tests/verify_rime_runtime.sh
-  for probe in --zime-shortcuts-probe --zime-bilingual-probe --zime-alphanumeric-probe --zime-case-probe --zime-paging-probe --profile-key-matrix-probe --zime-soak-probe; do
+  # The default matrix already owns ExpectAlphanumericComposition. Keep its
+  # focused CLI for diagnosis, but do not repeat it in the full gate.
+  for probe in --zime-shortcuts-probe --zime-bilingual-probe --zime-case-probe --zime-paging-probe --profile-key-matrix-probe --zime-soak-probe; do
     tests/verify_rime_runtime.sh "${probe}"
   done
 fi
 
-echo "Linnet development gate (${profile}): PASS (no signing or installation)"
+if [[ "${profile}" == release ]]; then
+  swiftlint lint --strict --config .swiftlint.yml
+  scripts/run_periphery.sh
+  tests/verify_zime_coverage.sh
+fi
+
+echo "ZIME development gate (${profile}): PASS (no signing or installation; real UI/API/manual acceptance not included)"

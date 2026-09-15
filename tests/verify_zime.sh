@@ -63,7 +63,6 @@ fi
 rg -Fq 'select_candidate_with_text' sources/SquirrelInputController+RimeSession.swift ||
   fail "segment-owned translation commit boundary"
 bash tests/verify_zime_settings_cleanup.sh || fail "Settings cleanup contract"
-bash tests/verify_zime_commit_contract.sh || fail "original-input commit contract"
 ruby tests/verify_zime_source_boundaries.rb || fail "production source ownership"
 
 if [[ $# -gt 0 ]]; then

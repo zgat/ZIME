@@ -18,7 +18,8 @@ git submodule update --init --recursive
 no_download=1 ./action-build.sh release
 ```
 
-准备好依赖和数据后，提交前运行统一核心检查：
+准备好依赖和数据后，日常快速反馈用 `./tests/verify_development.sh quick`。
+提交前运行统一核心检查：
 
 ```sh
 ./tests/verify_development.sh core
@@ -43,7 +44,9 @@ no_download=1 ./action-build.sh release
 外观与候选窗测试需要可用的 macOS 图形会话。若因环境限制跳过，请在 Pull Request
 中注明原因与验证范围；`--skip-appearance-preview` 只算部分通过，不是完整验收。
 
-覆盖率用 `./tests/verify_zime_coverage.sh` 生成，明确限定测量模块，不是全项目百分比。
+发布前可在构建后运行 `./tests/verify_development.sh release`，统一执行全量、App、
+严格质量与覆盖率门。完整分层、缓存和历史入口说明见 [测试指南](docs/testing.md)。
+覆盖率用 `./tests/verify_zime_coverage.sh` 生成并检查关键模块退化，明确限定测量模块，不是全项目百分比。
 实际安装附件检查见 [发布指南](docs/release.md)；真实应用、跨系统、双屏截图及在线
 服务验收见 [验收清单](docs/ZIME-ACCEPTANCE.md)。历史 Linnet CMS 记录不是 ZIME 发布授权。
 

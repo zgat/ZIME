@@ -40,9 +40,15 @@ gate_path = 'tests/verify_development.sh'
 gate = File.binread(gate_path)
 gate_probes = gate[/^  for probe in (.+); do$/, 1]&.split || []
 required.each do |probe|
-  abort "unified native gate omits #{probe}" unless
-    gate_probes.include?(probe)
+  if probe == '--zime-alphanumeric-probe'
+    abort "duplicate alphanumeric probe in unified gate" if gate_probes.include?(probe)
+    abort "default matrix lost alphanumeric coverage" unless
+      smoke.scan(/ExpectAlphanumericComposition\s*\(api\)\s*;/).size == 2
+  else
+    abort "unified native gate omits #{probe}" unless gate_probes.include?(probe)
+  end
 end
+abort "unified probes contain duplicates" unless gate_probes == gate_probes.uniq
 %w[verify_swift_units.sh verify_zime.sh verify_zime_translation.sh
    verify_english_data_projection.sh verify_rime_runtime.sh].each do |script|
   abort "unified core owner missing: #{script}" unless gate.include?("tests/#{script}")
@@ -54,6 +60,12 @@ end
 [%w[unknown], %w[core extra]].each do |args|
   _, _, status = Open3.capture3('bash', gate_path, *args)
   abort "invalid development arguments were accepted" unless status.exitstatus == 2
+end
+%w[lean_data_trust runtime_footprint product package_architecture input_process_offline
+   action_publication release_metadata data_channel_release package_lifecycle].each do |name|
+  output, error, status = Open3.capture3('bash', "tests/verify_#{name}.sh")
+  abort "historical test must fail clearly, not claim PASS: #{name}" unless
+    status.exitstatus == 64 && (output + error).include?('ARCHIVED:')
 end
 abort "page-size matrix omits a supported setting" unless
   runtime.match?(/^for page_size in 3 4 5 6 7 8 9; do$/)

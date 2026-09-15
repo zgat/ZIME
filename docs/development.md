@@ -51,8 +51,11 @@ swiftlint lint --strict --config .swiftlint.yml
 ./tests/verify_zime_coverage.sh
 ```
 
+- `quick` 是日常快速反馈；`full` 是 `core` 的易读别名；`release` 统一全量、App、
+  lint/Periphery/覆盖率。范围、缓存和门槛见 [测试分层](testing.md)。
 - `core`：Swift、候选/外观、翻译、Host 提交、发布/CI 契约、安装事务、隐私、
-  英文投影、默认原生回归和七项专项。`all` 是 core 范围加 App 检查，不包含 lint/Periphery。
+  英文投影、默认原生回归和六项专项（数字混输已在默认矩阵中）。
+  `all` 是 core 范围加 App 检查，不包含 lint/Periphery。
 - `app`：最新 local-build 的身份、资源、依赖、数据隔离和构建新鲜度；
   不等于完成设置 UI 点击测试。
 - Periphery 索引实际 Host、Settings、安装助手、pack tool、runtime inspector、

@@ -1,4 +1,5 @@
 import Foundation
+// Historical downloader ownership policy; not a current ZIME test.
 import SwiftParser
 import SwiftSyntax
 
