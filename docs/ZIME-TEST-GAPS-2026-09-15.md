@@ -38,6 +38,22 @@ App 验证、严格 SwiftLint、Periphery 和提高门槛后的覆盖率检查�
 完整日志：`build/testing-gaps-20260915/full-release.log`；最终覆盖率：
 `build/zime-coverage/run.YW61kU/`。报告如实记录提交前的 HEAD 和 dirty 状态。
 
-安装及安装包核验结果待本次交付完成后补记。
+代码提交：`1a4e2a2ae596fd70ca02b169be45e99c786ee26e`。从该干净提交构建的
+Full ZIP、Core ZIP、PKG 位于 `build/zime-0.1.22-build25-delivery-20260915/`，
+manifest 记录 build 25、对应提交及 `source_dirty=false`。来源、SHA-256、Ad-hoc 签名、
+Full/Core/PKG 内容一致性、用户域 PKG 和离线运行数据检查全部通过；仍未 Apple 公证。
+
+使用 Core 包自带事务助手完成本机 build 24 → 25 更新。安装后版本、签名、插件、来源
+检查通过；一个正式路径 ZIME 进程正常运行且未隐藏，简体输入源保持选中，繁体已注册但
+未启用。Data、Runtime/Active、两份偏好文件摘要和 App 目录 inode 与安装前一致；
+UserData 在安装静止期由事务校验并保留快照。回滚目录：
+`~/Library/Input Methods/.zime-install-673CA940-2887-4C7F-BBF5-C61E3327AB6F`。
+
+安装成功后，将项目外层遗漏的 `ZIME-0.1.19-arm64` 旧 Core ZIP 和解压安装目录移入
+本卷系统废纸篓 `.Trashes/501/ZIME-0.1.19-arm64`，可以恢复。重新检查后，可用安装包仅有
+0.1.20、0.1.21、0.1.22 三个版本；同版本不同构建或 ZIP/PKG 属于同一代。
+未删除用户数据、回滚材料、源码或测试日志。交付日志和安装前后摘要均保存在
+`build/testing-gaps-20260915/`。
+
 独立桌面真实 Settings 点击、真实 API 服务、其他 macOS/输入应用、双屏截图及长时使用
 仍为 **NOT_EXERCISED**，不使用离线夹具结果替代实机验收。没有推送或发布 GitHub。
