@@ -23,6 +23,7 @@ measure() {
 }
 measure translation sources/ZIMELocalLexicon.swift sources/ZIMETranslationProvider.swift \
   tests/ZIMETranslationTests.swift
+measure translation-http sources/ZIMETranslationProvider.swift tests/ZIMETranslationHTTPTests.swift
 measure translation-settings sources/ZIMETranslationProvider.swift \
   sources/LinnetSettings/ZIMETranslationSettingsModel.swift tests/ZIMETranslationSettingsTests.swift
 measure candidate-translator sources/LinnetPackContract.swift sources/LinnetDataChannel.swift \

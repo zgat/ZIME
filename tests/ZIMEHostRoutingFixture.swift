@@ -83,6 +83,7 @@ final class SquirrelInputController {
         selectionLabel: String(index + 1))
     }, currentPage: 0, pageSize: 5, highlightedItemIndex: 4, isLastPage: true)
     let owner = SquirrelInputController()
+    owner.bilingualSourceSnapshot = source
     let page = owner.projectTranslationCandidates(from: source)
     precondition(page.items.count == 5 && page.items[page.highlightedItemIndex].sourceAbsoluteIndex == 4)
     fixtureDelegate.panel!.candidateSnapshot = .init(items: Array(page.items.prefix(1)), currentPage: 0,
@@ -97,6 +98,9 @@ final class SquirrelInputController {
     precondition(owner.rawCommits == 1 && owner.rimeAPI.chosen == nil)
     precondition(owner.candidateTranslator.cancellations == 1 &&
       !owner.bilingualTranslationMode && owner.bilingualSourceSnapshot == nil)
+    precondition(!owner.bilingualCandidates.changePage(backward: true), "raw Return retained translation rows")
+    precondition(owner.handleBilingualKeyDown(key(kVK_Tab, "\t"), modifiers: []) == nil,
+      "raw Return left a source snapshot that can reopen retired candidates")
     owner.bilingualTranslationMode = true
     precondition(owner.handleBilingualKeyDown(key(kVK_ANSI_1, "1"), modifiers: []) == true)
     precondition(owner.rimeAPI.chosen == page.items[0].sourceAbsoluteIndex &&

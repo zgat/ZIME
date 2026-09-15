@@ -27,6 +27,9 @@ README 描述当前产品；这里保留各版本的历史验证范围和实现�
 
 ## 开发验证
 
+测试分层见 [当前测试入口](testing.md)，缓存、发布门、Host 清理与 HTTP 离线集成
+的最新修复见 [测试缺口补齐](ZIME-TEST-GAPS-2026-09-15.md)。
+
 当前验证体系与覆盖边界见 [完整验证跟进](ZIME-VALIDATION-FOLLOWUP-2026-09-14.md)，
 真实系统/应用/服务验收见 [验收清单](ZIME-ACCEPTANCE.md)。
 

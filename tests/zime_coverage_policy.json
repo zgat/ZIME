@@ -19,6 +19,6 @@
     "sources/ZIMECandidateTranslator.swift": {"lines": 95.1, "functions": 83.3, "covered_functions": 30},
     "sources/ZIMEInstallTransaction.swift": {"lines": 93.9, "functions": 95.2, "covered_functions": 20},
     "sources/ZIMELocalLexicon.swift": {"lines": 98.5, "functions": 93.1, "covered_functions": 108},
-    "sources/ZIMETranslationProvider.swift": {"lines": 67.4, "functions": 62.7, "covered_functions": 32}
+    "sources/ZIMETranslationProvider.swift": {"lines": 75.5, "functions": 67.3, "covered_functions": 35}
   }
 }

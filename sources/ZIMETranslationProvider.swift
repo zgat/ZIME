@@ -256,9 +256,11 @@ enum ZIMETranslationHTTP {
   }
 
   static func translate(
-
     configuration: ZIMETranslationConfiguration,
-    credentials: ZIMETranslationCredentials, text: String, chinese: Bool
+    credentials: ZIMETranslationCredentials, text: String, chinese: Bool,
+    makeSession: (URLSessionConfiguration, URLSessionTaskDelegate) -> URLSession = {
+      URLSession(configuration: $0, delegate: $1, delegateQueue: nil)
+    }
   ) async throws -> String {
     let request = try request(configuration: configuration, credentials: credentials, text: text, chinese: chinese)
     let sessionConfiguration = URLSessionConfiguration.ephemeral
@@ -266,7 +268,9 @@ enum ZIMETranslationHTTP {
     sessionConfiguration.httpCookieStorage = nil
     sessionConfiguration.urlCredentialStorage = nil
     sessionConfiguration.timeoutIntervalForResource = 12
-    let session = URLSession(configuration: sessionConfiguration, delegate: ZIMETranslationSessionDelegate(), delegateQueue: nil)
+    // The narrow session factory lets offline tests use URLProtocol without
+    // replacing request execution, streaming limits or the redirect delegate.
+    let session = makeSession(sessionConfiguration, ZIMETranslationSessionDelegate())
     defer { session.invalidateAndCancel() }
     let (bytes, response) = try await session.bytes(for: request)
     guard let response = response as? HTTPURLResponse, (200...299).contains(response.statusCode) else {

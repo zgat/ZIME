@@ -12,6 +12,12 @@ build/zime-tests/translation
 /usr/bin/xcrun swiftc -warnings-as-errors -parse-as-library \
   -module-cache-path build/zime-tests/module-cache \
   -target arm64-apple-macosx13.0 -framework Security \
+  sources/ZIMETranslationProvider.swift tests/ZIMETranslationHTTPTests.swift \
+  -o build/zime-tests/translation-http
+build/zime-tests/translation-http
+/usr/bin/xcrun swiftc -warnings-as-errors -parse-as-library \
+  -module-cache-path build/zime-tests/module-cache \
+  -target arm64-apple-macosx13.0 -framework Security \
   sources/ZIMETranslationProvider.swift sources/LinnetSettings/ZIMETranslationSettingsModel.swift \
   tests/ZIMETranslationSettingsTests.swift -o build/zime-tests/translation-settings
 build/zime-tests/translation-settings

@@ -39,6 +39,45 @@ Dir.mktmpdir("zime-cache-test-") do |dir|
   check.call(false)
   Dir[File.join(cache, "*", "manifest.json")].each { |path| File.write(path, "{") }
   check.call(false)
+
+  preferred = File.join(dir, "preferred")
+  fallback = File.join(dir, "fallback")
+  FileUtils.mkdir_p([preferred, fallback])
+  File.write(File.join(fallback, "value.h"), "#define VALUE 1\n")
+  File.write(source, "#include <value.h>\nint main() { return VALUE; }\n")
+  shadow = [compiler.strip, "-isysroot", sdk.strip, "-I", preferred, "-I", fallback, source]
+  check.call(false, shadow)
+  check.call(true, shadow)
+  File.write(File.join(preferred, "value.h"), "#define VALUE 2\n")
+  check.call(false, shadow)
+  system(output)
+  abort "new preferred header used stale binary" unless $?.exitstatus == 2
+  check.call(true, shadow)
+  File.unlink(File.join(preferred, "value.h"))
+  check.call(false, shadow)
+  system(output)
+  abort "removed preferred header did not restore fallback" unless $?.exitstatus == 1
+
+  # Deliberately do NOT include optional.h; a dependency-list-only cache misses
+  # this change even though __has_include affects the executable.
+  File.write(source, <<~CPP)
+    #if __has_include(<optional.h>)
+    int main() { return 3; }
+    #else
+    int main() { return 4; }
+    #endif
+  CPP
+  check.call(false, shadow)
+  check.call(true, shadow)
+  File.write(File.join(preferred, "optional.h"), "// available\n")
+  check.call(false, shadow)
+  system(output)
+  abort "new optional header ignored" unless $?.exitstatus == 3
+  File.unlink(File.join(preferred, "optional.h"))
+  check.call(false, shadow)
+  system(output)
+  abort "removed optional header ignored" unless $?.exitstatus == 4
+  File.write(source, "#include \"a header.h\"\nint main() { return VALUE; }\n")
   File.unlink(header)
   begin
     check.call(false)
@@ -47,4 +86,4 @@ Dir.mktmpdir("zime-cache-test-") do |dir|
     raise unless error.message == "C++ compilation failed"
   end
 end
-puts "C++ compile cache: PASS (source/header/flags/integrity invalidation; missing inputs fail closed)"
+puts "C++ compile cache: PASS (source/header/flags/integrity, include precedence and __has_include; missing inputs fail closed)"

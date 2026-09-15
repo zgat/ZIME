@@ -36,6 +36,7 @@ jobs:
       - run: tests/verify_development.sh app
       - run: tests/verify_visible_settings_fixture.sh --ui-test
       - run: scripts/run_periphery.sh
+      - run: tests/verify_zime_coverage.sh
       - name: Build and inspect the exact unsigned preview delivery
         run: make --no-print-directory archive ARCHIVE_OUTPUT_DIR="$RUNNER_TEMP/zime-delivery"
       - name: Retain verified candidate for manual review, never publish automatically

@@ -3,6 +3,25 @@ require "yaml"
 require_relative "../scripts/lib/zime_release"
 abort "usage: verify_zime_ci.rb" unless ARGV.empty?
 root = File.expand_path("..", __dir__)
+REQUIRED_GATES = ["./action-install.sh", "make --no-print-directory release",
+  "tests/verify_development.sh core", "tests/verify_development.sh app",
+  "tests/verify_visible_settings_fixture.sh --ui-test", "tests/verify_zime_coverage.sh",
+  "scripts/run_swiftlint.sh", "scripts/run_periphery.sh",
+  "tests/verify_release_automation.sh", "tests/verify_publication_owner.sh"].freeze
+
+def gate_indices(job)
+  REQUIRED_GATES.to_h do |command|
+    index = job.fetch("steps").index do |step|
+      # Require an actual standalone command, not a comment/echo or `|| true`.
+      commands = step.fetch("run", "").split("&&").map(&:strip)
+      commands.include?(command) && (commands - REQUIRED_GATES).empty? &&
+        !step.key?("if") && !step.fetch("continue-on-error", false)
+    end
+    ZIMERelease.check(index, "missing or skippable CI command: #{command}")
+    [command, index]
+  end
+end
+
 def validate(workflows)
   workflows.each do |name, value|
     ZIMERelease.check(value["permissions"] == {"contents" => "read"}, "#{name}: excessive workflow permissions")
@@ -27,13 +46,8 @@ def validate(workflows)
     job = flow.fetch("jobs").fetch("product")
     ZIMERelease.check(job.dig("strategy", "matrix", "os") == %w[macos-15 macos-26], "missing macOS matrix")
     ZIMERelease.check(job["runs-on"] == '$' + '{{ matrix.os }}', "matrix is not used")
-    commands = job.fetch("steps").map { |step| step.fetch("run", "") }.join("\n")
-    required = ["./action-install.sh", "make --no-print-directory release", "tests/verify_development.sh app",
-      "tests/verify_development.sh core", "tests/verify_visible_settings_fixture.sh --ui-test",
-      "tests/verify_zime_coverage.sh", "scripts/run_periphery.sh",
-      "tests/verify_release_automation.sh", "tests/verify_publication_owner.sh"]
-    required.each { |command| ZIMERelease.check(commands.include?(command), "missing CI command: #{command}") }
-    ZIMERelease.check(commands.index("./action-install.sh") < commands.index("tests/verify_development.sh core"), "test prerequisites reordered")
+    gates = gate_indices(job)
+    ZIMERelease.check(gates.fetch("./action-install.sh") < gates.fetch("tests/verify_development.sh core"), "test prerequisites reordered")
     if name == "pull-request-ci.yml"
       ZIMERelease.check(flow["on"] == ["pull_request"], "PR trigger changed")
       cache = job["steps"].find { |s| s["uses"] == "./.github/actions/restore-locked-build-cache" }
@@ -44,13 +58,19 @@ def validate(workflows)
   ZIMERelease.check(release.fetch("on").keys == ["workflow_dispatch"], "release must be explicitly requested")
   job = release.fetch("jobs").fetch("candidate")
   ZIMERelease.check(job["if"] == "github.repository == 'zgat/ZIME'", "release repository guard changed")
-  commands = job.fetch("steps").map { |s| s.fetch("run", "") }.join("\n")
-  %w[core app].each { |profile| ZIMERelease.check(commands.include?("tests/verify_development.sh #{profile}"), "release skipped #{profile}") }
-  ZIMERelease.check(commands.include?("make --no-print-directory archive") &&
-    commands.index("tests/verify_development.sh core") < commands.index("make --no-print-directory archive"), "release verification/build order")
-  upload = job["steps"].find { |s| s.dig("with", "name") == "zime-verified-candidate" }
+  gates = gate_indices(job)
+  steps = job.fetch("steps")
+  archive_index = steps.index { |s| s.fetch("run", "").start_with?("make --no-print-directory archive ") &&
+    !s["run"].match?(/[;&|\n]/) &&
+    !s.key?("if") && !s.fetch("continue-on-error", false) }
+  ZIMERelease.check(archive_index && gates.values.all? { |i| i < archive_index }, "release archive precedes required gates")
+  ZIMERelease.check(gates.fetch("./action-install.sh") < gates.fetch("tests/verify_development.sh core") &&
+    gates.fetch("make --no-print-directory release") < gates.fetch("tests/verify_development.sh app"), "release prerequisites reordered")
+  upload_index = steps.index { |s| s.dig("with", "name") == "zime-verified-candidate" }
+  upload = upload_index && steps[upload_index]
   ZIMERelease.check(upload && upload.dig("with", "if-no-files-found") == "error" &&
-    upload.dig("with", "retention-days") == 3 && !upload.key?("if"), "candidate upload must require successful preceding validation")
+    upload.dig("with", "retention-days") == 3 && !upload.key?("if") && upload_index > archive_index,
+    "candidate upload must require successful preceding validation")
 end
 workflows = %w[commit-ci.yml pull-request-ci.yml release-ci.yml].to_h do |name|
   [name, YAML.load_file(File.join(root, ".github/workflows", name))]
@@ -86,6 +106,31 @@ mutations = [
   ->(w) { w["commit-ci.yml"]["jobs"]["product"]["steps"][0]["uses"] = "actions/checkout@main" },
   ->(w) { w["pull-request-ci.yml"]["jobs"]["product"]["steps"][1]["with"]["save"] = true }
 ]
+REQUIRED_GATES.each do |command|
+  %i[delete skip tolerate echo short_circuit].each do |mode|
+    mutations << ->(w) {
+      steps = w["release-ci.yml"]["jobs"]["candidate"]["steps"]
+      step = steps.find { |s| s.fetch("run", "").split(/&&|\n/).map(&:strip).include?(command) }
+      case mode
+      when :delete then steps.delete(step)
+      when :skip then step["if"] = "false"
+      when :tolerate then step["continue-on-error"] = true
+      when :echo then step["run"] = "echo " + step["run"].gsub("&&", "; echo")
+      when :short_circuit then step["run"] = "false && " + step["run"]
+      end
+    }
+  end
+end
+mutations << ->(w) {
+  steps = w["release-ci.yml"]["jobs"]["candidate"]["steps"]
+  step = steps.find { |s| s["run"] == "tests/verify_zime_coverage.sh" }
+  steps.delete(step); steps << step
+}
+mutations << ->(w) {
+  steps = w["release-ci.yml"]["jobs"]["candidate"]["steps"]
+  step = steps.find { |s| s.dig("with", "name") == "zime-verified-candidate" }
+  steps.delete(step); steps.unshift(step)
+}
 mutations.each do |mutation|
   copy = Marshal.load(Marshal.dump(workflows)); mutation.call(copy)
   begin

@@ -24,36 +24,24 @@ module CxxTestCache
       lock.flock(File::LOCK_EX)
       binary = File.join(slot, "binary")
       manifest = File.join(slot, "manifest.json")
+      # Re-resolve includes even on a hit: a new higher-priority header or an
+      # __has_include condition can change compilation without changing any old
+      # dependency. Hash preprocessed output as well as the current input set.
+      inputs, preprocessing = self.inputs(command, slot)
       begin
         record = JSON.parse(File.read(manifest))
         valid = File.executable?(binary) && !File.symlink?(binary) && !File.symlink?(manifest) &&
           Digest::SHA256.file(binary).hexdigest == record.fetch("binary") &&
-          !record.fetch("inputs").empty? && record.fetch("inputs").all? { |path, digest|
-            File.file?(path) && Digest::SHA256.file(path).hexdigest == digest
-          }
+          record.fetch("inputs") == inputs && record.fetch("preprocessing") == preprocessing
       rescue Errno::ENOENT, JSON::ParserError, KeyError
         valid = false
       end
       unless valid
         Dir.mktmpdir("compile-", slot) do |stage|
           built = File.join(stage, "binary")
-          # Collect each translation unit separately: clang -MD -MF with several
-          # source files silently leaves only the LAST unit's dependencies.
-          # -M includes SDK/system headers, unlike -MMD.
-          sources = command.select { |arg| arg.match?(/\.(?:c|cc|cpp|cxx|m|mm|C)\z/) && File.file?(arg) }
-          raise "no C++ sources" if sources.empty?
-          dependencies = sources.flat_map.with_index { |source, index|
-            depfile = File.join(stage, "deps-#{index}")
-            preprocessing = command.reject { |arg|
-              (sources.include?(arg) && arg != source) || arg.match?(/\.(?:dylib|a|o)\z/)
-            }
-            raise "C++ compilation failed" unless system(*preprocessing, "-M", "-MF", depfile)
-            Shellwords.split(File.read(depfile).gsub(/\\\n/, " ").split(": ", 2).fetch(1))
-          }
           raise "C++ compilation failed" unless system(*command, "-o", built)
-          inputs = (dependencies + command.select { |arg| File.file?(arg) }).uniq.sort
           record = {"binary" => Digest::SHA256.file(built).hexdigest,
-            "inputs" => inputs.to_h { |path| [File.expand_path(path), Digest::SHA256.file(path).hexdigest] }}
+            "inputs" => inputs, "preprocessing" => preprocessing}
           File.write(File.join(stage, "manifest.json"), JSON.generate(record))
           File.rename(built, binary)
           File.rename(File.join(stage, "manifest.json"), manifest)
@@ -62,6 +50,29 @@ module CxxTestCache
       FileUtils.cp(binary, output)
       puts "C++ test compile cache: #{valid ? 'HIT' : 'MISS'} #{File.basename(output)}"
       valid
+    end
+  end
+
+  def self.inputs(command, slot)
+    sources = command.select { |arg| arg.match?(/\.(?:c|cc|cpp|cxx|m|mm|C)\z/) && File.file?(arg) }
+    raise "no C++ sources" if sources.empty?
+    Dir.mktmpdir("dependencies-", slot) do |stage|
+      preprocessed = []
+      dependencies = sources.flat_map.with_index { |source, index|
+        depfile = File.join(stage, "deps-#{index}")
+        output = File.join(stage, "source-#{index}")
+        preprocessing = command.reject { |arg|
+          (sources.include?(arg) && arg != source) || arg.match?(/\.(?:dylib|a|o)\z/)
+        }
+        # One unit per invocation; -MD includes SDK/system headers. A stable
+        # dependency target avoids injecting this scratch path into the digest.
+        raise "C++ compilation failed" unless system(*preprocessing, "-E", "-MD", "-MF", depfile,
+          "-MT", "probe", "-o", output)
+        preprocessed << Digest::SHA256.file(output).hexdigest
+        Shellwords.split(File.read(depfile).gsub(/\\\n/, " ").split(": ", 2).fetch(1))
+      }
+      paths = (dependencies + command.select { |arg| File.file?(arg) }).map { |p| File.expand_path(p) }.uniq.sort
+      [paths.to_h { |path| [path, Digest::SHA256.file(path).hexdigest] }, preprocessed]
     end
   end
 end
