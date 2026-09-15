@@ -1,5 +1,6 @@
 require_relative "compile_artifact_cache"
 require_relative "test_process"
+require_relative "swift_test_dependencies"
 
 module SwiftTestCache
   INCLUDE_ENV = %w[CPATH C_INCLUDE_PATH CPLUS_INCLUDE_PATH OBJC_INCLUDE_PATH LIBRARY_PATH].freeze
@@ -42,18 +43,18 @@ module SwiftTestCache
       tree_files(dir) { |path| files << path }
     end
     files << File.join(repo, "lib/librime.1.dylib") if File.file?(File.join(repo, "lib/librime.1.dylib"))
-    files.map { |p| File.expand_path(p) }.uniq.sort.to_h { |p|
-      # Do not silently omit a symlinked source/header/library.
-      [p, [File.realpath(p), Digest::SHA256.file(p).hexdigest]]
-    }
+    SwiftTestDependencies.fingerprints(files)
   end
 
   def self.compile(repo, cache, output, environment_fingerprint, command)
     raise ArgumentError, "invalid Swift compiler command" if command.empty? || command.include?("-o")
     environment = ENV.select { |k, _| (INCLUDE_ENV + %w[SDKROOT DEVELOPER_DIR MACOSX_DEPLOYMENT_TARGET SWIFT_EXEC]).include?(k) }
     identity = ["swift", Dir.pwd, environment_fingerprint, command, environment.sort,
-      Digest::SHA256.file(__FILE__).hexdigest, Digest::SHA256.file(File.join(__dir__, "test_process.rb")).hexdigest]
-    hit = CompileArtifactCache.fetch(cache, identity, output, resolve: ->(_) { inputs(repo, command) }) do |built|
+      *%w[swift_test_cache.rb swift_test_dependencies.rb test_process.rb].map { |file|
+        Digest::SHA256.file(File.join(__dir__, file)).hexdigest
+      }]
+    resolve = ->(slot) { [inputs(repo, command), SwiftTestDependencies.resolve(command, slot)] }
+    hit = CompileArtifactCache.fetch(cache, identity, output, resolve: resolve) do |built|
       out, err, status = TestProcess.capture(*command, "-o", built, timeout: 180)
       raise "Swift compilation failed:\n#{out}#{err}" unless status.success?
     end

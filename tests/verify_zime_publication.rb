@@ -24,10 +24,8 @@ ZIMERelease.check(builder.include?("git status --porcelain=v1 --untracked-files=
 delivery = File.read(File.join(root, "scripts/build-zime-delivery"))
 ZIMERelease.check(delivery.include?("--force --sign -") && delivery.include?('enable_localSystem="false"') &&
   delivery.include?("ZIME.staged.pkg") && delivery.match?(/install_helper.* check/), "preview packaging boundary missing")
-gate = File.read(File.join(root, "tests/verify_development.sh"))
-%w[verify_publication_owner.sh verify_release_automation.sh verify_zime_installer.sh verify_zime_privacy.sh verify_zime_app.sh].each do |name|
-  ZIMERelease.check(gate.include?("tests/#{name}"), "unified gate omits #{name}")
-end
+# Entrypoint reachability is executed by verify_development_gate.rb. Merely
+# finding a publication script's name in a comment does not protect the gate.
 def rejects(reason)
   begin
     yield

@@ -36,33 +36,13 @@ required.each do |probe|
   flag = probe.delete_prefix('--').tr('-', '_')
   abort "native dispatch missing for #{probe}" unless smoke.match?(/if \(#{flag}\) \{/)
 end
-gate_path = 'tests/verify_development.sh'
-gate = File.binread(gate_path)
-gate_probes = gate[/^  for probe in (.+); do$/, 1]&.split || []
-required.each do |probe|
-  if probe == '--zime-alphanumeric-probe'
-    abort "duplicate alphanumeric probe in unified gate" if gate_probes.include?(probe)
-    abort "default matrix lost alphanumeric coverage" unless
-      smoke.scan(/ExpectAlphanumericComposition\s*\(api\)\s*;/).size == 2
-  else
-    abort "unified native gate omits #{probe}" unless gate_probes.include?(probe)
-  end
-end
-abort "unified probes contain duplicates" unless gate_probes == gate_probes.uniq
-%w[verify_swift_units.sh verify_zime.sh verify_zime_translation.sh
-   verify_english_data_projection.sh verify_rime_runtime.sh
-   verify_test_process.rb verify_compile_artifact_cache.rb
-   verify_swift_test_cache.rb verify_cxx_test_cache.rb
-   verify_candidate_translation_mutations.rb].each do |script|
-  abort "unified core owner missing: #{script}" unless gate.include?("tests/#{script}")
-end
+# Unified entrypoint execution/duplicates/failure propagation are owned by
+# verify_development_gate.rb, not by searching shell text for a script name.
+abort "default matrix lost alphanumeric coverage" unless
+  smoke.scan(/ExpectAlphanumericComposition\s*\(api\)\s*;/).size == 2
 [%w[--unknown-probe], %w[--zime-shortcuts-probe extra], %w[--list-probes extra]].each do |args|
   _, _, status = Open3.capture3('bash', ARGV.fetch(1), *args)
   abort "invalid runtime arguments were accepted" unless status.exitstatus == 64
-end
-[%w[unknown], %w[core extra]].each do |args|
-  _, _, status = Open3.capture3('bash', gate_path, *args)
-  abort "invalid development arguments were accepted" unless status.exitstatus == 2
 end
 %w[lean_data_trust runtime_footprint product package_architecture input_process_offline
    action_publication release_metadata data_channel_release package_lifecycle].each do |name|
