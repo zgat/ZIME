@@ -1,3 +1,4 @@
+// Historical cloud archive codec for legacy fixture validation only.
 import CryptoKit
 import Darwin
 import Foundation
@@ -76,7 +77,7 @@ enum LinnetCloudRecoveryArchive {
   ) throws -> Outcome {
     let archive = try LinnetBackupStore.decodePortable(payload)
     let identity = try payloadIdentity(archive)
-    let work = FileManager.default.temporaryDirectory.appending(
+    let work = LinnetTestScratch.directory.appending(
       path: "LinnetCloudRecovery-\(UUID().uuidString)", directoryHint: .isDirectory)
     try FileManager.default.createDirectory(at: work, withIntermediateDirectories: false)
     defer { try? FileManager.default.removeItem(at: work) }

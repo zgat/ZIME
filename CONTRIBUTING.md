@@ -27,6 +27,10 @@ no_download=1 ./action-build.sh release
 此入口包含 Swift 设置／候选窗、翻译与 Host 提交、英文数据投影、静态约束、
 默认原生回归，以及空格选词、双语排序、数字混输、大小写、分页和会话压力专项。
 还包括 ZIME 发布/CI 契约、安装事务回滚、隐私回归。
+严格质量门另运行 `swiftlint lint --strict --config .swiftlint.yml` 与
+`./scripts/run_periphery.sh`；Periphery 索引 Host、Settings 和实际交付的命令行入口。
+`tests/fixtures/Legacy*` 仅构造历史数据供兼容回归，不能重新加入产品 target，
+其测试不代表已停用的上游下载服务仍属于 ZIME。
 兼容方案通过独立测试环境验证，不会加入默认输入模式列表。
 `--zime-bilingual-probe` 只检查双语候选与学习，不代表所有输入行为均已通过。
 

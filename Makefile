@@ -44,6 +44,7 @@ LINNET_DATA_REGISTRY_SOURCES = sources/LinnetPackContract.swift \
 	sources/LinnetDataRegistryTransactions.swift \
 	sources/LinnetDataRegistryStorage.swift
 LINNET_PACK_TOOL = build/linnet-pack
+ZIME_INSTALL_HELPER = build/zime-install-helper
 LINNET_PACK_TOOL_SOURCES = $(LINNET_DATA_REGISTRY_SOURCES) \
 	sources/LinnetSettings/LinnetSettingsMutationLease.swift \
 	tools/LinnetDataCatalogBuilder.swift \
@@ -170,12 +171,12 @@ linnet-runtime-inspector: $(LINNET_RUNTIME_INSPECTOR)
 input-source-registration-inspector: $(INPUT_SOURCE_REGISTRATION_INSPECTOR)
 
 .PHONY: zime-install-helper
-zime-install-helper: build/zime-install-helper
+zime-install-helper: $(ZIME_INSTALL_HELPER)
 
-build/zime-install-helper: $(LINNET_DATA_REGISTRY_SOURCES) sources/ZIMEInstallTransaction.swift tools/ZIMEInstallHelper.swift
-	@mkdir -p build
+$(ZIME_INSTALL_HELPER): $(LINNET_DATA_REGISTRY_SOURCES) sources/ZIMEInstallTransaction.swift tools/ZIMEInstallHelper.swift tools/ZIMEInstallMain.swift
+	@mkdir -p $(@D)
 	$(SWIFTC) -O -warnings-as-errors -module-cache-path build/swift-module-cache -sdk "$(MACOS_SDK)" -target arm64-apple-macosx13.0 -framework AppKit -framework Carbon \
-		$(LINNET_DATA_REGISTRY_SOURCES) sources/ZIMEInstallTransaction.swift tools/ZIMEInstallHelper.swift -o $@
+		$(LINNET_DATA_REGISTRY_SOURCES) sources/ZIMEInstallTransaction.swift tools/ZIMEInstallHelper.swift tools/ZIMEInstallMain.swift -o $@
 	/usr/bin/codesign --force --sign - --timestamp=none $@
 
 $(ENGLISH_DATA_GENERATOR): $(ENGLISH_DATA_GENERATOR_SOURCES)

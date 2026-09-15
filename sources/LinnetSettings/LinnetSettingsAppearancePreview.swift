@@ -210,19 +210,6 @@ enum LinnetSettingsAppearancePreview {
     let detailFontPoint: Double
     let isDark: Bool
 
-    func detailGeometry(
-      for language: PreviewLanguage
-    ) -> LinnetCandidatePresentation.CandidateDetailGeometry {
-      let layout = language == .chinese
-        ? chineseCandidateLayout : englishCandidateLayout
-      let linear = switch layout {
-      case .horizontal: true
-      case .vertical: false
-      }
-      return LinnetCandidatePresentation.candidateDetailGeometry(
-        forLinearLayout: linear,
-        candidateFontPoint: CGFloat(candidateFontPoint))
-    }
   }
 
   static func presentation(
@@ -292,63 +279,6 @@ private struct LinnetSettingsCandidateMaterial: NSViewRepresentable {
   func updateNSView(_ view: NSVisualEffectView, context: Context) {
     view.material = LinnetCandidatePresentation.candidateMaterial
     view.appearance = NSAppearance(named: isDark ? .darkAqua : .aqua)
-  }
-}
-
-private struct LinnetCandidateDetailSurfaceLayout: Layout {
-  let geometry: LinnetCandidatePresentation.CandidateDetailGeometry
-
-  func sizeThatFits(
-    proposal: ProposedViewSize,
-    subviews: Subviews,
-    cache: inout ()
-  ) -> CGSize {
-    frames(subviews: subviews)?.size ?? .zero
-  }
-
-  func placeSubviews(
-    in bounds: CGRect,
-    proposal: ProposedViewSize,
-    subviews: Subviews,
-    cache: inout ()
-  ) {
-    guard let frames = frames(subviews: subviews) else { return }
-    place(subviews[0], in: frames.candidate, relativeTo: bounds)
-    if let divider = frames.divider {
-      place(subviews[1], in: divider, relativeTo: bounds)
-    } else {
-      subviews[1].place(
-        at: CGPoint(x: bounds.minX, y: bounds.minY),
-        anchor: .topLeading,
-        proposal: ProposedViewSize(width: 0, height: 0))
-    }
-    place(subviews[2], in: frames.detail, relativeTo: bounds)
-  }
-
-  private func frames(
-    subviews: Subviews
-  ) -> LinnetCandidatePresentation.CandidateDetailFrames? {
-    // A transient SwiftUI tree mismatch is a rendering failure, not a process invariant.
-    guard subviews.count == 3 else { return nil }
-    let candidateProposal = ProposedViewSize(
-      width: geometry.candidateColumnMaximumWidth, height: nil)
-    let detailProposal = ProposedViewSize(
-      width: geometry.detailColumnMaximumWidth, height: nil)
-    return geometry.frames(
-      candidateSize: subviews[0].sizeThatFits(candidateProposal),
-      detailSize: subviews[2].sizeThatFits(detailProposal),
-      dividerSize: subviews[1].sizeThatFits(.unspecified))
-  }
-
-  private func place(
-    _ subview: LayoutSubview,
-    in frame: CGRect,
-    relativeTo bounds: CGRect
-  ) {
-    subview.place(
-      at: CGPoint(x: bounds.minX + frame.minX, y: bounds.minY + frame.minY),
-      anchor: .topLeading,
-      proposal: ProposedViewSize(width: frame.width, height: frame.height))
   }
 }
 
@@ -571,68 +501,9 @@ extension LinnetSettingsAppearancePreview {
       "sync", "update", "backup", "restore", "import", "export", "user", "language", "appearance"]
     if let index = chinese.firstIndex(of: value) { return english[index] }
     if let index = english.firstIndex(of: value) { return chinese[index] }
-    return ["method": "方法", "context": "上下文", "typing": "打字", "completion": "补全", "spelling": "拼写", "pronunciation": "发音", "learning": "学习", "layout": "布局", "theme": "主题", "profile": "方案", "native": "原生", "glass": "玻璃"][value] ?? "译文"
-  }
-}
-
-private extension LinnetSettingsAppearancePreviewView {
-  @ViewBuilder
-  func candidateDetail(
-    _ preview: LinnetSettingsAppearancePreview.Presentation,
-    language: LinnetSettingsAppearancePreview.PreviewLanguage,
-    maximumWidth: CGFloat?
-  ) -> some View {
-    let rawDetail = switch language {
-    case .chinese: "［shu ru］"
-    case .english: "/ˈɪntəfeɪs/ · n. 接口"
-    }
-    let detail = LinnetCandidatePresentation.selectedDetailText(rawDetail)
-    if let maximumWidth {
-      Text(AttributedString(candidateDetailLine(preview, text: detail)))
-        .frame(maxWidth: maximumWidth, alignment: .leading)
-        .fixedSize(horizontal: false, vertical: true)
-        .accessibilityElement(children: .combine)
-    } else {
-      Text(AttributedString(candidateDetailLine(preview, text: detail)))
-        .fixedSize(horizontal: true, vertical: false)
-        .accessibilityElement(children: .combine)
-    }
-  }
-
-  func candidateDetailDivider(
-    _ preview: LinnetSettingsAppearancePreview.Presentation,
-    geometry: LinnetCandidatePresentation.CandidateDetailGeometry
-  ) -> some View {
-    Text(AttributedString(candidateDetailLine(preview, text: geometry.dividerText)))
-      .accessibilityHidden(true)
-  }
-
-  func candidateDetailLine(
-    _ preview: LinnetSettingsAppearancePreview.Presentation,
-    text: String
-  ) -> NSAttributedString {
-    let detailFont = LinnetCandidatePresentation.platformFont(
-      fontNames: preview.fontPreset.fontFamilies,
-      size: CGFloat(preview.detailFontPoint))
-    let detailAttributes: [NSAttributedString.Key: Any] = [
-      .font: detailFont,
-      .foregroundColor: preview.palette.secondary.nsColor,
-      .baselineOffset: LinnetCandidatePresentation.secondaryBaselineOffset(
-        primaryFont: detailFont,
-        secondaryFont: detailFont,
-        baseOffset: 0,
-        verticalText: false,
-        placement: .standaloneDetail)
-    ]
-    let line = LinnetCandidatePresentation.candidateLine(
-      candidateFormat: "[comment]",
-      label: "",
-      candidate: "",
-      comment: text,
-      candidateAttributes: detailAttributes,
-      labelAttributes: detailAttributes,
-      commentAttributes: detailAttributes)
-    return line.attributedString
+    return ["method": "方法", "context": "上下文", "typing": "打字", "completion": "补全",
+      "spelling": "拼写", "pronunciation": "发音", "learning": "学习", "layout": "布局", "theme": "主题",
+      "profile": "方案", "native": "原生", "glass": "玻璃"][value] ?? "译文"
   }
 }
 

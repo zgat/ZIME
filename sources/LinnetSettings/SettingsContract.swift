@@ -164,16 +164,6 @@ enum LinnetSettingsContract {
     case learningSyncFailed = "learning_sync_failed"
   }
 
-  enum CoreActivationBlocker: String, Codable, Equatable, Sendable {
-    case inputSourceActive = "input_source_active"
-    case inputSourceUnavailable = "input_source_unavailable"
-    case compositionActive = "composition_active"
-    case dataTransactionActive = "data_transaction_active"
-    case applicationsStillRunning = "applications_still_running"
-    case unknownClient = "unknown_client"
-    case requesterUnavailable = "requester_unavailable"
-  }
-
   struct ProductIdentity: Codable, Equatable, Sendable {
     let version: String
     let build: UInt64
@@ -243,8 +233,6 @@ enum LinnetSettingsContract {
   }
 
   private static let backupRetentionPolicyKey = "backup.retention_policy"
-  private static let cloudSyncEnabledKey = "cloud_sync.enabled_v1"
-  private static let legacyCloudSyncFolderBookmarkKey = "cloud_sync.folder_bookmark_v1"
   private static let cloudSyncLastAttemptKey = "cloud_sync.last_attempt_v1"
   private static let inputMethodConnectionKey = "InputMethodConnectionName"
   static func hostBundle(startingAt bundle: Bundle = .main) -> Bundle? {
@@ -281,32 +269,6 @@ enum LinnetSettingsContract {
   ) -> Bool {
     guard let defaults = hostDefaults(startingAt: bundle) else { return false }
     defaults.set(policy.rawValue, forKey: backupRetentionPolicyKey)
-    return true
-  }
-
-  static func cloudSyncEnabled(
-    startingAt bundle: Bundle = .main
-  ) -> Bool {
-    guard let defaults = hostDefaults(startingAt: bundle) else { return false }
-    if defaults.object(forKey: cloudSyncEnabledKey) != nil {
-      return defaults.bool(forKey: cloudSyncEnabledKey)
-    }
-    guard defaults.data(forKey: legacyCloudSyncFolderBookmarkKey) != nil else {
-      return false
-    }
-    defaults.set(true, forKey: cloudSyncEnabledKey)
-    defaults.removeObject(forKey: legacyCloudSyncFolderBookmarkKey)
-    return true
-  }
-
-  @discardableResult
-  static func setCloudSyncEnabled(
-    _ enabled: Bool,
-    startingAt bundle: Bundle = .main
-  ) -> Bool {
-    guard let defaults = hostDefaults(startingAt: bundle) else { return false }
-    defaults.set(enabled, forKey: cloudSyncEnabledKey)
-    defaults.removeObject(forKey: legacyCloudSyncFolderBookmarkKey)
     return true
   }
 

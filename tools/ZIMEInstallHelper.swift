@@ -3,9 +3,6 @@ import AppKit
 import Carbon
 import Foundation
 
-#if !ZIME_INSTALL_TEST
-@main
-#endif
 struct ZIMEInstallHelper {
   static let bundleID = "com.zime.inputmethod.ZIME"
   typealias Failure = ZIMEInstallTransaction.Failure

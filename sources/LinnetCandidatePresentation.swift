@@ -8,16 +8,6 @@
 import AppKit
 import Foundation
 
-/// Offline provider retained for embedders. The optional remote implementation
-/// lives in ZIMETranslationHTTP and is gated by explicit user configuration.
-protocol ZIMECloudTranslationProvider: Sendable {
-  func translations(for text: String, sourceLanguage: String) async -> [String]
-}
-
-struct ZIMENullCloudTranslationProvider: ZIMECloudTranslationProvider {
-  func translations(for _: String, sourceLanguage _: String) async -> [String] { [] }
-}
-
 enum LinnetCandidatePresentation {
   /// One translation selection owner serves keyboard, pointer and page controls.
   /// Stable source/alternative identities keep asynchronous annotations from
@@ -27,23 +17,23 @@ enum LinnetCandidatePresentation {
       let index: Int
       let text: String
       let translations: [String]
-      var sourceLabel: String? = nil
+      var sourceLabel: String?
     }
-    struct Row: Equatable {
+    struct TranslationRow: Equatable {
       let id: Int
       let sourceIndex: Int
       let sourceText: String
       let text: String
-      var sourceLabel: String? = nil
+      var sourceLabel: String?
     }
     struct Page {
-      let rows: [Row]
+      let rows: [TranslationRow]
       let index: Int
       let size: Int
       let highlightedIndex: Int
       let isLast: Bool
     }
-    private var rows: [Row] = []
+    private var rows: [TranslationRow] = []
     private var selectedID: Int?
     private var preferLast = false
     private var pageSize = 5
@@ -58,7 +48,7 @@ enum LinnetCandidatePresentation {
       self.pageSize = min(9, max(3, pageSize))
       rows = sources.flatMap { source in
         source.translations.prefix(3).enumerated().map { index, text in
-          Row(id: 1_000_000 + source.index * 4 + index,
+          TranslationRow(id: 1_000_000 + source.index * 4 + index,
             sourceIndex: source.index, sourceText: source.text, text: text, sourceLabel: source.sourceLabel)
         }
       }
@@ -97,6 +87,9 @@ enum LinnetCandidatePresentation {
     }
   }
 
+}
+
+extension LinnetCandidatePresentation {
   /// Smart completion edits only a plain English preedit. URLs, code tokens,
   /// Chinese segments and multiline text cannot be replaced through this path.
   static func smartCompletionText(input: String, candidates: [String], highlighted: Int) -> String? {
@@ -104,8 +97,7 @@ enum LinnetCandidatePresentation {
       guard !text.isEmpty, text.utf8.count <= 128 else { return false }
       var hasLetter = false
       for byte in text.utf8 {
-        if (65...90).contains(byte) || (97...122).contains(byte) { hasLetter = true }
-        else if ![32, 39, 45].contains(byte) { return false }
+        if (65...90).contains(byte) || (97...122).contains(byte) { hasLetter = true } else if ![32, 39, 45].contains(byte) { return false }
       }
       return hasLetter
     }
@@ -230,13 +222,15 @@ enum LinnetCandidatePresentation {
 
   /// The local dictionary owns parsing and deduplication. JSON preserves all
   /// punctuation, quotes and legacy delimiter characters in source notes.
-  static func bilingualComment(displayText: String, translations: [String], detailText: String,
+  static func bilingualComment(
+    displayText: String, translations: [String], detailText: String,
     sourceLabel: String? = nil
   ) -> String {
     let value = BilingualAnnotation(displayText: displayText,
       translations: Array(translations.prefix(3)), detailText: detailText, sourceLabel: sourceLabel)
-    guard let data = try? JSONEncoder().encode(value) else { return "" }
-    return structuredBilingualPrefix + String(decoding: data, as: UTF8.self)
+    guard let data = try? JSONEncoder().encode(value),
+      let encoded = String(data: data, encoding: .utf8) else { return "" }
+    return structuredBilingualPrefix + encoded
   }
 
   private static func decodeBilingualAnnotation(_ rawComment: String) -> BilingualAnnotation? {

@@ -8,7 +8,7 @@ if rg -n 'candidateExpansion|CandidateBrowsingMode|isExpanded|canExpand|usesGrid
     sources/SquirrelView.swift sources/SquirrelView+CandidateDrawing.swift \
     sources/SquirrelTheme.swift sources/LinnetCandidatePresentation.swift \
     sources/LinnetCandidateAccessibility.swift sources/LinnetRimeCandidateSnapshotBuilder.swift \
-    sources/SquirrelInputController.swift sources/SquirrelInputController+RimeSession.swift \
+    sources/SquirrelInputController.swift sources/SquirrelInputController+RimeSession.swift sources/SquirrelInputController+Bilingual.swift \
     sources/ZIMECandidateTranslator.swift sources/LinnetSettings/LinnetSettingsAppearancePreview.swift \
     sources/LinnetSettings/LinnetSettingsProjectionRenderer.swift plugins/smart_english data/squirrel.yaml; then
   echo 'FAIL: retired candidate expansion code returned' >&2

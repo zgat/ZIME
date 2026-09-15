@@ -1005,7 +1005,7 @@ struct LinnetDataRegistryTests {
       require(oldCatalog.digest != nextCatalog.digest, "Core-only fixture must change Catalog bytes")
       let legacy = LinnetDataRegistry.DataChannelReceipt(
         format: "io.github.ares-x.linnet.data-channel-receipt.v1",
-        sequence: oldCatalog.catalog.sequence, digest: oldCatalog.digest)
+        sequence: oldCatalog.catalog.sequence, digest: oldCatalog.digest, packSnapshotDigest: nil)
       let stateURL = registry.activeSharedDataDirectory.appending(path: "activation.json")
       try writeState(.init(
         format: installed.format, edition: installed.edition, generation: installed.generation,

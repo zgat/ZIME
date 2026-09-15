@@ -49,10 +49,6 @@ extension SettingsDataCoordinator {
       }
       try requireWritableDestination(destination)
       return .export(categories, destination: destination)
-    case .exportCloudRecovery(let categories, let cloudFolder, let repair):
-      guard !categories.isEmpty else { throw Failure.invalidOperation("no export category") }
-      try requireDirectory(cloudFolder)
-      return .cloudRecovery(categories, cloudFolder: cloudFolder, repair: repair)
     case .importPortable(let candidate, let revision):
       guard !revision.isEmpty else { throw Failure.invalidOperation("empty revision") }
       return .portable(candidate.archive, baseRevision: revision)
@@ -191,41 +187,6 @@ extension SettingsDataCoordinator {
       }
       throw operationError
     }
-  }
-
-  /// Stages the existing portable external format only locally, then delegates
-  /// cloud object publication to the immutable recovery archive owner.
-  func exportCloudRecovery(
-    categories: Set<LinnetBackupStore.Category>,
-    cloudFolder: URL,
-    repair: Bool,
-    environment: Environment,
-    personalEffect: PersonalEffect,
-    progress: @escaping @Sendable (Phase) -> Void
-  ) async throws -> Outcome {
-    let scratch = fileManager.temporaryDirectory.appending(
-      path: "CloudRecoveryExport-\(UUID().uuidString)", directoryHint: .isDirectory)
-    try ensureDirectory(scratch)
-    defer { try? fileManager.removeItem(at: scratch) }
-    let portable = scratch.appending(
-      path: "recovery.\(LinnetBackupStore.portableExtension)", directoryHint: .notDirectory)
-    let snapshot = try await exportPortable(
-      categories: categories,
-      destination: portable,
-      environment: environment,
-      personalEffect: personalEffect,
-      progress: progress)
-    let recovery = try LinnetCloudRecoveryArchive.publish(
-      portable: Data(contentsOf: portable), in: cloudFolder, repair: repair)
-    return .init(
-      backupDirectory: snapshot.backupDirectory,
-      personalSnapshot: snapshot.personalSnapshot,
-      personalEffect: snapshot.personalEffect,
-      documentEffect: snapshot.documentEffect,
-      importReport: snapshot.importReport,
-      legacyImportedCount: snapshot.legacyImportedCount,
-      diagnostics: snapshot.diagnostics,
-      cloudRecovery: recovery)
   }
 
   struct MutationContext {
@@ -416,8 +377,6 @@ extension SettingsDataCoordinator {
       throw Failure.invalidOperation("backup removal mutation")
     case .export:
       throw Failure.invalidOperation("export mutation")
-    case .cloudRecovery:
-      throw Failure.invalidOperation("cloud recovery mutation")
     case .diagnose:
       throw Failure.invalidOperation("diagnose mutation")
     }

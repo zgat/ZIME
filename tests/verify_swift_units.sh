@@ -120,9 +120,6 @@ compile_run presentation-status \
   sources/LinnetSettings/SettingsRuntimeReachability.swift \
   sources/LinnetSettings/SettingsPresentationStatus.swift \
   tests/SettingsPresentationStatusTests.swift
-compile_run cloud-sync-location \
-  sources/LinnetSettings/LinnetCloudSyncLocation.swift \
-  tests/LinnetCloudSyncLocationTests.swift
 compile_run rime-sync-controller \
   sources/LinnetSettings/LinnetRimeSyncController.swift \
   tests/LinnetRimeSyncControllerTests.swift
@@ -146,9 +143,6 @@ compile_run settings-update-checker -framework AppKit \
   sources/LinnetDataChannel.swift \
   sources/LinnetDataRegistry.swift sources/LinnetDirectoryDelta.swift sources/LinnetDataRegistryTransactions.swift sources/LinnetDataRegistryStorage.swift \
   sources/LinnetSettings/SettingsContract.swift \
-  sources/LinnetSettings/LinnetSettingsDownloadSource.swift \
-  sources/LinnetSettings/LinnetSettingsExclusiveFileSink.swift \
-  sources/LinnetSettings/LinnetSettingsDownloadTransport.swift \
   sources/LinnetSettings/LinnetSettingsTransactionIPC.swift \
   sources/LinnetSettings/LinnetSettingsUpdateChecker.swift \
   tests/LinnetSettingsUpdateCheckerStateTests.swift
@@ -162,7 +156,7 @@ compile_run backup-store \
   sources/LinnetSettings/LinnetSettingsDocument.swift sources/LinnetSettings/LinnetSettingsDocumentStore.swift \
   sources/LinnetSettings/LinnetPortableJSONBudget.swift \
   sources/LinnetSettings/LinnetBackupStore.swift sources/LinnetSettings/LinnetBackupStoreSupport.swift \
-  sources/LinnetSettings/LinnetCloudRecoveryArchive.swift \
+  tests/fixtures/LegacyCloudRecoveryArchive.swift \
   tests/LinnetBackupStoreTests.swift
 compile_run candidate-presentation \
   sources/LinnetPackContract.swift \
@@ -212,24 +206,17 @@ compile_run settings-contract \
   sources/LinnetDataRegistry.swift sources/LinnetDirectoryDelta.swift sources/LinnetDataRegistryTransactions.swift sources/LinnetDataRegistryStorage.swift sources/LinnetSettings/SettingsContract.swift \
   tests/SettingsContractTests.swift
 compile_run data-registry \
+  tests/fixtures/LegacyDataChannelProducer.swift \
   tests/LinnetTestFailure.swift sources/LinnetPackContract.swift \
   sources/LinnetDataChannel.swift sources/LinnetDataRegistry.swift sources/LinnetDirectoryDelta.swift sources/LinnetDataRegistryTransactions.swift sources/LinnetDataRegistryStorage.swift \
   tests/LinnetDataRegistryTests.swift
 compile_run data-channel \
+  tests/fixtures/LegacyDataChannelProducer.swift \
   tests/LinnetTestFailure.swift sources/LinnetPackContract.swift \
   sources/LinnetDataChannel.swift sources/LinnetDataRegistry.swift sources/LinnetDirectoryDelta.swift sources/LinnetDataRegistryTransactions.swift sources/LinnetDataRegistryStorage.swift \
   tools/LinnetDataCatalogBuilder.swift tests/LinnetDataChannelTests.swift
-compile_run download-transport \
-  sources/LinnetPackContract.swift sources/LinnetDataChannel.swift \
-  sources/LinnetDataRegistry.swift sources/LinnetDirectoryDelta.swift sources/LinnetDataRegistryTransactions.swift sources/LinnetDataRegistryStorage.swift \
-  sources/LinnetSettings/LinnetSettingsDownloadSource.swift \
-  sources/LinnetSettings/LinnetSettingsExclusiveFileSink.swift \
-  sources/LinnetSettings/LinnetSettingsDownloadTransport.swift \
-  tests/LinnetSettingsDownloadTransportTests.swift
-compile_run download-source \
-  sources/LinnetSettings/LinnetSettingsDownloadSource.swift \
-  tests/LinnetSettingsDownloadSourceTests.swift
 compile_run pack \
+  tests/fixtures/LegacyDataChannelProducer.swift \
   tests/LinnetTestFailure.swift sources/LinnetPackContract.swift \
   tests/LinnetDirectoryDeltaTests.swift \
   sources/LinnetDataChannel.swift sources/LinnetDataRegistry.swift sources/LinnetDirectoryDelta.swift sources/LinnetDataRegistryTransactions.swift sources/LinnetDataRegistryStorage.swift \
@@ -255,7 +242,7 @@ common_settings_sources=(
   sources/LinnetSettings/LinnetSettingsDocument.swift sources/LinnetSettings/LinnetSettingsDocumentStore.swift
   sources/LinnetSettings/LinnetPortableJSONBudget.swift
   sources/LinnetSettings/LinnetBackupStore.swift sources/LinnetSettings/LinnetBackupStoreSupport.swift
-  sources/LinnetSettings/LinnetCloudRecoveryArchive.swift
+  tests/fixtures/LegacyCloudRecoveryArchive.swift
   sources/LinnetSettings/HallelujahSubstitutionImporter.swift
   sources/LinnetSettings/RimeUserDataBridge.swift
 )
@@ -281,8 +268,8 @@ linnet_swift_compile settings-data-coordinator \
   sources/LinnetSettings/LinnetSettingsProjectionRenderer.swift \
   sources/LinnetSettings/LinnetSettingsMutationLease.swift \
   sources/LinnetSettings/SettingsRuntimeReachability.swift \
-  sources/LinnetSettings/LinnetCloudSyncLocation.swift \
   sources/LinnetSettings/SettingsDataCoordinator.swift sources/LinnetSettings/SettingsDataCoordinatorMutation.swift sources/LinnetSettings/SettingsDataCoordinatorRuntime.swift \
+  tests/fixtures/LegacyDataChannelProducer.swift tests/fixtures/LegacySettingsProducer.swift \
   tests/SettingsDataCoordinatorTests.swift -L lib -lrime.1
 mkdir -p "${scratch}/rime-logs"
 if ! RIME_LOG_DIR="${scratch}/rime-logs" \

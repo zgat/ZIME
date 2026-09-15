@@ -7,7 +7,9 @@ struct ZIMEInstallTransaction {
   enum Failure: LocalizedError {
     case invalid(String)
     var errorDescription: String? {
-      switch self { case .invalid(let reason): "ZIME 安装未完成：\(reason)" }
+      switch self {
+      case .invalid(let reason): "ZIME 安装未完成：\(reason)"
+      }
     }
   }
   enum Step: String { case data, runtime, app, verified }
@@ -19,7 +21,7 @@ struct ZIMEInstallTransaction {
   let support: URL
   var installed: URL { inputMethods.appendingPathComponent("ZIME.app") }
   var dataRoot: URL { support.appendingPathComponent("ZIME") }
-  private let fm = FileManager.default
+  private let fileManager = FileManager.default
 
   static func directory(_ url: URL) throws {
     var info = stat()
@@ -37,7 +39,7 @@ struct ZIMEInstallTransaction {
 
   private func createDirectory(_ url: URL) throws {
     if !Self.exists(url) {
-      try fm.createDirectory(at: url, withIntermediateDirectories: false,
+      try fileManager.createDirectory(at: url, withIntermediateDirectories: false,
         attributes: [.posixPermissions: 0o700])
     }
     try Self.directory(url)
@@ -59,20 +61,7 @@ struct ZIMEInstallTransaction {
            quiesce: () throws -> Void,
            assertQuiescent: () throws -> Void,
            after: (Step) throws -> Void = { _ in }) throws -> Result {
-    try Self.directory(inputMethods)
-    try Self.directory(support)
-    try Self.directory(sourceApp)
-    try validateApp(sourceApp)
-    guard sourceApp.standardizedFileURL != installed.standardizedFileURL,
-      sourceApp.pathExtension == "app" else { throw Failure.invalid("安装来源不能是正在使用的 App") }
-    if let sourceData {
-      try Self.directory(sourceData)
-      guard Set(try fm.contentsOfDirectory(atPath: sourceData.path)) == ["Data", "Runtime"],
-        sourceData.standardizedFileURL != dataRoot.standardizedFileURL else {
-        throw Failure.invalid("离线数据包结构错误")
-      }
-      try validateData(sourceData)
-    }
+    try validateSources(sourceApp: sourceApp, sourceData: sourceData, validateApp: validateApp, validateData: validateData)
     try createDirectory(dataRoot)
     let descriptor = open(inputMethods.appendingPathComponent(".zime-install.lock").path,
       O_CREAT | O_RDWR | O_NOFOLLOW | O_CLOEXEC, 0o600)
@@ -83,48 +72,19 @@ struct ZIMEInstallTransaction {
       lockInfo.st_mode & S_IFMT == S_IFREG, flock(descriptor, LOCK_EX | LOCK_NB) == 0 else {
       throw Failure.invalid("已有安装任务正在运行")
     }
-    let existed = Self.exists(installed)
-    if existed { try Self.directory(installed); try validateApp(installed) }
-    guard existed || sourceData != nil else { throw Failure.invalid("首次安装需要完整离线数据包") }
-    // Interrupted transactions retain their complete signed App and data.
-    // Do not stack another installation on an unknown partial publication.
-    for name in try fm.contentsOfDirectory(atPath: inputMethods.path)
-      where name.hasPrefix(".zime-install-") {
-      let marker = inputMethods.appendingPathComponent(name).appendingPathComponent("in-progress")
-      if Self.exists(marker) { throw Failure.invalid("发现中断的安装，请先检查备份：\(marker.deletingLastPathComponent().path)") }
-    }
+    let existed = try validateExistingInstallation(sourceData: sourceData, validateApp: validateApp)
     let backup = inputMethods.appendingPathComponent(".zime-install-" + UUID().uuidString)
     try createDirectory(backup)
     let stagedApp = backup.appendingPathComponent("previous.app")
-    try fm.copyItem(at: sourceApp, to: stagedApp)
+    try fileManager.copyItem(at: sourceApp, to: stagedApp)
     try validateApp(stagedApp)
     let targetDigest = try LinnetDirectoryDelta.digest(stagedApp)
-    if let sourceData {
-      for name in ["Data", "Runtime"] {
-        let source = sourceData.appendingPathComponent(name)
-        try Self.directory(source)
-        try fm.copyItem(at: source, to: backup.appendingPathComponent(name))
-      }
-      try validateData(backup)
-    } else {
-      // A Core-only update must continue to work with the retained data ABI.
-      try validateData(dataRoot)
-    }
+    try stageData(sourceData, in: backup, validateData: validateData)
     try quiesce()
     try assertQuiescent()
-    let userData = dataRoot.appendingPathComponent("UserData")
-    let userDigest: String?
-    if Self.exists(userData) {
-      try Self.directory(userData)
-      let snapshot = backup.appendingPathComponent("UserData-before")
-      try fm.copyItem(at: userData, to: snapshot)
-      userDigest = try LinnetDirectoryDelta.digest(userData)
-      guard try LinnetDirectoryDelta.digest(snapshot) == userDigest else {
-        throw Failure.invalid("用户词频备份校验失败")
-      }
-    } else { userDigest = nil }
+    let userDigest = try snapshotUserData(in: backup)
     let oldDigest = existed ? try LinnetDirectoryDelta.digest(installed) : nil
-    let oldInode = existed ? try fm.attributesOfItem(atPath: installed.path)[.systemFileNumber] as? NSNumber : nil
+    let oldInode = existed ? try fileManager.attributesOfItem(atPath: installed.path)[.systemFileNumber] as? NSNumber : nil
     let marker = backup.appendingPathComponent("in-progress")
     try Data("ZIME installation in progress; retain this directory for recovery.\n".utf8)
       .write(to: marker, options: .atomic)
@@ -139,8 +99,8 @@ struct ZIMEInstallTransaction {
             try Self.swap(current, staged)
             undo.append { try Self.swap(current, staged) }
           } else {
-            try fm.moveItem(at: staged, to: current)
-            undo.append { try fm.moveItem(at: current, to: staged) }
+            try fileManager.moveItem(at: staged, to: current)
+            undo.append { try fileManager.moveItem(at: current, to: staged) }
           }
           try after(step)
         }
@@ -154,43 +114,123 @@ struct ZIMEInstallTransaction {
             baseSHA256: oldDigest, targetSHA256: targetDigest)
         }
       } else {
-        try fm.moveItem(at: stagedApp, to: installed)
-        undo.append { try fm.moveItem(at: installed, to: stagedApp) }
+        try fileManager.moveItem(at: stagedApp, to: installed)
+        undo.append { try fileManager.moveItem(at: installed, to: stagedApp) }
       }
       try after(.app)
-      try validateApp(installed)
-      try validateData(dataRoot)
-      guard try LinnetDirectoryDelta.digest(installed) == targetDigest else {
-        throw Failure.invalid("已安装 App 与已验证来源不一致")
-      }
-      if let oldInode {
-        guard try fm.attributesOfItem(atPath: installed.path)[.systemFileNumber] as? NSNumber == oldInode else {
-          throw Failure.invalid("输入源注册目录被意外替换")
-        }
-      }
-      if let userDigest {
-        guard try LinnetDirectoryDelta.digest(userData) == userDigest else {
-          throw Failure.invalid("安装期间用户词频或设置发生变化")
-        }
-      } else if Self.exists(userData) { throw Failure.invalid("安装期间出现外部用户数据写入") }
+      try verifyPublication(targetDigest: targetDigest, oldInode: oldInode, userDigest: userDigest,
+        validateApp: validateApp, validateData: validateData)
       try assertQuiescent()
       try after(.verified)
-      try fm.removeItem(at: marker)
+      try fileManager.removeItem(at: marker)
       return Result(backup: backup, firstInstall: !existed)
     } catch {
-      let original = error
-      var rollbackErrors: [String] = []
-      do { try assertQuiescent() } catch {
-        throw Failure.invalid("输入法意外重新启动，暂不回滚正在使用的文件。请保留备份并退出 ZIME：\(backup.path)")
-      }
-      for reverse in undo.reversed() {
-        do { try reverse() } catch { rollbackErrors.append(error.localizedDescription) }
-      }
-      if rollbackErrors.isEmpty {
-        try fm.removeItem(at: marker)
-        throw Failure.invalid("已恢复安装前版本；\(original.localizedDescription)。备份：\(backup.path)")
-      }
-      throw Failure.invalid("回滚未完成，请保留 \(backup.path)。\(rollbackErrors.joined(separator: "; "))")
+      try rollback(undo, backup: backup, marker: marker, original: error, assertQuiescent: assertQuiescent)
     }
+  }
+}
+
+private extension ZIMEInstallTransaction {
+  func validateSources(
+    sourceApp: URL, sourceData: URL?,
+    validateApp: (URL) throws -> Void, validateData: (URL) throws -> Void
+  ) throws {
+    try Self.directory(inputMethods)
+    try Self.directory(support)
+    try Self.directory(sourceApp)
+    try validateApp(sourceApp)
+    guard sourceApp.standardizedFileURL != installed.standardizedFileURL,
+      sourceApp.pathExtension == "app" else { throw Failure.invalid("安装来源不能是正在使用的 App") }
+    if let sourceData {
+      try Self.directory(sourceData)
+      guard Set(try fileManager.contentsOfDirectory(atPath: sourceData.path)) == ["Data", "Runtime"],
+        sourceData.standardizedFileURL != dataRoot.standardizedFileURL else {
+        throw Failure.invalid("离线数据包结构错误")
+      }
+      try validateData(sourceData)
+    }
+  }
+
+  func validateExistingInstallation(sourceData: URL?, validateApp: (URL) throws -> Void) throws -> Bool {
+    let existed = Self.exists(installed)
+    if existed { try Self.directory(installed); try validateApp(installed) }
+    guard existed || sourceData != nil else { throw Failure.invalid("首次安装需要完整离线数据包") }
+    // Interrupted transactions retain their complete signed App and data.
+    // Do not stack another installation on an unknown partial publication.
+    for name in try fileManager.contentsOfDirectory(atPath: inputMethods.path)
+      where name.hasPrefix(".zime-install-") {
+      let marker = inputMethods.appendingPathComponent(name).appendingPathComponent("in-progress")
+      if Self.exists(marker) { throw Failure.invalid("发现中断的安装，请先检查备份：\(marker.deletingLastPathComponent().path)") }
+    }
+    return existed
+  }
+
+  func stageData(_ sourceData: URL?, in backup: URL, validateData: (URL) throws -> Void) throws {
+    if let sourceData {
+      for name in ["Data", "Runtime"] {
+        let source = sourceData.appendingPathComponent(name)
+        try Self.directory(source)
+        try fileManager.copyItem(at: source, to: backup.appendingPathComponent(name))
+      }
+      try validateData(backup)
+    } else {
+      // A Core-only update must continue to work with the retained data ABI.
+      try validateData(dataRoot)
+    }
+  }
+
+  func snapshotUserData(in backup: URL) throws -> String? {
+    let userData = dataRoot.appendingPathComponent("UserData")
+    let userDigest: String?
+    if Self.exists(userData) {
+      try Self.directory(userData)
+      let snapshot = backup.appendingPathComponent("UserData-before")
+      try fileManager.copyItem(at: userData, to: snapshot)
+      userDigest = try LinnetDirectoryDelta.digest(userData)
+      guard try LinnetDirectoryDelta.digest(snapshot) == userDigest else {
+        throw Failure.invalid("用户词频备份校验失败")
+      }
+    } else { userDigest = nil }
+    return userDigest
+  }
+
+  func verifyPublication(
+    targetDigest: String, oldInode: NSNumber?, userDigest: String?,
+    validateApp: (URL) throws -> Void, validateData: (URL) throws -> Void
+  ) throws {
+    let userData = dataRoot.appendingPathComponent("UserData")
+    try validateApp(installed)
+    try validateData(dataRoot)
+    guard try LinnetDirectoryDelta.digest(installed) == targetDigest else {
+      throw Failure.invalid("已安装 App 与已验证来源不一致")
+    }
+    if let oldInode {
+      guard try fileManager.attributesOfItem(atPath: installed.path)[.systemFileNumber] as? NSNumber == oldInode else {
+        throw Failure.invalid("输入源注册目录被意外替换")
+      }
+    }
+    if let userDigest {
+      guard try LinnetDirectoryDelta.digest(userData) == userDigest else {
+        throw Failure.invalid("安装期间用户词频或设置发生变化")
+      }
+    } else if Self.exists(userData) { throw Failure.invalid("安装期间出现外部用户数据写入") }
+  }
+
+  func rollback(
+    _ undo: [() throws -> Void], backup: URL, marker: URL, original: Error,
+    assertQuiescent: () throws -> Void
+  ) throws -> Never {
+    var rollbackErrors: [String] = []
+    do { try assertQuiescent() } catch {
+      throw Failure.invalid("输入法意外重新启动，暂不回滚正在使用的文件。请保留备份并退出 ZIME：\(backup.path)")
+    }
+    for reverse in undo.reversed() {
+      do { try reverse() } catch { rollbackErrors.append(error.localizedDescription) }
+    }
+    if rollbackErrors.isEmpty {
+      try fileManager.removeItem(at: marker)
+      throw Failure.invalid("已恢复安装前版本；\(original.localizedDescription)。备份：\(backup.path)")
+    }
+    throw Failure.invalid("回滚未完成，请保留 \(backup.path)。\(rollbackErrors.joined(separator: "; "))")
   }
 }

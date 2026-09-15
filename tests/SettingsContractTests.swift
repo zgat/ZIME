@@ -329,26 +329,14 @@ struct SettingsContractTests {
       fail("the backup policy did not share the host suite")
     }
     let attemptedAt = Date(timeIntervalSince1970: 12_345)
-    guard !LinnetSettingsContract.cloudSyncEnabled(startingAt: host),
-      LinnetSettingsContract.setCloudSyncEnabled(true, startingAt: settings),
-      defaults.bool(forKey: cloudSyncEnabledKey),
-      LinnetSettingsContract.cloudSyncEnabled(startingAt: host),
-      LinnetSettingsContract.setCloudSyncLastAttempt(attemptedAt, startingAt: settings),
-      defaults.object(forKey: cloudSyncLastAttemptKey) as? Date == attemptedAt,
-      LinnetSettingsContract.cloudSyncLastAttempt(startingAt: host) == attemptedAt,
-      LinnetSettingsContract.setCloudSyncEnabled(false, startingAt: settings),
-      !defaults.bool(forKey: cloudSyncEnabledKey)
-    else {
-      fail("the cloud sync enabled state did not share the host suite")
-    }
-
-    defaults.removeObject(forKey: cloudSyncEnabledKey)
+    defaults.set(true, forKey: cloudSyncEnabledKey)
     defaults.set(Data("legacy-bookmark".utf8), forKey: legacyCloudSyncFolderBookmarkKey)
-    guard LinnetSettingsContract.cloudSyncEnabled(startingAt: settings),
+    guard LinnetSettingsContract.setCloudSyncLastAttempt(attemptedAt, startingAt: settings),
+      LinnetSettingsContract.cloudSyncLastAttempt(startingAt: host) == attemptedAt,
       defaults.bool(forKey: cloudSyncEnabledKey),
-      defaults.object(forKey: legacyCloudSyncFolderBookmarkKey) == nil
+      defaults.data(forKey: legacyCloudSyncFolderBookmarkKey) == Data("legacy-bookmark".utf8)
     else {
-      fail("the legacy folder selection did not migrate to the product-owned location")
+      fail("reading/writing legacy diagnostics changed unrelated retired sync preferences")
     }
   }
 

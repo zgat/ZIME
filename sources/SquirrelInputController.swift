@@ -24,12 +24,12 @@ final class SquirrelInputController: IMKInputController {
   private var modifierTransitions = SquirrelModifierTransitionState(hardwareFlags: [])
   var sessionLease: LinnetRimeSessionLease?
   var session: RimeSessionId { sessionLease?.identifier ?? 0 }
-  private var inputModeIdentity: LinnetCandidatePresentation.InputModeIdentity?
+  var inputModeIdentity: LinnetCandidatePresentation.InputModeIdentity?
   private var systemInputModeIdentifier: String?
   var bilingualTranslationMode = false
   var bilingualSourceSnapshot: CandidateSnapshot?
   var bilingualCandidates = LinnetCandidatePresentation.TranslationCandidates()
-  private let candidateTranslator = ZIMECandidateTranslator()
+  let candidateTranslator = ZIMECandidateTranslator()
   private var inlinePreedit = false
   private var inlineCandidate = false
   // for chord-typing
@@ -133,7 +133,7 @@ final class SquirrelInputController: IMKInputController {
   private func acknowledgeConsumedCandidateChord(
     _ event: NSEvent, modifiers: NSEvent.ModifierFlags
   ) {
-    guard !modifiers.intersection([.shift, .control, .option, .command]).isEmpty,
+    guard !modifiers.isDisjoint(with: [.shift, .control, .option, .command]),
       sessionIsCurrent() else { return }
     let key = SquirrelKeycode.osxKeycodeToRime(
       keycode: event.keyCode, keychar: event.charactersIgnoringModifiers?.first,
@@ -441,7 +441,7 @@ extension SquirrelInputController {
 
   /// The single active-session exit. Rime owns raw-input semantics; the panel
   /// independently rejects a hide from a controller it no longer presents.
-  private func commitActiveComposition(to targetClient: IMKTextInput) {
+  func commitActiveComposition(to targetClient: IMKTextInput) {
     clearChord()
     commitRawComposition(to: targetClient)
     NSApp.squirrelAppDelegate.panel?.hide(controller: self)
@@ -602,154 +602,6 @@ extension SquirrelInputController {
     } else {
       hidePalettes()
     }
-  }
-
-  /// Numeric keys and Space select candidates; the raw-input binding bypasses both the
-  /// source and translation highlight. Idle/client keys stay local.
-  private func handleBilingualKeyDown(
-    _ event: NSEvent,
-    modifiers: NSEvent.ModifierFlags
-  ) -> Bool? {
-    let shortcutModifiers = modifiers.intersection([.command, .control, .option, .shift])
-    let bindings = NSApp.squirrelAppDelegate.activeSettingsDocument?.shortcuts ?? .default
-    let action = bindings.action(keyCode: event.keyCode, modifiers: shortcutModifiers.rawValue)
-    if event.isARepeat, action == .switchSourceTranslation,
-      hasPendingRimeInput || bilingualTranslationMode { return true }
-    if action == .switchSourceTranslation {
-      if bilingualTranslationMode {
-        bilingualTranslationMode = false
-        bilingualCandidates.reset()
-        rimeUpdate()
-        return true
-      }
-      guard hasPendingRimeInput, let source = bilingualSourceSnapshot else {
-        return nil
-      }
-      guard source.items.contains(where: {
-        !LinnetCandidatePresentation.candidateComment($0.comment).translations.isEmpty
-      }) else {
-        NSApp.squirrelAppDelegate.panel?.updateStatus(
-          long: "无译文", short: "无译文", controller: self)
-        return true
-      }
-      bilingualTranslationMode = true
-      bilingualCandidates.reset()
-      rimeUpdate()
-      return true
-    }
-
-    let presented = NSApp.squirrelAppDelegate.panel?.candidateSnapshot
-    if action == .commitRawInput {
-      guard hasPendingRimeInput, let targetClient = activeClient else { return nil }
-      candidateTranslator.cancel()
-      bilingualTranslationMode = false
-      bilingualSourceSnapshot = nil
-      bilingualCandidates.reset()
-      commitActiveComposition(to: targetClient)
-      return true
-    }
-    if action == .smartComplete {
-      if bilingualTranslationMode { return true }
-      guard hasPendingRimeInput, inputModeIdentity?.schemaID == "linnet_en",
-        inputModeIdentity?.asciiMode == false,
-        let source = bilingualSourceSnapshot else { return nil }
-      guard let input = rimeAPI.get_input(session).map({ String(cString: $0) }),
-        let completed = LinnetCandidatePresentation.smartCompletionText(
-          input: input, candidates: source.items.map(\.text), highlighted: source.highlightedItemIndex)
-      else { return true }
-      // Replace marked input only. No selection notifier, user-learning write
-      // or client insertText occurs until candidate selection or raw submission.
-      _ = completed.withCString { rimeAPI.set_input(session, $0) }
-      rimeUpdate()
-      return true
-    }
-
-    guard bilingualTranslationMode else { return nil }
-    // Custom bindings above have priority. Other host chords (including
-    // Command/Option/Shift arrows and screenshot shortcuts) pass through.
-    if !shortcutModifiers.isEmpty { return nil }
-    if event.keyCode == UInt16(kVK_Escape) {
-      bilingualTranslationMode = false
-      bilingualCandidates.reset()
-      rimeUpdate()
-      return true
-    }
-    if event.keyCode == UInt16(kVK_Space) {
-      guard hasPendingRimeInput else {
-        bilingualTranslationMode = false
-        bilingualCandidates.reset()
-        return nil
-      }
-      guard let presented,
-        presented.items.indices.contains(presented.highlightedItemIndex)
-      else { return true }
-      _ = selectCandidate(absoluteIndex: presented.items[presented.highlightedItemIndex].absoluteIndex)
-      return true
-    }
-    if let digit = event.charactersIgnoringModifiers?.first?.wholeNumberValue,
-      (1...9).contains(digit) {
-      guard let presented,
-        let index = LinnetCandidatePresentation.TranslationCandidates.selectionIndex(
-          digit: digit, count: presented.items.count) else { return true }
-      _ = selectCandidate(absoluteIndex: presented.items[index].absoluteIndex)
-      return true
-    }
-    if [UInt16(kVK_PageUp), UInt16(kVK_ANSI_Minus)].contains(event.keyCode) {
-      return page(up: true)
-    }
-    if [UInt16(kVK_PageDown), UInt16(kVK_ANSI_Equal)].contains(event.keyCode) {
-      return page(up: false)
-    }
-    // The native raw-input owner handles an unbound Return. Leave
-    // translation mode first so no hidden source/translation is selected.
-    if [UInt16(kVK_Return), UInt16(kVK_ANSI_KeypadEnter)].contains(event.keyCode),
-      shortcutModifiers.isEmpty {
-      bilingualTranslationMode = false
-      bilingualCandidates.reset()
-      return nil
-    }
-    if [UInt16(kVK_LeftArrow), UInt16(kVK_UpArrow)].contains(event.keyCode) {
-      guard let presented, !presented.items.isEmpty else { return true }
-      bilingualCandidates.move(by: -1)
-      rimeUpdate()
-      return true
-    }
-    if [UInt16(kVK_RightArrow), UInt16(kVK_DownArrow)].contains(event.keyCode) {
-      guard let presented, !presented.items.isEmpty else { return true }
-      bilingualCandidates.move(by: 1)
-      rimeUpdate()
-      return true
-    }
-
-    // Any other key resumes ordinary Rime composition from the unchanged
-    // source state before the key is processed.
-    bilingualTranslationMode = false
-    bilingualCandidates.reset()
-    return nil
-  }
-
-  private func projectTranslationCandidates(
-    from source: CandidateSnapshot
-  ) -> CandidateSnapshot {
-    let highlightedSource = source.items.indices.contains(source.highlightedItemIndex)
-      ? source.items[source.highlightedItemIndex].absoluteIndex : nil
-    let page = bilingualCandidates.project(source.items.map {
-      let annotation = LinnetCandidatePresentation.candidateComment($0.comment)
-      return .init(index: $0.absoluteIndex, text: $0.text,
-        translations: annotation.translations, sourceLabel: annotation.sourceLabel)
-    }, pageSize: source.pageSize, highlightedSource: highlightedSource)
-    let items = page.rows.enumerated().map { index, row in
-      CandidateItem(absoluteIndex: row.id, page: page.index, indexOnPage: index,
-        text: row.text, comment: row.sourceLabel.map { "\($0):\(row.sourceText)" } ?? row.sourceText,
-        selectionLabel: String(index + 1),
-        sourceAbsoluteIndex: row.sourceIndex, commitOverride: row.text)
-    }
-    return .init(
-      items: items,
-      currentPage: source.currentPage + page.index,
-      pageSize: page.size,
-      highlightedItemIndex: page.highlightedIndex,
-      isLastPage: page.isLast && source.isLastPage)
   }
 
   func commit(string: String, to targetClient: IMKTextInput?) {

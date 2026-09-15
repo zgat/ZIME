@@ -41,8 +41,6 @@ rg -Fq 'LookupEnglishTranslations' plugins/smart_english/smart_english_index.cc 
   fail "reverse dictionary lookup"
 rg -Fq 'counts.namespaces["m/en"]' tools/LinnetEnglishDataGenerator.swift ||
   fail "reverse dictionary projection"
-rg -Fq 'ZIMENullCloudTranslationProvider' sources/LinnetCandidatePresentation.swift ||
-  fail "null cloud provider"
 rg -Fq 'var enabled = false' sources/ZIMETranslationProvider.swift ||
   fail "cloud translation must default off"
 rg -Fq 'configuration.enabled' sources/ZIMECandidateTranslator.swift ||
@@ -66,6 +64,7 @@ rg -Fq 'select_candidate_with_text' sources/SquirrelInputController+RimeSession.
   fail "segment-owned translation commit boundary"
 bash tests/verify_zime_settings_cleanup.sh || fail "Settings cleanup contract"
 bash tests/verify_zime_commit_contract.sh || fail "original-input commit contract"
+ruby tests/verify_zime_source_boundaries.rb || fail "production source ownership"
 
 if [[ $# -gt 0 ]]; then
   app="$1"

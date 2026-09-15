@@ -383,7 +383,7 @@
     "Update status is not available yet." : {"localizations":{"zh-Hans":{"stringUnit":{"state":"translated","value":"暂时无法获取更新状态。"}}}},
     "Update status is unavailable until the installation is repaired." : {"localizations":{"zh-Hans":{"stringUnit":{"state":"translated","value":"修复安装后才能检查更新状态。"}}}},
     "Update Language Data" : {"localizations":{"zh-Hans":{"stringUnit":{"state":"translated","value":"更新语言数据"}}}},
-    "Reinstall Linnet to restore the required local language data." : {"localizations":{"zh-Hans":{"stringUnit":{"state":"translated","value":"请重新安装 Linnet，以恢复必需的本地语言数据。"}}}},
+    "Reinstall ZIME to restore the required local language data." : {"localizations":{"zh-Hans":{"stringUnit":{"state":"translated","value":"请重新安装 ZIME，以恢复必需的本地语言数据。"}}}},
     "Update language data without reinstalling Linnet." : {"localizations":{"zh-Hans":{"stringUnit":{"state":"translated","value":"无需重新安装 Linnet 即可更新语言数据。"}}}},
     "Updates are built by Linnet from pinned upstream projects. Settings downloads only Linnet release packs, never raw upstream dictionaries or models." : {"localizations":{"zh-Hans":{"stringUnit":{"state":"translated","value":"更新数据由 Linnet 基于锁定的上游项目构建；设置应用只下载 Linnet 发布包，不会直接下载上游原始词典或模型。"}}}},
     "Repair the installation before managing language data." : {"localizations":{"zh-Hans":{"stringUnit":{"state":"translated","value":"请先修复安装，再管理语言数据。"}}}},

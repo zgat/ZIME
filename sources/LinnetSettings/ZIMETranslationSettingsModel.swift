@@ -30,7 +30,9 @@ final class ZIMETranslationSettingsModel: ObservableObject {
   private let deleteCredentials: (String) throws -> Void
   private let translate: (ZIMETranslationConfiguration, ZIMETranslationCredentials) async throws -> String
 
-  init(configuration: ZIMETranslationConfiguration = .load(),
+  init(
+
+    configuration: ZIMETranslationConfiguration = .load(),
     saveConfiguration: @escaping (ZIMETranslationConfiguration) throws -> Void = { try $0.save() },
     loadCredentials: @escaping (String) throws -> ZIMETranslationCredentials = { try .load(account: $0) },
     saveCredentials: @escaping (ZIMETranslationCredentials, String) throws -> Void = { try $0.save(account: $1) },

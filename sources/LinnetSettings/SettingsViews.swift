@@ -414,21 +414,6 @@ struct InputTabView: View {
     }
   }
 
-  private func chineseProfileName(
-    _ profile: LinnetSettingsContract.ChineseProfile
-  ) -> LocalizedStringKey {
-    switch profile {
-    case .natural: "Natural Code"
-    case .fullPinyin: "Full Pinyin"
-    case .flypy: "Flypy Double Pinyin"
-    case .microsoft: "Microsoft Double Pinyin"
-    case .sogou: "Sogou Double Pinyin"
-    case .abc: "Intelligent ABC"
-    case .ziguang: "Ziguang Double Pinyin"
-    case .jiajia: "Jiajia Pinyin"
-    }
-  }
-
   private func pinyinReverseTriggerName(
     _ trigger: LinnetSettingsDocument.PinyinReverseTrigger
   ) -> LocalizedStringKey {
@@ -545,7 +530,6 @@ struct DataTabView: View {
   @ObservedObject var updateChecker: LinnetSettingsUpdateChecker
   @Binding var pendingClear: Set<SettingsDataCoordinator.LearningDomain>?
   @Binding var pendingPortableImport: SettingsDataCoordinator.PortableImportCandidate?
-  @Binding var pendingCloudBackupUpload: Bool
   @Binding var pendingRestore: LinnetBackupStore.BackupRecord?
   @Binding var pendingBackupRemoval: LinnetBackupStore.BackupRecord?
   @Binding var pendingLegacyImport: SettingsDataCoordinator.LegacyImportCandidate?
@@ -560,7 +544,10 @@ struct DataTabView: View {
         versionSection
         GroupBox("Offline translation") {
           Text(
-            "Dictionaries and learning stay on this Mac. Cloud translation is off by default; when explicitly enabled in Translation settings, missing candidate definitions are requested from your selected provider."
+            """
+            Dictionaries and learning stay on this Mac. Cloud translation is off by default; \
+            when explicitly enabled in Translation settings, missing candidate definitions are requested from your selected provider.
+            """
           )
           .font(.callout)
           .foregroundStyle(.secondary)
@@ -589,67 +576,6 @@ struct DataTabView: View {
       }
     }
     .disclosureGroupStyle(LinnetSettingsDisclosureStyle())
-  }
-
-  private var languageDataSection: some View {
-    GroupBox("Language data updates") {
-      VStack(alignment: .leading, spacing: 12) {
-        HStack {
-          VStack(alignment: .leading) {
-            Text("Language data").font(.callout.weight(.medium))
-            Text("Update language data without reinstalling Linnet.")
-              .font(.caption).foregroundStyle(.secondary)
-            Text("Updates are built by Linnet from pinned upstream projects. Settings downloads only Linnet release packs, never raw upstream dictionaries or models.")
-              .font(.caption2).foregroundStyle(.secondary)
-            if let message = languageDataUpdateDescription {
-              Text(message)
-                .font(.caption2).foregroundStyle(.secondary)
-            }
-          }
-          Spacer()
-          if model.packDownloadActive {
-            ProgressView(value: model.packDownloadProgress)
-              .frame(width: 72)
-              .accessibilityLabel("Language data download")
-              .accessibilityValue(
-                Text(
-                  model.packDownloadProgress,
-                  format: .percent.precision(.fractionLength(0))))
-          }
-          Button("Update Language Data") { model.updateLanguageData() }
-            .disabled(
-              !model.languageDataUpdatesAvailable
-                || model.packDownloadActive || model.operationActive)
-        }
-        downloadSourceControls
-        Divider()
-        HStack {
-          VStack(alignment: .leading, spacing: 2) {
-            Text("Long-tail dictionaries").font(.callout.weight(.medium))
-            Text(longTailDescription)
-            .font(.caption).foregroundStyle(.secondary)
-          }
-          Spacer()
-          if model.languageDataUpdateTarget == .completeOffline {
-            ProgressView(value: model.packDownloadProgress)
-              .frame(width: 72)
-              .accessibilityLabel("Long-tail data download")
-              .accessibilityValue(
-                Text(
-                  model.packDownloadProgress,
-                  format: .percent.precision(.fractionLength(0))))
-          }
-          if model.dataEdition == .standard {
-            Button("Install Long-tail Data") {
-              model.installCompleteOfflineData()
-            }
-            .disabled(
-              !model.languageDataUpdatesAvailable
-                || model.packDownloadActive || model.operationActive)
-          }
-        }
-      }.padding(8)
-    }
   }
 
   private var personalDataSection: some View {
@@ -747,29 +673,5 @@ func categoryName(_ category: LinnetBackupStore.Category) -> LocalizedStringKey 
   case .chineseLearning: "Chinese learning"
   case .chineseModeEnglishLearning: "English words learned in Chinese mode"
   case .englishLearning: "English learning"
-  }
-}
-
-extension DataTabView {
-  var updateChannelPicker: some View {
-    VStack(alignment: .leading, spacing: 4) {
-      Picker("Update channel", selection: Binding(
-        get: { updateChecker.updateChannel },
-        set: { updateChecker.setUpdateChannel($0) }
-      )) {
-        Text("Stable").tag(LinnetSettingsUpdateChecker.UpdateChannel.stable)
-        Text("Preview").tag(LinnetSettingsUpdateChecker.UpdateChannel.preview)
-      }
-      .pickerStyle(.segmented)
-      .disabled(
-        updateChecker.active || updateChecker.activationInProgress
-          || updateChecker.coreDownloadInProgress)
-      if updateChecker.updateChannel == .preview {
-        Text(
-          "Preview receives release candidates before they become the latest stable version.")
-          .font(.caption2)
-          .foregroundStyle(.secondary)
-      }
-    }
   }
 }

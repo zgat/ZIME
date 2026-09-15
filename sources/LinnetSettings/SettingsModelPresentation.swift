@@ -73,7 +73,6 @@ extension SettingsModel {
     case .configurationRestoreFailed: .configurationRecoveryFailed
     case .timedOut: .timedOut
     case .cancelled: .unknown
-    case .cloudRecoveryRepairRequired: .invalidOperation
     }
   }
 
@@ -93,8 +92,7 @@ extension SettingsModel {
   }
 
   var operationActive: Bool {
-    activeOperation != nil || packDownloadActive || appearancePublishActive
-      || updateChecker.activationInProgress
+    activeOperation != nil || appearancePublishActive
   }
 
   var migrationAvailable: Bool {
@@ -117,7 +115,6 @@ extension SettingsModel {
     }
   }
 
-  var packDownloadActive: Bool { languageDataUpdateTarget != nil }
   var canRestoreBackup: Bool {
     dataServicesAvailable
       && (configuration.canPersist || configuration.readiness == .sourceUnreadable)

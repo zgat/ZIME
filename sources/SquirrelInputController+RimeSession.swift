@@ -15,8 +15,8 @@ extension SquirrelInputController {
     let text: String
     var comment: String
     let selectionLabel: String?
-    var sourceAbsoluteIndex: Int? = nil
-    var commitOverride: String? = nil
+    var sourceAbsoluteIndex: Int?
+    var commitOverride: String?
     var emphasizesPrimaryText = false
   }
 

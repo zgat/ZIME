@@ -38,7 +38,6 @@ struct SettingsRootView: View {
   @State private var pendingRestore: LinnetBackupStore.BackupRecord?
   @State private var pendingBackupRemoval: LinnetBackupStore.BackupRecord?
   @State private var pendingLegacyImport: SettingsDataCoordinator.LegacyImportCandidate?
-  @State private var pendingCloudBackupUpload = false
 
   var body: some View {
     VStack(spacing: 0) {
@@ -55,46 +54,6 @@ struct SettingsRootView: View {
       model.refreshBackups()
       model.refreshLegacyImportCandidate()
       if model.diagnostics == nil { model.refreshDiagnostics() }
-    }
-    .confirmationDialog(
-      "Upload an incremental recovery backup?",
-      isPresented: $pendingCloudBackupUpload,
-      titleVisibility: .visible
-    ) {
-      Button("Upload Recovery Backup") { model.uploadCloudBackupArchive() }
-      Button("Cancel", role: .cancel) {}
-    } message: {
-      Text(
-        "The first upload creates a full recovery baseline. Later uploads add an immutable delta only. Local data is not changed."
-      )
-    }
-    .confirmationDialog(
-      "Repair cloud recovery backup?",
-      isPresented: $model.cloudRecoveryRepairConfirmationRequired,
-      titleVisibility: .visible
-    ) {
-      Button("Create Full Repair Backup", role: .destructive) {
-        model.uploadCloudBackupArchive(repair: true)
-      }
-      Button("Cancel", role: .cancel) {}
-    } message: {
-      Text(
-        "The existing incremental recovery chain cannot be verified. This creates a new complete baseline; previous cloud objects are left unchanged."
-      )
-    }
-    .confirmationDialog(
-      "Repair language data with complete packs?",
-      isPresented: presented($model.languageDataRepairTarget),
-      titleVisibility: .visible
-    ) {
-      Button("Download Complete Changed Packs") {
-        if let target = model.languageDataRepairTarget {
-          model.downloadLanguageData(target, allowCompleteRepair: true)
-        }
-      }
-      Button("Cancel", role: .cancel) { model.languageDataRepairTarget = nil }
-    } message: {
-      Text("The differential update could not finish. Installed data is unchanged. Retry later, or confirm a full download of changed packs. Unchanged packs and personal data are kept.")
     }
     .confirmationDialog(
       "Import existing Rime / Hallelujah data?",
@@ -215,7 +174,6 @@ struct SettingsRootView: View {
         updateChecker: model.updateChecker,
         pendingClear: $pendingClear,
         pendingPortableImport: $pendingPortableImport,
-        pendingCloudBackupUpload: $pendingCloudBackupUpload,
         pendingRestore: $pendingRestore,
         pendingBackupRemoval: $pendingBackupRemoval,
         pendingLegacyImport: $pendingLegacyImport
@@ -275,13 +233,6 @@ struct SettingsRootView: View {
         .font(.callout)
         Button("Cancel") { model.cancelActiveOperation() }
           .disabled(!active.cancellable)
-      } else if model.packDownloadCancellable {
-        ProgressView(value: model.packDownloadProgress)
-          .frame(width: 80)
-          .accessibilityLabel("Language data download")
-          .accessibilityValue(
-            Text(model.packDownloadProgress, format: .percent.precision(.fractionLength(0))))
-        Button("Cancel Download") { model.cancelLanguagePackDownload() }
       }
       Picker(selection: interfaceLanguageBinding) {
         Text("Follow System").tag(SettingsInterfaceLanguage.system)

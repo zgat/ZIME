@@ -3,8 +3,8 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 /usr/bin/ruby -e '
-  host = File.read("sources/SquirrelInputController.swift")
-  raw = host[/if action == \.commitRawInput \{(.*?)\n    \}/m, 1]
+  host = File.read("sources/SquirrelInputController+Bilingual.swift")
+  raw = host[/private func submitBilingualRawInput\(\) -> Bool\? \{(.*?)\n  \}/m, 1]
   abort "raw shortcut lost its guarded IMK boundary" unless raw &&
     raw.include?("guard hasPendingRimeInput, let targetClient = activeClient") &&
     raw.include?("candidateTranslator.cancel()") &&

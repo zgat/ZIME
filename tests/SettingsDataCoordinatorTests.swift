@@ -697,12 +697,6 @@ struct SettingsDataCoordinatorTests {
         dataRegistry: registry,
         transactionRequester: transactionRequester
       )
-      let requestsBeforeLearningSync = requestOrder.currentRequestCount()
-      try await coordinator.reloadLearningSyncConfiguration()
-      try await coordinator.synchronizeLearningNow()
-      guard requestOrder.currentRequestCount() == requestsBeforeLearningSync + 2 else {
-        fail("learning synchronization did not use the typed Host IPC boundary")
-      }
       let oversizedHallelujah = fixtureRoot.appending(path: "oversized-substitutions.sqlite3")
       try makeSubstitutionDatabase(at: oversizedHallelujah)
       let oversizedHallelujahHandle = try FileHandle(forWritingTo: oversizedHallelujah)

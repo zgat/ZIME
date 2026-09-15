@@ -70,17 +70,6 @@ extension LinnetDataRegistry {
     return .init(manifest: manifest, manifestData: manifestData)
   }
 
-  func verifiedInstalledPack(at directory: URL) throws -> ActivePack {
-    let installed = try verifiedInstalledManifest(at: directory)
-    let manifestSHA256 = Self.sha256(installed.manifestData)
-    let expectedPack = Self.activePack(
-      from: installed.manifest, manifestSHA256: manifestSHA256)
-    guard directory.standardizedFileURL == rootDirectory.appending(
-      path: expectedPack.relativePath, directoryHint: .isDirectory).standardizedFileURL
-    else { throw Failure.invalidActiveState }
-    return expectedPack
-  }
-
   func verifyActiveProjection(
     state: ActiveState,
     manifests: [LinnetPackContract.Kind: LinnetPackContract.Manifest]
@@ -421,22 +410,6 @@ extension LinnetDataRegistry {
       manifestSHA256: manifestSHA256)
   }
 
-  func makeImmutable(_ directory: URL) throws {
-    let contents = try FileManager.default.contentsOfDirectory(
-      at: directory,
-      includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey])
-    for entry in contents {
-      let values = try entry.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
-      guard values.isSymbolicLink != true else { throw Failure.unsafePath(entry.path) }
-      if values.isDirectory == true {
-        try makeImmutable(entry)
-      } else {
-        try FileManager.default.setAttributes([.posixPermissions: 0o444], ofItemAtPath: entry.path)
-      }
-    }
-    try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: directory.path)
-  }
-
   func contains(_ url: URL) -> Bool {
     let root = rootDirectory.standardizedFileURL.path
     let candidate = url.standardizedFileURL.path
@@ -648,21 +621,6 @@ extension LinnetDataRegistry {
 
   static func packPath(_ artifact: LinnetDataChannel.Artifact) -> String {
     "Data/Packs/\(artifact.kind.rawValue)/\(artifact.sequence)-\(artifact.version)"
-  }
-
-  /// Manifest encodings differ between the initial PKG and signed transport.
-  /// Stable payload identity and compatibility metadata, not the envelope
-  /// digest, own same-sequence idempotence.
-  static func sameImmutablePack(_ lhs: ActivePack, _ rhs: ActivePack) -> Bool {
-    lhs.packID == rhs.packID
-      && lhs.kind == rhs.kind
-      && lhs.version == rhs.version
-      && lhs.sequence == rhs.sequence
-      && lhs.dataABI == rhs.dataABI
-      && lhs.contentSHA256 == rhs.contentSHA256
-      && lhs.minCore == rhs.minCore
-      && lhs.requirements == rhs.requirements
-      && lhs.relativePath == rhs.relativePath
   }
 
   func packsAreCompatible(_ packs: [ActivePack], edition: Edition) -> Bool {

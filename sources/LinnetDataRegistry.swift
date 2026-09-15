@@ -157,17 +157,6 @@ struct LinnetDataRegistry: Sendable {
     }
   }
 
-  struct ActivationCandidate: Equatable, Sendable {
-    let transactionID: UUID
-    let directory: URL
-    let expectedActiveRevision: ActiveRevision
-  }
-
-  struct DataChannelUpdateTransaction: Equatable, Sendable {
-    let transactionID: UUID
-    let downloadDirectory: URL
-  }
-
   struct PersonalScratchMarker: Codable {
     let format: String
     let transactionID: UUID
@@ -234,12 +223,6 @@ struct LinnetDataRegistry: Sendable {
       case packSnapshotDigest = "pack_snapshot_digest"
     }
 
-    init(format: String, sequence: UInt64, digest: String, packSnapshotDigest: String? = nil) {
-      self.format = format
-      self.sequence = sequence
-      self.digest = digest
-      self.packSnapshotDigest = packSnapshotDigest
-    }
   }
 
   struct PackDeletionIdentity: Codable {
@@ -374,12 +357,6 @@ extension LinnetDataRegistry {
 
   var settingsMutationLeaseURL: URL {
     rootDirectory.appending(path: "State/settings-mutation.lock")
-  }
-
-  /// The Registry owns catalog validation so it can fail closed against
-  /// the Core version that is actually running, rather than a Settings label.
-  func verifyDataChannel(_ data: Data) throws -> LinnetDataChannel.Verified {
-    try LinnetDataChannel.verify(data, coreVersion: coreVersion)
   }
 
   func prepareMutableDirectories() throws {

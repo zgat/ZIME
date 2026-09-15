@@ -3,365 +3,35 @@ import Foundation
 
 @main
 struct LinnetSettingsUpdateCheckerStateTests {
-  @MainActor static func main() async {
-    let defaultsSuite = "LinnetSettingsUpdateChannelTests-\(UUID().uuidString)"
-    guard let updateDefaults = UserDefaults(suiteName: defaultsSuite) else {
-      fail("could not create isolated update-channel defaults")
-    }
-    defer { updateDefaults.removePersistentDomain(forName: defaultsSuite) }
-    require(
-      LinnetSettingsUpdateChecker.UpdateChannel.load(from: updateDefaults) == .stable,
-      "a fresh installation did not default to the stable update channel"
-    )
-    LinnetSettingsUpdateChecker.UpdateChannel.preview.save(to: updateDefaults)
-    require(
-      LinnetSettingsUpdateChecker.UpdateChannel.load(from: updateDefaults) == .preview,
-      "the Preview channel selection was not persisted"
-    )
-    require(
-      LinnetSettingsUpdateChecker.UpdateChannel.stable.catalogURL.absoluteString
-        == "https://raw.githubusercontent.com/Ares-X/Linnet/data-channel/Linnet-Data-Channel.json"
-        && LinnetSettingsUpdateChecker.UpdateChannel.preview.catalogURL.absoluteString
-          == "https://raw.githubusercontent.com/Ares-X/Linnet/preview-channel/Linnet-Data-Channel.json",
-      "Stable and Preview do not own their exact Catalog endpoints"
-    )
-    updateDefaults.set("nightly", forKey: LinnetSettingsUpdateChecker.UpdateChannel.defaultsKey)
-    require(
-      LinnetSettingsUpdateChecker.UpdateChannel.load(from: updateDefaults) == .stable,
-      "an unknown update channel did not fail closed to Stable"
-    )
-
-    let installed = identity(version: "0.1.10", build: 69, revision: "a")
-    let older = identity(version: "0.1.9", build: 68, revision: "b")
-    let later = identity(version: "0.1.11", build: 70, revision: "c")
-
-    let unavailableHost = LinnetSettingsUpdateChecker.RuntimeVersionState.resolved(
-      installed: installed,
-      health: nil
-    )
-    require(
-      unavailableHost == .unavailable(installed: installed),
-      "a missing Host health response became activatable"
-    )
-    require(
-      unavailableHost.activationIdentities == nil,
-      "an unavailable Host exposed Core activation identities"
-    )
-    require(
-      LinnetSettingsUpdateChecker.RuntimeVersionState.resolved(
-        installed: nil,
-        health: health(productIdentity: older)
-      ) == .unavailable(installed: nil),
-      "a missing installed product identity became activatable"
-    )
-
-    let unidentified = LinnetSettingsUpdateChecker.RuntimeVersionState.resolved(
-      installed: installed,
-      health: health(productIdentity: nil)
-    )
-    require(
-      unidentified == .restartRequired(installed),
-      "an identity-free Host bypassed the one safe restart boundary"
-    )
-    require(
-      unidentified.activationIdentities == nil,
-      "an identity-free Host became eligible for immediate activation"
-    )
-    require(
-      LinnetSettingsUpdateChecker.RuntimeVersionState.resolved(
-        installed: later,
-        health: health(productIdentity: nil)
-      ) == .unavailable(installed: later),
-      "the one-release identity-free Host bridge leaked into 0.1.11"
-    )
-
-    require(
-      LinnetSettingsUpdateChecker.RuntimeVersionState.resolved(
-        installed: installed,
-        health: health(productIdentity: installed)
-      ) == .current(installed),
-      "the installed Host no longer resolves as current"
-    )
-    require(
-      LinnetSettingsUpdateChecker.RuntimeVersionState.resolved(
-        installed: installed,
-        health: health(productIdentity: older)
-      ) == .pending(installed: installed, running: older),
-      "a known older Host no longer exposes the installed update"
-    )
-
-    do {
-      let fixture = try makeBundleFixture(identity: installed)
+  @MainActor static func main() throws {
+    let installed = LinnetSettingsContract.ProductIdentity(
+      version: "0.1.22", build: 23, revision: String(repeating: "a", count: 40))
+    for identifier in ["com.zime.inputmethod.ZIME", "com.zime.inputmethod.ZIME.local-build"] {
+      let fixture = try makeBundleFixture(identity: installed, identifier: identifier)
       defer { try? FileManager.default.removeItem(at: fixture.root) }
-      let requester = RuntimeRequester(health: health(productIdentity: nil))
-      let checker = LinnetSettingsUpdateChecker(
-        edition: nil,
-        installedPacks: [],
-        bundle: fixture.settings,
-        transactionRequester: requester
-      )
-      require(
-        checker.installedIdentity == installed
-          && checker.runtimeVersionState == .checking(installed: installed),
-        "the strict installed Core identity is not the sole initial update owner"
-      )
+      let checker = LinnetSettingsUpdateChecker(bundle: fixture.settings)
+      require(checker.installedIdentity == installed, "Settings did not read the Host identity")
+      require(checker.usesManualReleases, "ZIME did not use its manual release policy")
+      checker.refreshInstalledIdentity()
+      require(checker.installedIdentity == installed, "read-only refresh changed installation identity")
 
-      checker.refreshRuntime()
-      await waitUntil("identity-free Host did not require a normal restart") {
-        checker.runtimeVersionState == .restartRequired(installed)
-      }
-      require(
-        requester.commands == [.diagnose],
-        "runtime refresh triggered Core activation without user confirmation"
-      )
-
-      checker.activateInstalledCore()
-      require(
-        checker.runtimeVersionState == .restartRequired(installed)
-          && requester.commands == [.diagnose],
-        "identity-free Host received an unsafe Core activation request"
-      )
-
-      let unavailableRequester = UnavailableRuntimeRequester()
-      let unavailableChecker = LinnetSettingsUpdateChecker(
-        edition: nil,
-        installedPacks: [],
-        bundle: fixture.settings,
-        transactionRequester: unavailableRequester
-      )
-      unavailableChecker.refreshRuntime()
-      await waitUntil("a failed Host request discarded the installed identity") {
-        unavailableChecker.runtimeVersionState == .unavailable(installed: installed)
-      }
-      require(
-        unavailableChecker.runtimeVersionState.activationIdentities == nil,
-        "a failed Host request became eligible for immediate activation"
-      )
-
-      let activatingRequester = RuntimeRequester(health: health(productIdentity: older))
-      let activatingChecker = LinnetSettingsUpdateChecker(
-        edition: nil, installedPacks: [], bundle: fixture.settings,
-        transactionRequester: activatingRequester)
-      activatingChecker.refreshRuntime()
-      await waitUntil("known running Core did not expose the update") {
-        activatingChecker.runtimeVersionState == .pending(installed: installed, running: older)
-      }
-      activatingChecker.activateInstalledCore()
-      activatingChecker.refreshRuntime()
-      require(
-        activatingChecker.runtimeVersionState == .applying(installed: installed, running: older),
-        "a read-only refresh cancelled a user-requested Core activation"
-      )
-      activatingChecker.check()
-      require(!activatingChecker.active, "Core activation allowed an unrelated network refresh")
-      await waitUntil("protected activation did not finish its original Host request") {
-        activatingChecker.runtimeVersionState == .blocked(
-          installed: installed, running: older, issue: .inputSourceActive)
-      }
-      require(activatingRequester.commands == [.diagnose, .activateCore],
-        "refresh replaced the activation request instead of preserving its lifecycle")
-
-      // The wire contract also covers published 0.1.10's unknown-TIS producer;
-      // SettingsContract owns the supported-Host removal condition.
-      let legacyBlockers: [(
-        code: LinnetSettingsContract.RuntimeReplyCode,
-        issue: LinnetSettingsContract.CoreActivationBlocker
-      )] = [
-        (.coreActivationApplicationsRunning, .applicationsStillRunning),
-        (.coreActivationUnknownClient, .unknownClient),
-      ]
-      for legacy in legacyBlockers {
-        let legacyRequester = RuntimeRequester(
-          health: health(productIdentity: older),
-          activationReplyCode: legacy.code)
-        let legacyChecker = LinnetSettingsUpdateChecker(
-          edition: nil,
-          installedPacks: [],
-          bundle: fixture.settings,
-          transactionRequester: legacyRequester)
-        legacyChecker.refreshRuntime()
-        await waitUntil("0.1.9 Host identity did not expose the installed Core update") {
-          legacyChecker.runtimeVersionState == .pending(
-            installed: installed,
-            running: older)
-        }
-        legacyChecker.activateInstalledCore()
-        let expected = LinnetSettingsUpdateChecker.RuntimeVersionState.blocked(
-          installed: installed,
-          running: older,
-          issue: legacy.issue)
-        await waitUntil("0.1.9 blocker did not map to a fail-closed Settings prompt") {
-          legacyChecker.runtimeVersionState == expected
-        }
-        require(
-          legacyChecker.runtimeVersionState == expected &&
-            legacyChecker.runtimeVersionState != .applied(installed) &&
-            legacyRequester.commands == [.diagnose, .activateCore],
-          "0.1.9 blocker \(legacy.code.rawValue) entered Host lifecycle or success"
-        )
-      }
-
-      let core = LinnetDataChannel.Core(
-        version: "0.1.11", build: 87,
-        revision: String(repeating: "d", count: 40),
-        bytes: 6_479_740,
-        sha256: String(repeating: "e", count: 64),
-        packageURL: URL(
-          string:
-            "https://github.com/Ares-X/Linnet/releases/download/core-v0.1.11/Linnet-0.1.11-arm64-Core-community-beta.pkg"
-        )!,
-        releaseURL: URL(
-          string: "https://github.com/Ares-X/Linnet/releases/tag/core-v0.1.11")!
-      )
-      let downloaded = fixture.root.appending(
-        path: "Linnet-0.1.11-arm64-Core-community-beta.pkg",
-        directoryHint: .notDirectory)
-      var revealed: [URL] = []
-      let downloadChecker = LinnetSettingsUpdateChecker(
-        edition: nil, installedPacks: [], bundle: fixture.settings,
-        transactionRequester: requester,
-        coreDownloader: StubCoreDownloader(destination: downloaded),
-        revealCorePackage: { revealed.append($0) })
-      downloadChecker.downloadCoreUpdate(core)
-      await waitUntil("verified Core download did not become ready") {
-        downloadChecker.coreDownloadState == .ready(core: core, file: downloaded)
-      }
-      require(
-        revealed == [downloaded],
-        "verified Core download was not revealed through the one Finder boundary"
-      )
-
-      let failedDownloadChecker = LinnetSettingsUpdateChecker(
-        edition: nil, installedPacks: [], bundle: fixture.settings,
-        transactionRequester: requester,
-        coreDownloader: StubCoreDownloader(destination: nil),
-        revealCorePackage: { _ in fail("a failed Core download was revealed") })
-      failedDownloadChecker.downloadCoreUpdate(core)
-      await waitUntil("failed Core download did not publish its terminal state") {
-        failedDownloadChecker.coreDownloadState == .failed(core: core)
-      }
-
-      for identifier in ["com.zime.inputmethod.ZIME", "com.zime.inputmethod.ZIME.local-build"] {
-        let zime = try makeBundleFixture(identity: installed, identifier: identifier)
-        defer { try? FileManager.default.removeItem(at: zime.root) }
-        let manualChecker = LinnetSettingsUpdateChecker(
-          edition: nil, installedPacks: [], bundle: zime.settings,
-          transactionRequester: requester, updateDefaults: updateDefaults,
-          coreDownloader: ForbiddenCoreDownloader(),
-          revealCorePackage: { _ in fail("ZIME revealed an upstream Core download") })
-        require(manualChecker.usesManualReleases, "ZIME was not recognized as an independent product")
-        manualChecker.check()
-        manualChecker.setUpdateChannel(.preview)
-        manualChecker.downloadCoreUpdate(core)
-        try await Task.sleep(nanoseconds: 20_000_000)
-        require(!manualChecker.active && manualChecker.availability == nil && manualChecker.coreDownloadState == .idle,
-          "ZIME initiated an inherited upstream update or download")
-      }
-
-      if ProcessInfo.processInfo.environment["LINNET_CORE_DOWNLOAD_LIVE"] == "1" {
-        let catalogData = try await LinnetSettingsDownloadTransport(
-          source: .direct
-        ).downloadCatalog(
-          at: LinnetSettingsUpdateChecker.UpdateChannel.stable.catalogURL)
-        let publishedCore = try LinnetDataChannel.verifyPublished(catalogData).catalog.core
-        let liveRoot = fixture.root.appending(
-          path: "Live Core Download", directoryHint: .isDirectory)
-        let liveFile = try await LinnetCorePackageDownloader(
-          downloadsDirectory: liveRoot
-        ).download(publishedCore, progress: { _ in })
-        try LinnetDataChannel.verifyDownloadedArtifact(
-          bytes: publishedCore.bytes,
-          sha256: publishedCore.sha256,
-          at: liveFile)
-      }
-
-    } catch {
-      fail("unexpected fixture error: \(error)")
+      let hostURL = fixture.settings.bundleURL.deletingLastPathComponent()
+        .deletingLastPathComponent().deletingLastPathComponent()
+      let versionURL = hostURL.appending(path: "Contents/Resources/LinnetRelease/VERSION.json")
+      let original = try Data(contentsOf: versionURL)
+      try Data("{}".utf8).write(to: versionURL)
+      checker.refreshInstalledIdentity()
+      require(checker.installedIdentity == nil, "malformed release metadata retained a stale identity")
+      try original.write(to: versionURL)
+      checker.refreshInstalledIdentity()
+      require(checker.installedIdentity == installed, "repaired metadata did not recover")
+      try FileManager.default.removeItem(at: versionURL)
+      checker.refreshInstalledIdentity()
+      require(checker.installedIdentity == nil, "missing release metadata fell back to an unverified version")
     }
-
-    print("LinnetSettingsUpdateCheckerStateTests: PASS")
-  }
-
-  private final class RuntimeRequester:
-    LinnetSettingsTransactionRequesting, @unchecked Sendable
-  {
-    private let lock = NSLock()
-    private let health: LinnetSettingsContract.RuntimeHealth
-    private let activationReplyCode: LinnetSettingsContract.RuntimeReplyCode
-    private var recordedCommands: [LinnetSettingsContract.DataCommand] = []
-
-    init(
-      health: LinnetSettingsContract.RuntimeHealth,
-      activationReplyCode: LinnetSettingsContract.RuntimeReplyCode =
-        .coreActivationInputSourceActive
-    ) {
-      self.health = health
-      self.activationReplyCode = activationReplyCode
-    }
-
-    var commands: [LinnetSettingsContract.DataCommand] {
-      lock.withLock { recordedCommands }
-    }
-
-    func request(
-      _ request: LinnetSettingsContract.DataRequest,
-      timeout _: TimeInterval,
-      onProgress _: @escaping @Sendable (LinnetSettingsContract.RuntimeReply) -> Void
-    ) async throws -> LinnetSettingsContract.RuntimeReply {
-      lock.withLock { recordedCommands.append(request.command) }
-      if request.command == .diagnose {
-        return .init(
-          transactionID: request.transactionID,
-          status: .running,
-          code: .diagnosticsReady,
-          detail: "Runtime diagnostics are available.",
-          health: health
-        )
-      }
-      return .init(
-        transactionID: request.transactionID,
-        status: .rejected,
-        code: activationReplyCode,
-        detail: "Core activation remains blocked.",
-        health: nil
-      )
-    }
-  }
-
-  private final class UnavailableRuntimeRequester:
-    LinnetSettingsTransactionRequesting, @unchecked Sendable
-  {
-    func request(
-      _: LinnetSettingsContract.DataRequest,
-      timeout _: TimeInterval,
-      onProgress _: @escaping @Sendable (LinnetSettingsContract.RuntimeReply) -> Void
-    ) async throws -> LinnetSettingsContract.RuntimeReply {
-      throw Failure.unavailable
-    }
-
-    private enum Failure: Error { case unavailable }
-  }
-
-  private struct StubCoreDownloader: LinnetCorePackageDownloading {
-    let destination: URL?
-
-    func download(
-      _ core: LinnetDataChannel.Core,
-      progress: @escaping @Sendable (Double) -> Void
-    ) async throws -> URL {
-      progress(0.5)
-      guard let destination else { throw Failure.rejected }
-      progress(1)
-      return destination
-    }
-
-    private enum Failure: Error { case rejected }
-  }
-
-  private struct ForbiddenCoreDownloader: LinnetCorePackageDownloading {
-    func download(_: LinnetDataChannel.Core, progress _: @escaping @Sendable (Double) -> Void) async throws -> URL {
-      fatalError("ZIME called the upstream Core downloader")
-    }
+    require(ZIMEReleasePolicy.releasesURL.absoluteString == "https://github.com/zgat/ZIME/releases",
+      "manual update link belongs to another product")
+    print("LinnetSettingsUpdateCheckerStateTests: PASS (read-only identity, repair, manual releases)")
   }
 
   private struct BundleFixture {
@@ -371,7 +41,7 @@ struct LinnetSettingsUpdateCheckerStateTests {
 
   private static func makeBundleFixture(
     identity: LinnetSettingsContract.ProductIdentity,
-    identifier: String = "io.github.ares-x.inputmethod.Linnet"
+    identifier: String = "com.zime.inputmethod.ZIME"
   ) throws -> BundleFixture {
     let root = LinnetTestScratch.directory.appending(
       path: "LinnetSettingsUpdateCheckerTests-\(UUID().uuidString)",
@@ -426,42 +96,6 @@ struct LinnetSettingsUpdateCheckerStateTests {
     let data = try PropertyListSerialization.data(
       fromPropertyList: values, format: .xml, options: 0)
     try data.write(to: contents.appending(path: "Info.plist"))
-  }
-
-  @MainActor private static func waitUntil(
-    _ message: String,
-    condition: () -> Bool
-  ) async {
-    for _ in 0..<100 {
-      if condition() { return }
-      try? await Task.sleep(nanoseconds: 10_000_000)
-    }
-    fail(message)
-  }
-
-  private static func identity(
-    version: String,
-    build: UInt64,
-    revision: Character
-  ) -> LinnetSettingsContract.ProductIdentity {
-    .init(version: version, build: build, revision: String(repeating: revision, count: 40))
-  }
-
-  private static func health(
-    productIdentity: LinnetSettingsContract.ProductIdentity?
-  ) -> LinnetSettingsContract.RuntimeHealth {
-    .init(
-      productIdentity: productIdentity,
-      state: .running,
-      phase: .running,
-      rimeVersion: "1.17.0",
-      smartEnglishAvailable: true,
-      octagramAvailable: true,
-      availableSchemaCount: 9,
-      requiredSchemaCount: 9,
-      activeTransactionID: nil,
-      activeSettingsRevision: String(repeating: "c", count: 64)
-    )
   }
 
   private static func require(

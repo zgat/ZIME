@@ -55,6 +55,9 @@ final class ZIMELocalLexicon {
     sqlite3_close(database)
   }
 
+}
+
+extension ZIMELocalLexicon {
   static func containsHan(_ text: String) -> Bool {
     text.unicodeScalars.contains {
       (0x3400...0x9FFF).contains($0.value) || (0xF900...0xFAFF).contains($0.value)
@@ -96,8 +99,7 @@ final class ZIMELocalLexicon {
     let term = text.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !term.isEmpty, term.count <= 128 else { return [] }
     let all: [SourceEntry]
-    if let cached = sourceCache[term] { all = cached }
-    else {
+    if let cached = sourceCache[term] { all = cached } else {
       guard let sourceStatement else { return [] }
       defer { sqlite3_reset(sourceStatement); sqlite3_clear_bindings(sourceStatement) }
       let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
@@ -180,7 +182,9 @@ final class ZIMELocalLexicon {
 
   private struct ResolvedSense { let core: String; let detail: String }
 
-  private func resolve(term: String, region: RegionProfile, visited: Set<String>, depth: Int,
+  private func resolve(
+
+    term: String, region: RegionProfile, visited: Set<String>, depth: Int,
     exactReference: Reference? = nil
   ) -> [ResolvedSense] {
     guard depth < 8 else { return [] }
@@ -377,7 +381,8 @@ final class ZIMELocalLexicon {
 
   /// Filter explicit usage labels only. Geographic mentions, examples,
   /// grammatical qualifiers and unclassified prose are never guessed away.
-  static func regionalTranslations(_ senses: [String], for term: String,
+  static func regionalTranslations(
+    _ senses: [String], for term: String,
     region: RegionProfile
   ) -> [String] {
     guard region != .all else { return senses }
@@ -387,7 +392,7 @@ final class ZIMELocalLexicon {
       // Reviewed split of this exact mixed-region CC-CEDICT note. Matching the
       // complete source prevents future dictionary edits being silently lost.
       let pronounNote = "you (Note: In Taiwan, 妳 is used to address females, but in mainland China, it is not commonly used. Instead, 你 is used to address both males and females.)"
-      if (term == "你" || term == "妳"), sense == pronounNote {
+      if term == "你" || term == "妳", sense == pronounNote {
         return region == .mainland
           ? "you (Mainland China: 妳 is not commonly used; 你 is used to address both males and females.)"
           : "you (Taiwan: 妳 is used to address females.)"

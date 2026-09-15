@@ -1,345 +1,81 @@
-# Linnet 维护开发指南
+# ZIME 开发指南
 
-本指南面向贡献者和维护者，说明当前源码结构、唯一 owner、构建入口、数据更新、验证层级和提交约定。用户安装、操作、配置与隐私说明统一见 [README](../README.md)；正式候选与发布流程见 [release.md](release.md)。
+当前用户功能见 [README](../README.md)，贡献约定见 [CONTRIBUTING](../CONTRIBUTING.md)，
+附件生成与发布见 [发布指南](release.md)。[继承的 Linnet 开发说明](legacy/linnet-development.md)
+仅作历史参考，其中自动更新、云同步和中文方案选择不代表当前 ZIME 功能。
 
-## 支持与工具
+## 构建
 
-- Apple Silicon arm64；
-- macOS 13+；
-- 完整 Xcode；
-- Swift / SwiftUI、C++、Shell、Ruby；
-- ripgrep（`rg`，只供源码与架构检查使用，不进入 App 或安装包）；
-- 锁定的 Git 子模块和下载输入。
+支持 Apple Silicon、macOS 13+，需要完整 Xcode、Ruby、C++ 工具链及 ripgrep。
+按锁文件准备依赖后构建：
 
-项目自有构建、数据生成、校验和发布路径不使用 Python。上游子模块可能包含自己的语言或工具，但不得因此把 Python 引回 Linnet 的 steady-state owner。
-
-源码结构门依赖真实 `rg` 的匹配与退出码语义，不使用仓库内的近似 shim。开始验证前先确认 `command -v rg` 成功。
-
-## 变更与贡献
-
-1. 先检查 `git status --short`，保护与任务无关的 staged、unstaged 和 untracked 文件。
-2. 缺陷修复先记录最小复现、精确 revision 和最早错误 owner。
-3. 先新增或确认能表达产品要求的 focused test，再修改生产 owner。
-4. 一个变更只处理一个清晰 owner 边界，不混入无关重命名、格式化或框架迁移。
-5. 删除被替代的 wrapper、fallback、重复默认或推断路径，不能只在旧路径外再包一层。
-6. 先运行 focused gate，再运行相称的 development composite。
-7. 报告必须分开写明源码、构建、安装态和真实用户验收；较低等级 PASS 不能替代较高等级。
-
-提交或 Pull Request 应说明用户可见结果、唯一 owner、退役路径、变更文件、实际验证、未执行工作流，以及数据、兼容、隐私和许可证影响。不要提交生成缓存、构建产物、用户数据、DiagnosticReports、私钥、证书、密码或开发机绝对路径。
-
-## 目录
-
-| 路径 | 职责 |
-| --- | --- |
-| `sources/` | InputMethodKit 前端、候选窗、Host 生命周期和共享产品代码 |
-| `sources/LinnetSettings/` | Settings UI、typed document、personal data、backup、Registry 与 IPC |
-| `plugins/smart_english/` | Smart English 原生 Rime plugin |
-| `data/linnet/` | Linnet 自有 schema、默认值、英文决策和静态产品数据 |
-| `data/chinese/overrides/` | 已复现、人工接受的中文读音与排序决定 |
-| `patches/` | 对精确上游源码应用且摘要锁定的必要补丁 |
-| `scripts/` | 上游同步、runtime build、数据 staging 和 metadata 工具 |
-| `package/` | 当前用户域 PKG、语言包和 publication plan；卸载命令由 README 直接提供 |
-| `tests/` | focused、engine、package 和 product gates |
-| `upstreams.lock.json` | 所有上游版本、提交、输入摘要与直接上游集合 |
-| `config/linnet-data-releases.json` | Chinese/English/LTS/Extended release identity |
-
-`data/plum`、`build`、`lib` 和 `bin` 是生成或复制投影，不是上游或产品事实 owner。不要直接修它们来让测试通过。
-
-## 运行时架构
-
-### 输入状态
-
-macOS 只看到一个 Linnet 输入源。Rime 内部包含八个中文 profile 和一个 `linnet_en`：
-
-- `ascii_composer` 负责独立 Shift、组合键、长按、未上位编码的原样提交和 Caps Lock；
-- 紧随其后的 `linnet_mode_switch_processor` 只把已确认的 Shift 转换映射为中文/Smart English schema 切换；
-- 当前 `Context` 保存直接 Shift 的来源中文 schema，返回后清空；
-- Settings typed document 唯一拥有中文方案选择；fresh document 默认全拼，已有 document 的显式选择保持不变。renderer 将同一选择投影为 `default.custom.yaml` 的首个中文 schema、Smart English 反查 Prism 和直接 Shift 返回目标；
-- `switcher/fix_schema_list_order=true` 让 fresh session 只消费该确定性顺序，旧 `user.yaml/var/previously_selected_schema` 不再拥有选择权；输入前端不在每次按键时推断方案、不保存第二份模式表，也不重新判断 Shift 时长。
-
-### 中文
-
-中文表直接来自 `upstreams/rime-wanxiang/dicts/*.dict.yaml` 的锁定 allowlist。所有 profile 共享 `linnet_zh` dictionary/userdb、LTS grammar 和产品 filter 链，只投影不同的 speller algebra 与 preedit。
-
-Linnet 差异只有两个人工 owner：
-
-- `reviewed_pronunciations.tsv`：已接受的读音替换；
-- `reviewed_rankings.tsv`：已接受的精确排序行。
-
-精确 source patch 删除被拒绝的 `(text, code)`，`linnet_reviewed` 表添加接受行。锁定的 `rime-ice/cn_dicts/ext.dict.yaml` 是唯一中文补充输入：构建期投影器只接收万象核心尚未拥有的三字及以上行，使用万象 `zi` 表转换声调编码，拒绝歧义或无法验证的读音，再以低权重导入同一个 Rime dictionary graph。不存在提交进仓库的生成词典、第二个运行时 translator、自动猜音或运行时 fallback。
-
-维护更新必须修改唯一 review ledger/source patch，而不是生成第二份中文词典或运行时修正规则。
-
-### Smart English
-
-标准 Rime table translator 拥有普通英文 prefix 和 userdb。Linnet 原生 plugin 只拥有成熟 Rime 没有提供的边界：
-
-- forced-raw 安全候选；
-- Phonex 与本地有界距离排序；
-- IPA、中文释义和 skip metadata；
-- session spacing、sentence boundary、context rank 与 learned bigram；
-- prediction UI 行为；
-- 中文 exact 候选与普通英文表候选的当前会话同-span 顺序；
-- 拼音到英文投影的 typed lookup。
-
-不要把普通 prefix、学习或 schema 选择重新实现进 plugin，也不要新增 SQLite、网络、系统拼写检查器或第二个英文词典运行时。
-
-### Settings 与数据
-
-Settings document 拥有候选外观、中文默认项、反查触发键、学习策略和 Smart English 交互开关；personal store 拥有自定义词、禁用词与 Text Expander。唯一标准 personal runtime patch `linnet_user.custom.yaml` 只投影禁用词；document-owned 句首大写与 Tab 确定性投影到八份中文 schema custom 和一份英文 schema custom。旧 `linnet_user.yaml` 仅作一次性迁移输入并在成功写入后退役。
-
-只改变 document 的 Apply 仅在 `Transactions/<UUID>/configuration-candidate/` 暂存一份 `linnet_settings.json`。Host 校验候选与 expected/base revision，以唯一 live document 为 canonical owner 执行 CAS 和同卷原子交换，再从已发布 document reconcile 可重建 custom YAML、按固定顺序部署 exact 11 份 config（default、九个产品 schema 与 squirrel），使旧 session generation 失效并用 fresh session 验证所选方案。成功必须回报同一 SHA-256 `activeSettingsRevision`；交换、reconcile、部署或健康检查失败时，Host 原子换回旧 document、重新 reconcile/deploy 并验证旧 revision，无法验证则 fail closed。Host 启动也会在 Rime 接受输入前从 canonical document 向前 reconcile。该快速路径不 finalize Rime、不运行 maintenance、不重编词典，也不创建备份。个人表变更在隔离候选中按内容差异重建对应 stabledb，未变化且有 canonical source 的数据库以 APFS clone 复用；Host 原子交换后只重新打开已部署配置，不运行 schema maintenance。语言数据激活仍执行完整候选部署和健康检查。
-
-Core App 拥有界面主题，但不携带语言数据。`data/squirrel.yaml` 同时进入 Host 和 Settings 的资源包；Host 在 Rime 初始化前由现有 ProjectionRenderer 将其投影到 UserData，再由 Rime 按标准流程应用用户外观选项。只有 Core 主题字节改变时才重建 `Build/squirrel.yaml`，不会清空词典或学习缓存。旧词包可以保留原有不可变主题文件，但不再决定实际界面；新词包不再包含它。
-
-Chinese、English、LTS 和 Extended 各有独立
-`(kind, sequence, version, content_sha256, data_abi, min_core)`，通过一个完整 Active
-视图消费；只有对应 pack 内容或兼容边界变化才推进该 pack。Catalog 保持现有 JSON
-格式，但发布身份是 `data-channel` 的精确 commit/blob；它引用当前 Core 和当前四个
-不可变 pack。Core-only 更新生成新的 Catalog snapshot，却复用原 data Release 和所有
-未变 pack sequence。精确格式和文件成员由 Registry、package 工具及其结构门共同验证；
-文档不维护第二份成员清单。
-
-## 上游和依赖
-
-`upstreams.lock.json` 是唯一版本 owner；`.gitmodules` 和 gitlink 是受验证投影。直接产品上游集合固定为：
-
-1. Squirrel / Rime；
-2. rime-ice；
-3. Hallelujah；
-4. rime-wanxiang；
-5. RIME-LMDG。
-
-公开源码以一个独立根快照发布，不继承 Squirrel 的 Git 父链。Squirrel 来源由 lock 中的精确 tag/commit 和发布 SBOM 的 `VARIANT_OF` 关系共同证明；构建不得从当前分支的祖先关系推断来源。
-
-rime-ice 提供锁定的英文补充、OpenCC/符号/部件数据、选择的 Lua 源，以及唯一选中的中文扩展输入 `cn_dicts/ext.dict.yaml`；后者只在构建期通过上述投影边界补充万象缺词，不提供 runtime schema 或第二套中文候选 owner。Hallelujah 原始应用、localhost UI、JavaScriptCore 和运行时 SQLite 不进入产品。
-
-查看候选更新：
-
-```bash
-scripts/upstream-sync report
-```
-
-验证当前 lock/gitlink/输入：
-
-```bash
-scripts/upstream-sync verify
-```
-
-`report` 不得修改仓库。升级时在隔离 checkout 中同时更新精确 lock 和 gitlink，比较 effective product projection；不能直接合并 Stable，也不能从运行时自动跟随上游。
-
-上游升级始终先在本地完成：获取候选 revision，审查许可证、源码差异、现有
-patch 是否仍精确适用，以及 Linnet 自己的词典和交互优化是否被保留；然后运行
-focused 测试、`scripts/upstream-sync verify` 与完整 product gate。只有这些结果都
-通过后，才在同一个提交中更新 gitlink、`upstreams.lock.json`、必要 patch 和数据
-release identity。定时 GitHub workflow 只报告候选更新，不得自动修改仓库、合并
-上游或发布。
-
-正常正式候选先由 `scripts/release-control verify-local` 恢复并校验锁定依赖、构建，
-串行完成 strict lint、发布 owner、App/Swift/Rime 和 Periphery。验证期间冻结修改；
-临时 Git index 将待提交文件、删除、权限和 gitlink 绑定到一个 Git tree，不改真实
-暂存区；首尾 tree 必须相同。唯一收据位于 ignored
-`build/linnet-source-verification.json`，是维护者的本地验收声明，不是云端独立测试证明。
-Settings UI 仅在显式隔离桌面和 Developer Mode 可用时运行，否则记录 `NOT_EXERCISED`。
-
-提交相同 tree 后，在 clean、精确远端 `main` 上执行
-`scripts/release-control candidate`，创建携带收据的 annotated
-`linnet-candidate/v<VERSION>-<FULL_REVISION>` 标签；不再手动推送裸标签。
-唯一 macOS release Action 验证标签、commit、tree 和必需测试结果，一次
-checkout/cache/hydrate，保留历史相关的版本单调性检查及实际签名 App/package 门。
-不重跑已本地通过的源码测试；仅当收据的 Settings UI 未执行时补测这一项。
-它使用临时 Keychain 构建、签名、打包和最终验证一次。
-互不重叠的 Core 2 件、data 4 个完整词包及对应差分和 public 1 件直接写入三个 Draft GitHub
-Releases。候选传输
-不使用 GitHub Actions artifact，也不把正式签名字节从本地上传。
-
-RIME-LMDG 的上游 `LTS` 资产允许原作者在同一 URL 原位替换，因此普通冷构建只从
-lock 指定的同仓库固定 `data-N` LTS pack 恢复，再由 PackTool 验证容器、内部模型
-bytes 和 SHA-256。接受新模型时，维护者仍先在隔离 checkout 预计算未来 LTS pack
-摘要，并在同一个最终提交写入上游原始模型身份、未来 `data-N` 身份和数据 release
-identity。由于未来 `data-N` 尚不存在，只有显式
-`linnet-data-seed/v<VERSION>-<SEQUENCE>-<FULL_REVISION>` 标签可以启动 seed：
-
-- macOS Action 只在这个显式模式从上游锁定 URL 下载原始模型，并先验证 lock 中的
-  bytes/SHA-256；
-- 同一个 Action 完成正式的完整 manifest 产物构建和
-  `package/verify_publication_artifacts`，但只暂存并公开四件 data 预发布资产；
-- seed 不创建 Core/Public Release，不写 `data-channel`，因此已安装用户看不到它；
-- 只有同一个 `candidate_revision` 可以快进到 `main`；随后正常 candidate Action
-  必须从已发布的固定 `data-N` pack 冷构建并得到相同 data bytes。
-
-进入安装验收时，本地只下载 candidate Action 的三个 Draft Release 原字节。离线安装、
-功能和 UI 验收通过后，`scripts/release-control preview /absolute/release-directory`
-重新验证完整候选并只创建 `linnet-preview/*` 标签；Ubuntu publisher 公开既有
-Core/data 预发布并推进 `preview-channel`，不触碰稳定 Catalog、Public 或 Latest。
-从旧版 Settings 选择 Preview 完成真实在线升级和跨 Mac iCloud 验收后，再运行
-`scripts/release-control authorize /absolute/release-directory`。正式标签复核同一批
-字节，推进 `data-channel`，最后公开 public / Latest。两个 Catalog 各有一个固定 URL，
-Settings 只消费用户明确选择的一个频道，不自动回退。
-
-GitHub Actions 会缓存锁定下载、runtime 构建依赖、经 fingerprint 和 inventory digest
-验证的原生 Rime 编译 transport、固定 Periphery binary，以及英文生成数据。手动
-commit CI 是共享 build cache 的 writer；PR、正式候选和 data-seed 只读 main cache。
-GitHub [不允许不同标签相互读取各自的 cache](https://docs.github.com/en/actions/reference/workflows-and-actions/dependency-caching#restrictions-for-accessing-a-cache)，因此候选不再写只能由同标签复用的副本，
-也不搬运或编译已本地验证的 Swift 测试 cache。Swift owner tests
-只使用 `tests/swift_test_cache.sh` 的独立内容指纹 cache，不存在第二个静态模块编译
-owner。缓存不是版本或发布权威：
-每次运行仍由 `action-install.sh` 校验 commit、tree、摘要、内部 fingerprint 与产物
-形状，不匹配时只重建受影响部分。
-
-PR CI 在一个 macOS job 内完成一次 checkout、cache restore、hydrate 和 unsigned App
-build，再串行执行 lint、release/data owner、App（含 Settings UI）、Swift owner、
-native Rime 与 Periphery。commit CI 采用同一条串行链，但只允许手动 dispatch；
-`main` push 不自动重复完整验证。这样避免四个 runner 重复下载、hydrate 和构建，
-也不会把并行墙钟误当成额度用量。首个真实 Actions 样本仍须记录墙钟、runner minutes
-和 cache 命中，未执行前不宣称云端加速百分比。连续 PR 更新只保留最新一次。
-
-## 构建与打包
-
-```bash
-./action-build.sh release
-# 已准备完整锁定输入时：
+```sh
+git submodule update --init --recursive
+./action-install.sh
 no_download=1 ./action-build.sh release
 ```
 
-本地输出在 `build/Local/Build/Products/Release/ZIME.app`，使用隔离的
-`.local-build` 身份，未签名、不安装、不改变当前输入源。
-Host 构建投影避免生成 Launch Services 注册任务；Settings 保留独立的本地身份。
+默认产物是隔离身份的 local-build，不会覆盖已安装输入法。
+禁止直接修改生成的 `build/`、`data/plum/`、`lib/` 来修复源码问题。
 
-当前 ZIME 不使用 Linnet 的 CMS 发布授权。干净工作树可通过以下命令生成
-Ad-hoc App、完整 ZIP / 当前用户 PKG / Core ZIP、模型及 manifest / SHA256SUMS：
+## 当前架构
 
-```bash
-make archive ARCHIVE_OUTPUT_DIR="/absolute/path/to/new-zime-delivery"
+- `sources/SquirrelInputController*`：InputMethodKit 会话、键盘入口与候选展示。
+  双语快捷键由 `SquirrelInputController+Bilingual.swift` 统一处理；测试直接编译这些生产方法。
+- `plugins/smart_english/`：英文补全、混输、纠错和学习。普通中文选词由 Rime 负责。
+  中文模式内中文、英文和 Emoji 共同学习；独立英文模式另行训练。
+- `sources/ZIMELocalLexicon.swift`：只读本地译文索引、词义/注释/引用解析和有限缓存。
+- `sources/ZIMECandidateTranslator.swift`：本地优先注释、当前页缺词请求、取消及缓存。
+  `ZIMETranslationProvider.swift` 是唯一在线翻译/凭据边界，默认关闭；
+  在异步等待前后检查当前服务与授权，不从剪贴板或文档收集内容。
+- `sources/LinnetSettings/`：外观、输入、翻译、词典、本地数据五个设置页。
+  外观的即时投影与其他草稿的应用/撤销分开，所有个人数据操作保留原有并发及备份边界。
+- `LinnetDataRegistry*`：不可变 Data/Runtime 的校验、历史状态读取与恢复。
+  停用的上游在线更新生产者不进入应用。`tests/fixtures/Legacy*` 仅构造历史输入，
+  用于验证兼容读取、备份格式和中断事务恢复，不能当作当前功能或产品覆盖率。
+- `ZIMEInstallTransaction.swift` 与 `tools/ZIMEInstallHelper.swift`：
+  当前 ZIP/PKG 共用的安装事务；生产入口是 `tools/ZIMEInstallMain.swift`。
+  升级保留注册 App 目录 inode、UserData 和回滚材料。
+
+ZIME 默认提供全拼和智能英文；简体/繁体是两个 macOS 输入源，共享设置与学习。
+兼容的其他拼音方案只在隔离回归环境中验证，不加入默认输入模式列表。
+设置版本区只读本机安装身份，并链接 ZIME Releases，不查询上游 Linnet Catalog。
+
+## 验证
+
+```sh
+swiftlint lint --strict --config .swiftlint.yml
+./scripts/run_periphery.sh
+./tests/verify_development.sh core
+./tests/verify_development.sh app
+./tests/verify_zime_coverage.sh
 ```
 
-输出目录必须尚不存在。此命令会验证实际产物，不上传、不安装，也不改动用户词库。
-详细验证、签名边界和 GitHub 发布步骤见 [发布指南](release.md)；
-[历史 Linnet 指南](legacy/linnet-release.md) 只作归档，不是 ZIME 操作指令。
+- `core`：Swift、候选/外观、翻译、Host 提交、发布/CI 契约、安装事务、隐私、
+  英文投影、默认原生回归和七项专项。`all` 是 core 范围加 App 检查，不包含 lint/Periphery。
+- `app`：最新 local-build 的身份、资源、依赖、数据隔离和构建新鲜度；
+  不等于完成设置 UI 点击测试。
+- Periphery 索引实际 Host、Settings、安装助手、pack tool、runtime inspector、
+  input-source inspector 和英文数据生成器；不通过忽略清单隐藏未使用代码。
+- 覆盖率只统计指定 Swift 模块及生产依赖；不是全项目或分支覆盖率。
+- `verify_zime_source_boundaries.rb` 防止退役网络入口和测试夹具进入应用，
+  含负向自测；不代替编译与行为测试。
+- 真实设置点击需要独立测试桌面/CI，不能在日常桌面伪造隔离标志。
+  真实 API 必须单独获得网络与凭据访问授权，离线 Mock 测试不能计作真实 API PASS。
 
-## 数据维护
+测试临时根目录由 runner 创建并清理。默认原生套件与专项参数见
+`./tests/verify_rime_runtime.sh --list-probes`；单个 probe 不代表整套通过。
+真实应用、双屏、跨系统与长时使用边界见 [验收清单](ZIME-ACCEPTANCE.md)。
 
-### 中文升级
+## 修改与交付
 
-1. 用 `scripts/upstream-sync report` 发现稳定 Wanxiang 候选。
-2. 在隔离 checkout 更新 lock 和 gitlink。
-3. 让现有 source patch 精确应用；fuzz、缺失或多余匹配都失败。
-4. 运行 `tests/verify_chinese_source_projection.sh`。
-5. 运行八 profile golden、grammar、learning 和真实 Rime runtime。
-6. 只在复现证明 Linnet 必须保持差异时修改 reviewed ledger。
-7. 接受的数据字节变化必须推进 `config/linnet-data-releases.json` 对应 sequence/version/digest。
+先查看 `git status`，保护用户已有改动。先复现，再改唯一负责该行为的实现，
+同时补回归。风险相关的格式、静态和行为测试都通过后才建立干净的本地提交。
 
-不要从当前 schema algebra 反向生成 expected golden；fixture 必须独立拥有审核后的输入码和语义。
+本机修复默认按 [AGENTS.md](../AGENTS.md) 递增版本、构建候选并事务安装。
+成功核验后只保留最近三代安装包，不清理个人数据或安装事务回滚目录。
+GitHub 推送、Release 与安装不是同一操作；未经明确要求不自动推送或发布。
 
-### 英文释义与词汇
-
-`data/linnet/linnet_en_zh_decisions_final.tsv` 是每个 Linnet 中文释义或 skip 决定的唯一 owner。构建工具拒绝重复、乱序、非法、缺少决策或 final-only rank 不一致。
-
-维护步骤：
-
-1. 比较锁定 Hallelujah/rime-ice 候选的 effective word、rank、IPA、translation、prediction、correction 和 pinyin supplement。
-2. 人工审核产品可见差异。
-3. 在 final TSV 中写简洁中文或明确 `-`；不要自动选“更长”的上游释义。
-4. 新词 rank 只进入专用 rank ledger，不在另一份翻译 overlay 重复。
-5. 运行英文投影、固定词族、真实 Rime 和 package source digest gate。
-
-结构性全量验证不能替代人工质量抽样；报告必须写明样本与未审核范围。
-
-### 拼音反查
-
-`data/chinese/reports/enriched_pinyin_english.json` 的候选顺序是 rank owner，`pinyin_embargo_remove.tsv` 是精确删除 owner。Smart English 通过当前 profile Prism 将完整、非纠错的全拼或双拼编码还原为 full-pinyin key，再查询同一 key；中文的标准 affix segmentor 先去掉触发前缀。生成器只把这份审核快照投影到 `p/<pinyin>`，不得自动重写快照或另设运行时排序表。
-
-所有中文 profile 必须覆盖默认 `|` 和用户可选的 `;`、标准音节分隔符、profile 内部可能使用的分号，以及 64/65 个可达 Prism key 的 fail-closed 边界。Smart English 使用无前缀的当前 profile Prism 自动反查，但不继承中文触发键。默认 idle `/ , . ; ' [ ] - =` 必须到达 host；英文模式的 `;` 始终透传，中文模式只有用户显式选择 `;` 作为反查触发键或当前方案把它当作拼写键时才进入组合。
-
-### Rime Core
-
-当前锁定的 librime 有三处直接影响输入交互的上游缺口：被 `uniquifier` 包裹的标点必须读取 genuine candidate；InputMethodKit 退出时的 composition abort 必须取消 `AsciiComposer` 内未完成的修饰键手势；`commit_text` 切换不得把零输入的被动预测当成用户选择。`patches/librime-linnet-core-interactions.patch` 在 librime 的原始 owner 内统一修复这三处，不改变标点内容、全半角、配对、数字上下文或输入方案所有权。未来上游提供等价修复后，必须同时移除该 patch、lock/build wiring 和对应结构守卫，并重跑 native runtime 与 product gates。
-
-### Lua
-
-产品使用的 rime-ice Lua 源由 allowlist 选择并嵌入锁定 librime-lua plugin。日期/UUID 对 `linnet_pinyin` tag 的边界修正以精确 patch 应用。Lua state 生命周期补丁仍是当前 pin 的必要部分。只有未来上游明确保证 Lua state 晚于所有 gear/translation 销毁，或保证它们在 `Registry::Clear` / `lua_close` 前全部销毁，才可移除该补丁；移除时必须同时更新 lock/build wiring，并重跑 Lua lifetime、embedding、runtime 和 product gates。
-
-## 验证层级
-
-### ZIME 核心入口
-
-依赖与数据已准备好后运行 `./tests/verify_development.sh core`。它串行执行
-Swift、外观／候选窗、静态约束、翻译与 Host 路由、英文数据投影，以及默认原生回归
-和七个专项（快捷键、双语、数字混输、大小写、分页、八方案兼容按键、会话压力回归）。
-核心入口还包含 ZIME 发布契约、CI 编排、安装回滚和隐私检查。
-`all` 额外检查已构建 App；`swift` / `rime` / `app` 可分组排查。
-这些入口不签名、不安装，也不访问正在使用的个人词库。
-
-`verify_zime.sh` 是静态约束检查，`--zime-bilingual-probe` 是双语专项，不能单独代表
-核心验证完成。外观测试要求 macOS 图形会话，跳过外观的结果标记为 `PARTIAL PASS`。
-
-### Focused
-
-```bash
-tests/verify_runtime_footprint.sh
-tests/verify_lua_embedding.sh
-tests/verify_chinese_source_projection.sh
-tests/verify_english_data_projection.sh
-tests/verify_rime_runtime.sh
-tests/verify_swift_units.sh
-```
-
-只运行受影响的最小集合，先证明缺陷用例，再证明它转绿。
-
-Swift 夹具通过 `LinnetTestScratch.directory` 使用本轮测试专属目录；不要直接使用
-Foundation 的 `temporaryDirectory`（macOS 上不会随 `TMPDIR` 重定向）。
-`verify_swift_units.sh` 负责在成功、失败退出或 INT/TERM 中断后回收目录，包括只读
-词包；删除失败会使测试门失败，不会静默忽略。编译缓存不在回收范围内。
-清理回归已纳入该门，也可单独运行 `bash tests/verify_swift_scratch.sh`。
-强制杀死父进程（SIGKILL）或断电无法执行退出清理，不在此保证内。
-
-主题卡片渲染或 OCR 失败时，可单独运行
-`tests/verify_swift_units.sh --appearance-preview`。它复用同一测试与编译缓存，
-不需要下载词库或构建 Rime。手动 CI 的 `theme-preview` profile 只运行此项，
-失败截图随日志保留；其结果不能替代完整 CI 或安装验收。
-
-Settings 的实际点击、滚动或窗口行为失败时，使用手动 CI 的 `settings-ui`
-profile；`ui_test` 留空运行完整 Settings UI 套件，也可填写逗号分隔的现有测试方法名
-一次复现所选用例。此入口复用锁定依赖准备、无签名构建和
-`tests/verify_visible_settings_fixture.sh --ui-test [test-name,...]`，不运行 Rime/Swift
-全套门、签名或发布打包。真实界面测试只在 CI 或明确隔离的 macOS 桌面执行，
-不得为了测试而关闭使用者的应用；通过也不等于正式安装包验收。
-每个用例失败后立即停止该用例内的后续点击，但继续其余独立用例；任意失败仍使
-整个门失败。不要恢复全局“首错跳过其他用例”标志，以免每次构建只能发现一个问题。
-原生 xcresult（含失败截图）保留在 `build/settings-ui-results/`；手动 CI 上传此
-隔离报告并保留三天，不上传 App、词库、安装包，也不参与正式发布传输。
-
-### Development composite
-
-```bash
-tests/verify_development.sh
-```
-
-这是普通开发的综合门：核心行为加本地 App 身份、架构、资源、隐私与 Settings 隔离数据验证；不生成安装包，不等于真实输入源或安装 UAT。
-
-### 产物、覆盖率和真实验收
-
-```bash
-tests/verify_zime_coverage.sh
-scripts/verify-zime-delivery "/absolute/path/to/delivery" "<full-source-revision>"
-```
-
-前者生成限定 Swift 模块的逐文件覆盖率；后者解包验证实际 ZIME 附件，不执行安装。
-完整点击、跨系统、跨应用、双屏截图和在线 API 的结果必须分别记录。
-[真实验收清单](ZIME-ACCEPTANCE.md) 提供未执行状态和验收收据检查，不能将未执行等同于通过。
-
-## 调试与临时目录
-
-- 不用重启、缓存删除或用户数据清理代替诊断。
-- 先记录精确 revision、进程、schema、输入序列和最早错误 owner。
-- 测试临时目录必须在成功、失败和信号退出时清理精确路径。
-- 不递归删除 repo、home、Application Support 或模糊 glob。
-- 不提交日志、crash dump、用户数据、私钥、密码或绝对开发路径。
-- 如果当前安装态正在使用旧 Linnet，不要为了源码测试 kill 系统进程或假装新代码已加载。
-
-## 文档维护
-
-- README 是唯一普通用户文档，拥有安装、操作、配置、故障排查、隐私和贡献入口，不保存研发事故档案。
-- 本文件唯一拥有贡献和维护方式；release guide 只保存 community artifact、package、安装验收与 publication 顺序。
-- `docs/product-acceptance.md` 拥有证据等级与验收要求；只有绑定精确 revision 和产物的运行报告才拥有当次证据。
-- 已被源码与测试替代的旧 ADR 通过 Git 历史查询，不在主分支保留第二份现行说明。
+上游版本只由 `upstreams.lock.json` 与锁定 gitlink 决定。
+维护时先检查 `scripts/upstream-sync report`，更新后执行
+`scripts/upstream-sync verify`、数据投影及原生回归；不从运行时跟随上游更新。

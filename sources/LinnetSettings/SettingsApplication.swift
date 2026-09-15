@@ -115,12 +115,3 @@ enum SettingsLegacyImportState {
   case compatible(SettingsDataCoordinator.LegacyImportCandidate)
   case failed
 }
-
-enum SettingsLanguageDataUpdateTarget: Equatable {
-  case currentEdition
-  case completeOffline
-
-  var presentationPack: SettingsPresentationPack {
-    self == .completeOffline ? .longTailDictionaries : .languageData
-  }
-}

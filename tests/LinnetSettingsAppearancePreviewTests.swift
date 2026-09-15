@@ -206,10 +206,8 @@ struct LinnetSettingsAppearancePreviewTests {
           fail("missing source projection for \(family) \(mode)")
         }
         require(preview.palette == source.palette, "preview colors must come from the canonical scheme")
-        for language in LinnetSettingsAppearancePreview.PreviewLanguage.allCases {
-          require(preview.detailGeometry(for: language).placement == .footer,
-                  "a horizontal bilingual layout must keep selected detail below")
-        }
+        require(preview.chineseCandidateLayout == .horizontal && preview.englishCandidateLayout == .horizontal,
+                "preview candidate flow must follow the current layout draft")
         require(preview.selectionStyle == .tile,
                 "preview selection style must come from the draft")
         require(preview.cornerRadius == appearance.cornerStyle.windowRadius,
@@ -226,13 +224,11 @@ struct LinnetSettingsAppearancePreviewTests {
         appearance.englishCandidateLayout = englishLayout
         let preview = projected(appearance, systemIsDark: false, catalog: catalog)
         require(
-          preview.detailGeometry(for: .chinese).placement
-            == (chineseLayout == .vertical ? .sidecar : .footer),
-          "Chinese preview detail placement diverged from its layout")
+          preview.chineseCandidateLayout == chineseLayout,
+          "Chinese preview candidate flow diverged from its layout")
         require(
-          preview.detailGeometry(for: .english).placement
-            == (englishLayout == .vertical ? .sidecar : .footer),
-          "English preview detail placement diverged from its layout")
+          preview.englishCandidateLayout == englishLayout,
+          "English preview candidate flow diverged from its layout")
       }
     }
 
