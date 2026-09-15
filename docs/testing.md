@@ -116,7 +116,15 @@ IMK 客户端及 Rime 副作用由夹具代替，因此不冒充真实输入应�
   quick 运行全部正常边界用例，但不重复这组额外编译。
 - `verify_test_runner.rb` 使用有限寿命的真实子进程验证标准 IO、退出码、路径空格、
   工作目录、系统 Ruby 的动态库路径、超时、后代进程、堵塞/关闭的输出管道及运行中
-  INT/TERM/HUP。子进程确认临时目录仍存在后退出，父脚本随后必须清理；不仅检查
-  测试结束后的自发信号。它随 quick/full/release 基础设施门执行。
+  INT/TERM/HUP。CLI 和 shell 分别验证二进制输入及取消状态，防止父脚本退出码
+  掩盖 CLI 的错误。用 DEBUG 夹具在后台启动和登记 PID 之间取消，确认不会丢失子进程。
+- `verify_test_owner_chain.rb` 通过真实 Swift/development 入口调度有限寿命的测试叶子，
+  覆盖运行器、编译捕获进程的 INT/TERM/HUP、退出码及由内到外的回收顺序。
+  子进程确认临时目录仍存在后退出，父脚本随后必须清理。
+- `verify_runtime_mutations.rb` 先运行两组真实基线，再要求五种语义变异触发指定断言：
+  shell 丢失 stdin、CLI 取消返回成功、外层前台等待、继承忽略 SIGINT、PID 登记前取消。
+  上述运行边界检查均进入 quick/full/core/swift/all/release 基础设施门。
+  `linnet_test_call` 协作取消已有脚本/编译所有者；`linnet_test_run` 另对实际测试程序施加
+  截止时间。不对整个嵌套脚本套短时强杀，以免内部进程来不及回收便删除夹具。
   App 新鲜度检查先完整取得输入清单；git/find/sort 失败、空清单和较新/缺失/链接源码都有
   执行层负向用例，不能因进程替换吞掉枚举失败而报告通过。

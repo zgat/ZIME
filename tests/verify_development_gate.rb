@@ -9,7 +9,7 @@ module DevelopmentGateTest
   class Mismatch < StandardError; end
   APP = "build/Local/Build/Products/Release/ZIME.app".freeze
   PREPARE = ["make\t--no-print-directory\tenglish-data-generator", "tests/verify_english_data_projection.sh"].freeze
-  INFRASTRUCTURE = %w[verify_coverage_gate.rb verify_test_process.rb verify_test_runner.rb verify_compile_artifact_cache.rb
+  INFRASTRUCTURE = %w[verify_coverage_gate.rb verify_test_process.rb verify_test_runner.rb verify_test_owner_chain.rb verify_runtime_mutations.rb verify_compile_artifact_cache.rb
     verify_swift_test_cache.rb verify_cxx_test_cache.rb verify_development_gate.rb
     verify_rime_test_orchestration.sh verify_publication_owner.sh verify_release_automation.sh
     verify_zime_installer.sh verify_zime_privacy.sh].map { |name| "tests/#{name}" }.freeze
@@ -41,6 +41,8 @@ module DevelopmentGateTest
   end
 
   def self.fixture(root)
+    FileUtils.mkdir_p(File.join(root, "tests"))
+    %w[test_runner.sh exec_test_owner.rb].each { |file| FileUtils.cp(File.join(__dir__, file), File.join(root, "tests", file)) }
     recorder = File.join(root, "recorder")
     write_executable(recorder, <<~'SH')
       #!/bin/sh
@@ -160,7 +162,7 @@ module DevelopmentGateTest
     {"release" => (1..PLANS.fetch("release").size), "full" => (1..PREPARE.size)}.each do |profile, indices|
       indices.each { |index| validate(root, profile, index); failures += 1 }
     end
-    call = '  if [[ "${run_swift}" -eq 1 ]]; then ruby tests/verify_candidate_translation_mutations.rb; fi'
+    call = '  if [[ "${run_swift}" -eq 1 ]]; then linnet_test_call ruby tests/verify_candidate_translation_mutations.rb; fi'
     raise "mutation owner changed" unless source.lines.map(&:chomp).count(call) == 1
     mutations = {
       "commented-call" => [source.sub(call, "  # ruby tests/verify_candidate_translation_mutations.rb"), nil],
@@ -169,9 +171,9 @@ module DevelopmentGateTest
       "duplicate-call" => [source.sub(call, call + "\n" + call), nil],
       "swallowed-failure" => [source.sub(call, call.sub(".rb; fi", ".rb || true; fi")),
         PLANS.fetch("release").index("tests/verify_candidate_translation_mutations.rb") + 1],
-      "missing-coverage" => [source.sub("  tests/verify_zime_coverage.sh", "  # tests/verify_zime_coverage.sh"), nil],
-      "duplicate-native-probe" => [source.sub('    tests/verify_rime_runtime.sh "${probe}"',
-        '    tests/verify_rime_runtime.sh "${probe}"' + "\n" + '    tests/verify_rime_runtime.sh "${probe}"'), nil]
+      "missing-coverage" => [source.sub("  linnet_test_call tests/verify_zime_coverage.sh", "  # tests/verify_zime_coverage.sh"), nil],
+      "duplicate-native-probe" => [source.sub('    linnet_test_call tests/verify_rime_runtime.sh "${probe}"',
+        '    linnet_test_call tests/verify_rime_runtime.sh "${probe}"' + "\n" + '    linnet_test_call tests/verify_rime_runtime.sh "${probe}"'), nil]
     }
     mutations.each do |name, (mutated, failure)|
       raise "mutation did not change script: #{name}" if mutated == source

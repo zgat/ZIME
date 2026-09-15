@@ -209,7 +209,7 @@ end_phase "deploy native schemas"
 
 begin_phase "compile native smoke harnesses"
 cxx="$(xcrun --find clang++)"
-ruby tests/cxx_test_cache.rb "${repo_root}/build/cxx-test-cache" "${scratch}/rime-smoke" -- \
+linnet_test_call ruby tests/cxx_test_cache.rb "${repo_root}/build/cxx-test-cache" "${scratch}/rime-smoke" -- \
   "${cxx}" -isysroot "${sdk}" -std=c++17 -O2 -Wall -Wextra -Werror \
   -DGLOG_USE_GLOG_EXPORT -isystem librime/dist/include \
   -isystem build/dependencies/boost tests/rime_smoke_test.cc \
@@ -221,7 +221,7 @@ ruby tests/cxx_test_cache.rb "${repo_root}/build/cxx-test-cache" "${scratch}/rim
 # consumes it. The learned phrase is written later to an isolated user root so
 # it cannot perturb the general candidate-ranking matrix above.
 if [[ -z "${runtime_probe}" || "${runtime_probe}" == --mixed-input-probe ]]; then
-  ruby tests/cxx_test_cache.rb "${repo_root}/build/cxx-test-cache" "${scratch}/auto-phrase-probe" -- \
+  linnet_test_call ruby tests/cxx_test_cache.rb "${repo_root}/build/cxx-test-cache" "${scratch}/auto-phrase-probe" -- \
     "${cxx}" -isysroot "${sdk}" -std=c++17 -O2 -Wall -Wextra -Werror \
     -isystem librime/dist/include tests/auto_phrase_probe.cc \
     lib/librime.1.dylib lib/rime-plugins/librime-lua.dylib

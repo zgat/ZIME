@@ -13,8 +13,8 @@ fi
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 cd "${repo_root}"
 
-bash tests/verify_swift_scratch.sh
 source tests/swift_test_scratch.sh
+linnet_test_call bash tests/verify_swift_scratch.sh
 linnet_swift_scratch_init
 
 swiftc="$(xcrun --find swiftc)"
@@ -197,7 +197,7 @@ compile_run preedit-geometry -parse-as-library \
 compile_run panel-geometry -parse-as-library \
   sources/LinnetPanelGeometry.swift tests/LinnetPanelGeometryTests.swift
 begin_phase "candidate window interaction"
-tests/verify_candidate_window_interaction.sh
+linnet_test_call tests/verify_candidate_window_interaction.sh
 end_phase "candidate window interaction"
 compile_run client-appearance -framework AppKit \
   sources/LinnetClientAppearance.swift tests/LinnetClientAppearanceTests.swift
@@ -284,7 +284,7 @@ rg -Fq 'SettingsDataCoordinatorTests: PASS' "${scratch}/settings-data.out"
 end_phase "Settings data coordinator"
 
 begin_phase "Settings transaction IPC"
-tests/verify_settings_transaction_ipc.sh
+linnet_test_call tests/verify_settings_transaction_ipc.sh
 end_phase "Settings transaction IPC"
 if [[ "${1:-}" == --skip-appearance-preview ]]; then
   echo "ZIME Swift owner tests: PARTIAL PASS (appearance-preview excluded)"

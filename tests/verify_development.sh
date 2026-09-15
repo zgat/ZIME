@@ -7,6 +7,7 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 cd "${repo_root}"
+source tests/test_runner.sh
 
 if [[ $# -gt 1 ]]; then
   echo "Usage: tests/verify_development.sh [quick|full|release|all|core|app|swift|rime]" >&2
@@ -33,23 +34,25 @@ case "${profile}" in
 esac
 
 if [[ "${profile}" == core || "${profile}" == full ]]; then
-  make --no-print-directory english-data-generator
-  tests/verify_english_data_projection.sh
+  linnet_test_call make --no-print-directory english-data-generator
+  linnet_test_call tests/verify_english_data_projection.sh
 fi
 
 if [[ "${run_swift}" -eq 1 || "${profile}" == quick ]]; then
-  ruby tests/verify_coverage_gate.rb
-  ruby tests/verify_test_process.rb
-  ruby tests/verify_test_runner.rb
-  ruby tests/verify_compile_artifact_cache.rb
-  ruby tests/verify_swift_test_cache.rb
-  ruby tests/verify_cxx_test_cache.rb
-  ruby tests/verify_development_gate.rb
-  tests/verify_rime_test_orchestration.sh
-  tests/verify_publication_owner.sh
-  tests/verify_release_automation.sh
-  tests/verify_zime_installer.sh
-  tests/verify_zime_privacy.sh
+  linnet_test_call ruby tests/verify_coverage_gate.rb
+  linnet_test_call ruby tests/verify_test_process.rb
+  linnet_test_call ruby tests/verify_test_runner.rb
+  linnet_test_call ruby tests/verify_test_owner_chain.rb
+  linnet_test_call ruby tests/verify_runtime_mutations.rb
+  linnet_test_call ruby tests/verify_compile_artifact_cache.rb
+  linnet_test_call ruby tests/verify_swift_test_cache.rb
+  linnet_test_call ruby tests/verify_cxx_test_cache.rb
+  linnet_test_call ruby tests/verify_development_gate.rb
+  linnet_test_call tests/verify_rime_test_orchestration.sh
+  linnet_test_call tests/verify_publication_owner.sh
+  linnet_test_call tests/verify_release_automation.sh
+  linnet_test_call tests/verify_zime_installer.sh
+  linnet_test_call tests/verify_zime_privacy.sh
 fi
 
 if [[ "${run_app}" -eq 1 ]]; then
@@ -137,44 +140,44 @@ verify_inputs_predate() {
   verify_inputs_predate "${build_stamp}" <<< "${build_inputs}"
 
   # ZIME's staged ZIP/PKG transaction is not the inherited CMS installer.
-  tests/verify_zime_app.sh "${host_app}" local
-  tests/verify_visible_settings_fixture.sh --verify local
-  make --no-print-directory english-data-generator
-  tests/verify_english_data_projection.sh
-  ruby tests/generate_m2_fixtures.rb --check
-  scripts/build-privacy scan "${host_app}"
+  linnet_test_call tests/verify_zime_app.sh "${host_app}" local
+  linnet_test_call tests/verify_visible_settings_fixture.sh --verify local
+  linnet_test_call make --no-print-directory english-data-generator
+  linnet_test_call tests/verify_english_data_projection.sh
+  linnet_test_call ruby tests/generate_m2_fixtures.rb --check
+  linnet_test_call scripts/build-privacy scan "${host_app}"
 fi
 
 if [[ "${run_swift}" -eq 1 || "${profile}" == quick ]]; then
-  if [[ "${run_swift}" -eq 1 ]]; then tests/verify_swift_units.sh; fi
-  bash tests/verify_zime.sh
-  bash tests/verify_zime_translation.sh
-  if [[ "${run_swift}" -eq 1 ]]; then ruby tests/verify_candidate_translation_mutations.rb; fi
+  if [[ "${run_swift}" -eq 1 ]]; then linnet_test_call tests/verify_swift_units.sh; fi
+  linnet_test_call bash tests/verify_zime.sh
+  linnet_test_call bash tests/verify_zime_translation.sh
+  if [[ "${run_swift}" -eq 1 ]]; then linnet_test_call ruby tests/verify_candidate_translation_mutations.rb; fi
 fi
 
 if [[ "${run_rime}" -eq 1 ]]; then
-  if [[ "${run_swift}" -eq 0 ]]; then tests/verify_rime_test_orchestration.sh; fi
-  tests/verify_lua_lifetime.sh
-  tests/verify_data_release_baseline.sh
-  tests/verify_chinese_upstream_workflow.sh
-  ruby scripts/upstream-sync verify
-  tests/verify_chinese_source_projection.sh
-  tests/verify_locked_release_asset.sh
-  tests/verify_chinese_grammar.sh
-  ruby tests/verify_profile_golden.rb
-  tests/verify_chinese_learning_policy.sh
-  tests/verify_rime_runtime.sh
+  if [[ "${run_swift}" -eq 0 ]]; then linnet_test_call tests/verify_rime_test_orchestration.sh; fi
+  linnet_test_call tests/verify_lua_lifetime.sh
+  linnet_test_call tests/verify_data_release_baseline.sh
+  linnet_test_call tests/verify_chinese_upstream_workflow.sh
+  linnet_test_call ruby scripts/upstream-sync verify
+  linnet_test_call tests/verify_chinese_source_projection.sh
+  linnet_test_call tests/verify_locked_release_asset.sh
+  linnet_test_call tests/verify_chinese_grammar.sh
+  linnet_test_call ruby tests/verify_profile_golden.rb
+  linnet_test_call tests/verify_chinese_learning_policy.sh
+  linnet_test_call tests/verify_rime_runtime.sh
   # The default matrix already owns ExpectAlphanumericComposition. Keep its
   # focused CLI for diagnosis, but do not repeat it in the full gate.
   for probe in --zime-shortcuts-probe --zime-bilingual-probe --zime-case-probe --zime-paging-probe --profile-key-matrix-probe --zime-soak-probe; do
-    tests/verify_rime_runtime.sh "${probe}"
+    linnet_test_call tests/verify_rime_runtime.sh "${probe}"
   done
 fi
 
 if [[ "${profile}" == release ]]; then
-  swiftlint lint --strict --config .swiftlint.yml
-  scripts/run_periphery.sh
-  tests/verify_zime_coverage.sh
+  linnet_test_call swiftlint lint --strict --config .swiftlint.yml
+  linnet_test_call scripts/run_periphery.sh
+  linnet_test_call tests/verify_zime_coverage.sh
 fi
 
 echo "ZIME development gate (${profile}): PASS (no signing or installation; real UI/API/manual acceptance not included)"

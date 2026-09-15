@@ -24,11 +24,41 @@ module TestRunnerTests
     end
   end
 
+  def self.cancel_running(environment, command, ready, signal)
+    sender = Thread.new do
+      deadline = TestProcess.now + 4
+      until File.file?(ready) && !File.read(ready).empty?
+        raise "signal fixture not ready" if TestProcess.now >= deadline
+        sleep 0.01
+      end
+      target = Integer(File.read(ready))
+      raise "invalid signal fixture owner" unless target > 1 && target != Process.pid
+      Process.kill(signal, target)
+      TestProcess.now
+    end
+    sender.report_on_exception = false
+    out, err, status = TestProcess.capture(environment, *command, timeout: 8)
+    begin
+      sent_at = sender.value
+    rescue StandardError => error
+      raise "#{signal}: #{error.message}; #{status.inspect}\n#{out}#{err}"
+    end
+    [out, err, status, TestProcess.now - sent_at]
+  ensure
+    # value above reports sender failures with the child output. Do not let
+    # Thread#join replace that diagnostic while unwinding the same exception.
+    begin sender&.join(5); rescue StandardError; end
+  end
+
   def self.verify
     payload = ("a\0你\n" * 40_000).b
-    out, err, status = run("5", RUBY, "-e",
-      'STDOUT.write(STDIN.read); STDERR.write(ARGV.join("|")); exit 7', "a b", '$(literal)', stdin_data: payload)
-    check(out.b == payload && err == 'a b|$(literal)' && status.exitstatus == 7, "runtime IO/argv/status changed")
+    arguments = ["5", RUBY, "-e", 'STDOUT.write(STDIN.read); STDERR.write(ARGV.join("|")); exit 7', "a b", '$(literal)']
+    {"CLI" => [RUBY, RUNNER, *arguments],
+      "shell" => ["/bin/bash", "-c", 'source "$1"; shift; linnet_test_run "$@"', "_",
+        File.join(__dir__, "test_runner.sh"), *arguments]}.each do |owner, command|
+      out, err, status = TestProcess.capture(*command, stdin_data: payload, timeout: 8)
+      check(out.b == payload && err == 'a b|$(literal)' && status.exitstatus == 7, "#{owner} runtime IO/argv/status changed")
+    end
     _, _, status = run("5", RUBY, "-e", 'Process.kill("TERM", Process.pid)')
     check(status.exitstatus == 143, "child signal status lost")
     [[], ["5"], ["0"], ["-1"], ["NaN"], ["Infinity"], ["invalid"]].each do |arguments|
@@ -132,6 +162,23 @@ module TestRunnerTests
 
     Dir.mktmpdir("zime-runtime-signals-") do |root|
       %w[INT TERM HUP].each do |signal|
+        # Signal the actual CLI owner, not its shell wrapper. The child exits
+        # successfully on cancellation, so returning that status is a defect.
+        ready = File.join(root, "cli-ready-#{signal}")
+        child = <<~'RUBY'
+          STDOUT.sync = true
+          %w[INT TERM HUP].each { |signal| trap(signal) { puts "child cancelled #{signal}"; exit 0 } }
+          fork { %w[INT TERM HUP].each { |s| trap(s, "IGNORE") }; sleep 3; puts "descendant escaped" }
+          File.write(ENV.fetch("RUNNER_READY"), Process.ppid.to_s)
+          sleep 3
+          puts "child escaped"
+        RUBY
+        out, _, status, elapsed = cancel_running({"RUNNER_READY" => ready},
+          [RUBY, RUNNER, "5", RUBY, "-e", child], ready, signal)
+        check(status.exitstatus == 128 + Signal.list.fetch(signal), "#{signal}: CLI cancellation status lost")
+        check(out == "child cancelled #{signal}\n" && elapsed < 2,
+          "#{signal}: CLI cancellation failed to terminate its process group")
+
         ready = File.join(root, "ready-#{signal}")
         child = <<~'RUBY'
           STDOUT.sync = true
@@ -157,29 +204,49 @@ module TestRunnerTests
         SH
         environment = {"RUNNER_READY" => ready, "RUNNER_RUBY" => RUBY, "RUNNER_CHILD" => child,
           "RUNNER_SCRATCH_HELPER" => File.join(__dir__, "swift_test_scratch.sh")}
-        sender = Thread.new do
-          deadline = TestProcess.now + 4
-          until File.file?(ready) && !File.read(ready).empty?
-            raise "signal fixture not ready" if TestProcess.now >= deadline
-            sleep 0.01
-          end
-          Process.kill(signal, Integer(File.read(ready)))
-          TestProcess.now
-        end
-        begin
-          out, _, status = TestProcess.capture(environment, "/bin/bash", "-c", shell, timeout: 8)
-          sent_at = sender.value
-          check(status.exitstatus == 128 + Signal.list.fetch(signal), "#{signal}: shell cancellation status lost")
-          check(out.include?("child cancelled #{signal}; scratch=true") && !out.include?("escaped") &&
-            !out.include?("continued after"), "#{signal}: cancellation was not forwarded before cleanup: #{out}")
-          check(TestProcess.now - sent_at < 2 && !File.exist?(out.lines.first.strip),
-            "#{signal}: waited for natural exit or leaked scratch")
-        ensure
-          sender.join(5)
-        end
+        out, _, status, elapsed = cancel_running(environment, ["/bin/bash", "-c", shell], ready, signal)
+        check(status.exitstatus == 128 + Signal.list.fetch(signal), "#{signal}: shell cancellation status lost")
+        check(out.include?("child cancelled #{signal}; scratch=true") && !out.include?("escaped") &&
+          !out.include?("continued after"), "#{signal}: cancellation was not forwarded before cleanup: #{out}")
+        check(elapsed < 2 && !File.exist?(out.lines.first.strip),
+          "#{signal}: waited for natural exit or leaked scratch")
+
+        # Interrupt the exact launch/register window, not a probabilistic
+        # sleep. DEBUG runs immediately before the parent's $! assignment.
+        ready = File.join(root, "launch-ready-#{signal}")
+        startup = <<~'SH'
+          set -euo pipefail
+          source "$RUNNER_SCRATCH_HELPER"
+          linnet_swift_scratch_init
+          printf '%s\n' "$scratch"
+          export RUNNER_OWNER=$$
+          cancel_before_registration() {
+            [[ "$BASH_COMMAND" == 'LINNET_TEST_RUNNER_PID=$!' ]] || return 0
+            trap - DEBUG
+            "$RUNNER_RUBY" -e '
+              deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 3
+              until File.file?(ENV.fetch("RUNNER_READY"))
+                abort "launch fixture not ready" if Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
+                sleep 0.01
+              end
+            '
+            kill -"$RUNNER_SIGNAL" "$$"
+          }
+          set -T
+          trap cancel_before_registration DEBUG
+          linnet_test_run 5 "$RUNNER_RUBY" -e "$RUNNER_CHILD"
+          echo 'continued after cancellation'
+        SH
+        start = TestProcess.now
+        out, err, status = TestProcess.capture(environment.merge("RUNNER_READY" => ready, "RUNNER_SIGNAL" => signal),
+          "/bin/bash", "-c", startup, timeout: 8)
+        check(status.exitstatus == 128 + Signal.list.fetch(signal) &&
+          out.lines.size == 2 && out.lines.last.chomp == "child cancelled #{signal}; scratch=true" &&
+          TestProcess.now - start < 2 && !File.exist?(out.lines.first.strip),
+          "#{signal}: launch-window cancellation escaped registration/cleanup: #{out} #{err}")
       end
     end
-    puts "Test runtime owner: PASS (inherited binary IO; status; validation; cwd/SIP loader relay; deadlines; descendants; blocked/closed consumer; active INT/TERM/HUP; cleanup ordering)"
+    puts "Test runtime owner: PASS (CLI and shell binary IO/status; validation; cwd/SIP loader relay; deadlines; descendants; blocked/closed consumer; direct and shell INT/TERM/HUP; cleanup ordering)"
   end
 end
 

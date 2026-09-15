@@ -1,8 +1,8 @@
 #!/bin/bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
-/usr/bin/ruby tests/verify_zime_lexicon.rb
 source tests/swift_test_scratch.sh
+linnet_test_call /usr/bin/ruby tests/verify_zime_lexicon.rb
 linnet_swift_scratch_init
 source tests/swift_test_cache.sh
 linnet_swift_cache_init "${PWD}" "${scratch}"
@@ -29,4 +29,4 @@ compile_run candidate-translator -framework AppKit \
   sources/ZIMELocalLexicon.swift sources/ZIMETranslationProvider.swift \
   sources/ZIMECandidateTranslator.swift tests/ZIMECandidateTranslatorTests.swift \
   tests/ZIMECandidateTranslatorBoundaryTests.swift tests/ZIMECandidateTranslatorTestSupport.swift
-bash tests/verify_zime_host_routing.sh
+linnet_test_call bash tests/verify_zime_host_routing.sh

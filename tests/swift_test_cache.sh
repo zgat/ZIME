@@ -2,6 +2,7 @@
 
 # Content-addressed compiler boundary for standalone Swift owner tests.
 # Cached binaries are acceleration only: every invocation still executes the test.
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/test_runner.sh"
 
 linnet_swift_cache_init() {
   LINNET_SWIFT_CACHE_REPO="$1"
@@ -40,7 +41,7 @@ linnet_swift_compile() {
   }
 
   local output="${LINNET_SWIFT_CACHE_SCRATCH}/${name}"
-  ruby "${LINNET_SWIFT_CACHE_REPO}/tests/swift_test_cache.rb" \
+  linnet_test_call ruby "${LINNET_SWIFT_CACHE_REPO}/tests/swift_test_cache.rb" \
     "${LINNET_SWIFT_CACHE_REPO}" "${LINNET_SWIFT_CACHE_ROOT}" "${output}" \
     "${LINNET_SWIFT_ENVIRONMENT_FINGERPRINT}" -- \
     "${LINNET_SWIFT_COMPILER}" "$@" -module-cache-path "${SWIFT_MODULECACHE_PATH}" || return $?
