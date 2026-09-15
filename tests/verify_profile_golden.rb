@@ -3,10 +3,9 @@
 require "csv"
 require "digest"
 require "fileutils"
-require "open3"
 require "set"
 require "tempfile"
-require "timeout"
+require_relative "test_process"
 require "yaml"
 
 class ProfileGoldenError < StandardError; end
@@ -335,31 +334,31 @@ def runtime_paths
 end
 
 def compile_probe(runtime, work_root)
-  compiler, status = Open3.capture2("xcrun", "--find", "clang++")
+  compiler, _, status = TestProcess.capture("xcrun", "--find", "clang++", timeout: 10)
   require_golden(status.success?, "clang++ is unavailable")
-  sdk, status = Open3.capture2("xcrun", "--show-sdk-path")
+  sdk, _, status = TestProcess.capture("xcrun", "--show-sdk-path", timeout: 10)
   require_golden(status.success?, "macOS SDK is unavailable")
   output = File.join(work_root, "rime_golden_probe")
-  _stdout, stderr, status = Open3.capture3(
+  _stdout, stderr, status = TestProcess.capture(
     compiler.strip, "-isysroot", sdk.strip, "-std=c++17", "-O2", "-Wall", "-Wextra",
     "-Werror", "-isystem", runtime.fetch(:includes), runtime.fetch(:probe_source),
-    runtime.fetch(:dylib), "-o", output
+    runtime.fetch(:dylib), "-o", output, timeout: 180
   )
   require_golden(status.success?, "golden probe compilation failed:\n#{stderr}")
   output
 end
 
 def compile_auto_phrase_probe(runtime, work_root)
-  compiler, status = Open3.capture2("xcrun", "--find", "clang++")
+  compiler, _, status = TestProcess.capture("xcrun", "--find", "clang++", timeout: 10)
   require_golden(status.success?, "clang++ is unavailable")
-  sdk, status = Open3.capture2("xcrun", "--show-sdk-path")
+  sdk, _, status = TestProcess.capture("xcrun", "--show-sdk-path", timeout: 10)
   require_golden(status.success?, "macOS SDK is unavailable")
   output = File.join(work_root, "auto_phrase_probe")
-  _stdout, stderr, status = Open3.capture3(
+  _stdout, stderr, status = TestProcess.capture(
     compiler.strip, "-isysroot", sdk.strip, "-std=c++17", "-O2", "-Wall", "-Wextra",
     "-Werror", "-isystem", runtime.fetch(:includes),
     File.join(REPO_ROOT, "tests/auto_phrase_probe.cc"), runtime.fetch(:dylib),
-    File.join(REPO_ROOT, "lib/rime-plugins/librime-lua.dylib"), "-o", output
+    File.join(REPO_ROOT, "lib/rime-plugins/librime-lua.dylib"), "-o", output, timeout: 180
   )
   require_golden(status.success?, "auto-phrase probe compilation failed:\n#{stderr}")
   output
@@ -392,9 +391,9 @@ def mapping_cases(schema)
 end
 
 def compile_prism_probe(runtime, work_root)
-  compiler, status = Open3.capture2("xcrun", "--find", "clang++")
+  compiler, _, status = TestProcess.capture("xcrun", "--find", "clang++", timeout: 10)
   require_golden(status.success?, "clang++ is unavailable")
-  sdk, status = Open3.capture2("xcrun", "--show-sdk-path")
+  sdk, _, status = TestProcess.capture("xcrun", "--show-sdk-path", timeout: 10)
   require_golden(status.success?, "macOS SDK is unavailable")
   source = File.join(work_root, "prism_mapping_probe.cc")
   File.write(source, <<~'CPP', mode: "w:UTF-8")
@@ -429,10 +428,10 @@ def compile_prism_probe(runtime, work_root)
   output = File.join(work_root, "prism_mapping_probe")
   boost = File.join(REPO_ROOT, "build/dependencies/boost")
   require_golden(File.directory?(boost), "Boost headers are unavailable")
-  _stdout, stderr, status = Open3.capture3(
+  _stdout, stderr, status = TestProcess.capture(
     compiler.strip, "-isysroot", sdk.strip, "-std=c++17", "-O2", "-Wall", "-Wextra",
     "-Werror", "-DGLOG_USE_GLOG_EXPORT", "-isystem", runtime.fetch(:includes),
-    "-isystem", boost, source, runtime.fetch(:dylib), "-o", output
+    "-isystem", boost, source, runtime.fetch(:dylib), "-o", output, timeout: 180
   )
   require_golden(status.success?, "prism mapping probe compilation failed:\n#{stderr}")
   output
@@ -448,7 +447,7 @@ def mapping_failures(probe, user, schema, environment)
   keys = cases.map(&:code).uniq
   table = File.join(user, "build", "linnet_zh.table.bin")
   prism = File.join(user, "build", "#{schema}.prism.bin")
-  stdout, stderr, status = Open3.capture3(
+  stdout, stderr, status = TestProcess.capture(
     environment, probe, table, prism, stdin_data: keys.join("\n") + "\n"
   )
   require_golden(status.success?, "#{schema}: prism mapping probe failed: #{stderr}")
@@ -553,7 +552,7 @@ def product_environment(log_root)
 end
 
 def deploy(runtime, shared, user, environment)
-  stdout, stderr, status = Open3.capture3(
+  stdout, stderr, status = TestProcess.capture(
     environment, runtime.fetch(:deployer), "--build", user, shared, File.join(user, "build")
   )
   require_golden(status.success?, "rime_deployer failed:\n#{stdout}\n#{stderr}")
@@ -582,13 +581,9 @@ end
 
 def run_probe(probe, shared, user, schema, cases, environment)
   input = cases.map(&:code).join("\n") + "\n"
-  stdout = stderr = nil
-  status = nil
-  Timeout.timeout(600) do
-    stdout, stderr, status = Open3.capture3(
-      environment, probe, shared, user, TOP_N.to_s, schema, stdin_data: input
-    )
-  end
+  stdout, stderr, status = TestProcess.capture(
+    environment, probe, shared, user, TOP_N.to_s, schema, stdin_data: input, timeout: 600
+  )
   require_golden(status.success?, "golden probe failed:\n#{stdout}#{stderr}")
   results = Hash.new { |hash, key| hash[key] = [] }
   current = nil
@@ -622,7 +617,7 @@ def verify_user_word_absent(by_profile, probe, shared, user, environment)
 end
 
 def seed_user_word(probe, shared, user, environment)
-  stdout, stderr, status = Open3.capture3(
+  stdout, stderr, status = TestProcess.capture(
     environment, probe, shared, user, "linnet_zh_pinyin",
     stdin_data: "learn 云杉码 yunshanma 云杉 码\n"
   )
@@ -700,7 +695,7 @@ begin
     exit 0
   end
   exit run_gate(by_profile)
-rescue ProfileGoldenError, SystemCallError, Timeout::Error => error
+rescue ProfileGoldenError, SystemCallError, TestProcess::DeadlineExceeded, TestProcess::OutputExceeded => error
   warn "ERROR: #{error.message}"
   exit 2
 end

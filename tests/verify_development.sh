@@ -39,6 +39,9 @@ fi
 
 if [[ "${run_swift}" -eq 1 || "${profile}" == quick ]]; then
   ruby tests/verify_coverage_gate.rb
+  ruby tests/verify_test_process.rb
+  ruby tests/verify_compile_artifact_cache.rb
+  ruby tests/verify_swift_test_cache.rb
   ruby tests/verify_cxx_test_cache.rb
   tests/verify_rime_test_orchestration.sh
   tests/verify_publication_owner.sh

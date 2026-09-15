@@ -50,7 +50,9 @@ required.each do |probe|
 end
 abort "unified probes contain duplicates" unless gate_probes == gate_probes.uniq
 %w[verify_swift_units.sh verify_zime.sh verify_zime_translation.sh
-   verify_english_data_projection.sh verify_rime_runtime.sh].each do |script|
+   verify_english_data_projection.sh verify_rime_runtime.sh
+   verify_test_process.rb verify_compile_artifact_cache.rb
+   verify_swift_test_cache.rb verify_cxx_test_cache.rb].each do |script|
   abort "unified core owner missing: #{script}" unless gate.include?("tests/#{script}")
 end
 [%w[--unknown-probe], %w[--zime-shortcuts-probe extra], %w[--list-probes extra]].each do |args|

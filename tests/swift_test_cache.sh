@@ -23,14 +23,8 @@ linnet_swift_cache_init() {
     "${LINNET_SWIFT_COMPILER}" -version 2>&1
     xcodebuild -version
     printf 'sdk=%s\n' "${LINNET_MACOS_SDK}"
-    if [[ -d "${LINNET_SWIFT_CACHE_REPO}/librime/dist/include" ]]; then
-      find "${LINNET_SWIFT_CACHE_REPO}/librime/dist/include" -type f -print |
-        LC_ALL=C sort | while IFS= read -r header; do
-          shasum -a 256 "${header}"
-        done
-    fi
     for library in \
-        "${LINNET_SWIFT_CACHE_REPO}/lib/librime.1.dylib" \
+        "${LINNET_MACOS_SDK}/SDKSettings.json" \
         "${LINNET_SWIFT_CACHE_REPO}/tests/swift_test_cache.sh"; do
       [[ -f "${library}" && ! -L "${library}" ]] && shasum -a 256 "${library}"
     done
@@ -45,43 +39,10 @@ linnet_swift_compile() {
     return 1
   }
 
-  local fingerprint
-  fingerprint="$({
-    printf 'environment=%s\n' "${LINNET_SWIFT_ENVIRONMENT_FINGERPRINT}"
-    local argument
-    for argument in "$@"; do
-      printf 'argument=%q\n' "${argument}"
-      if [[ -f "${argument}" && ! -L "${argument}" ]]; then
-        shasum -a 256 "${argument}"
-      fi
-    done
-  } | shasum -a 256 | awk '{print $1}')"
-
-  local cached_binary="${LINNET_SWIFT_CACHE_ROOT}/${name}"
-  local cached_key="${cached_binary}.key"
-  local cached_digest="${cached_binary}.sha256"
   local output="${LINNET_SWIFT_CACHE_SCRATCH}/${name}"
-  local cache_valid=false
-  if [[ -f "${cached_binary}" && ! -L "${cached_binary}" && -x "${cached_binary}" &&
-    -f "${cached_key}" && ! -L "${cached_key}" &&
-    -f "${cached_digest}" && ! -L "${cached_digest}" &&
-    "$(<"${cached_key}")" == "${fingerprint}" ]] &&
-    (cd "${LINNET_SWIFT_CACHE_ROOT}" && shasum -a 256 -c "${name}.sha256" >/dev/null 2>&1); then
-    cache_valid=true
-  fi
-
-  if [[ "${cache_valid}" == true ]]; then
-    cp "${cached_binary}" "${output}"
-    echo "Swift test compile cache: HIT ${name}"
-  else
-    "${LINNET_SWIFT_COMPILER}" "$@" -module-cache-path "${SWIFT_MODULECACHE_PATH}" -o "${output}"
-    cp "${output}" "${cached_binary}"
-    chmod u+x "${cached_binary}"
-    (cd "${LINNET_SWIFT_CACHE_ROOT}" && shasum -a 256 "${name}" >"${name}.sha256.next")
-    printf '%s\n' "${fingerprint}" >"${cached_key}.next"
-    mv "${cached_digest}.next" "${cached_digest}"
-    mv "${cached_key}.next" "${cached_key}"
-    echo "Swift test compile cache: MISS ${name}"
-  fi
+  ruby "${LINNET_SWIFT_CACHE_REPO}/tests/swift_test_cache.rb" \
+    "${LINNET_SWIFT_CACHE_REPO}" "${LINNET_SWIFT_CACHE_ROOT}" "${output}" \
+    "${LINNET_SWIFT_ENVIRONMENT_FINGERPRINT}" -- \
+    "${LINNET_SWIFT_COMPILER}" "$@" -module-cache-path "${SWIFT_MODULECACHE_PATH}" || return $?
   LINNET_SWIFT_COMPILED_BINARY="${output}"
 }

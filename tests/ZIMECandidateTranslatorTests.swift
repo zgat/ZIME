@@ -24,20 +24,35 @@ final class SquirrelInputController {
 
 @main
 struct ZIMECandidateTranslatorTests {
+  @MainActor static func waitUntil(_ condition: () -> Bool) async throws {
+    for _ in 0..<500 {
+      if condition() { return }
+      try await Task.sleep(nanoseconds: 10_000_000)
+    }
+    fatalError("candidate translator fixture event deadline exceeded")
+  }
+
   @MainActor static func main() async throws {
+    let watchdog = DispatchWorkItem { fatalError("candidate translator fixture exceeded 45 seconds") }
+    DispatchQueue.global().asyncAfter(deadline: .now() + 45, execute: watchdog)
+    defer { watchdog.cancel() }
     let lexicon = ZIMELocalLexicon(url: URL(fileURLWithPath: "resources/zime-cedict.sqlite3"))
     var config = ZIMETranslationConfiguration()
     var sent: [String] = []
     var reads = 0
     var refreshes = 0
+    var pendingReply: CheckedContinuation<String, Never>?
+    var repliesFinished = 0
     let cloudText = "  fixture translation (informal, e.g. a nested (example)) / alternative; synonym\nsecond line  "
     let translator = ZIMECandidateTranslator(lexicon: lexicon, loadConfiguration: { config },
       loadCredentials: { _ in reads += 1; return .init(identifier: "fixture") },
       translate: { _, _, text, _ in
         sent.append(text)
-        // Deliberately emulate a transport that completes after cancellation.
-        try? await Task.sleep(nanoseconds: 150_000_000)
-        return cloudText
+        // The test owns completion; cancellation deliberately does not finish
+        // this mock. Never race a fixed sleep against the production debounce.
+        let value = await withCheckedContinuation { pendingReply = $0 }
+        repliesFinished += 1
+        return value
       })
     let words = ["帅", "下班", "你好", "ZIME测试未收录词"]
     let snapshot = SquirrelInputController.CandidateSnapshot(items: words.enumerated().map { i, text in
@@ -126,13 +141,18 @@ struct ZIMECandidateTranslatorTests {
     try await Task.sleep(nanoseconds: 500_000_000)
     precondition(sent.isEmpty && reads == 0)
     _ = translator.annotate(snapshot, showTranslation: true) { refreshes += 1 }
-    try await Task.sleep(nanoseconds: 450_000_000)
+    try await waitUntil { pendingReply != nil }
     translator.cancel()
-    try await Task.sleep(nanoseconds: 250_000_000)
+    pendingReply!.resume(returning: cloudText)
+    pendingReply = nil
+    try await waitUntil { repliesFinished == 1 }
     precondition(sent == [words[3]] && refreshes == 0, "late response must not repaint a retired composition")
 
     _ = translator.annotate(snapshot, showTranslation: true) { refreshes += 1 }
-    try await Task.sleep(nanoseconds: 700_000_000)
+    try await waitUntil { pendingReply != nil }
+    pendingReply!.resume(returning: cloudText)
+    pendingReply = nil
+    try await waitUntil { refreshes > 0 }
     let completed = translator.annotate(snapshot, showTranslation: true) { refreshes += 1 }
     let cloudComment = LinnetCandidatePresentation.candidateComment(completed.items[3].comment)
     precondition(cloudComment.translations == [cloudText] && cloudComment.sourceLabel == "ai"
@@ -150,15 +170,16 @@ struct ZIMECandidateTranslatorTests {
     try await Task.sleep(nanoseconds: 650_000_000)
     precondition(sent.count == count, "details toggle or known regional word caused another API request")
     var failedRequests = 0
+    var failureRefreshes = 0
     let unavailable = ZIMECandidateTranslator(lexicon: lexicon, loadConfiguration: { config },
       loadCredentials: { _ in .init(identifier: "fixture") },
       translate: { _, _, _, _ in
         failedRequests += 1
         throw URLError(.timedOut)
       })
-    let loading = unavailable.annotate(snapshot, showTranslation: true) {}
+    let loading = unavailable.annotate(snapshot, showTranslation: true) { failureRefreshes += 1 }
     precondition(loading.items[3].comment == "译文查询中…", "pending requests lost the loading state")
-    try await Task.sleep(nanoseconds: 700_000_000)
+    try await waitUntil { failureRefreshes > 0 }
     let failed = unavailable.annotate(snapshot, showTranslation: true) {}
     precondition(failedRequests == 1 && failed.items[3].comment == "无译文",
       "offline misses and unavailable cloud results must share one label")
@@ -170,11 +191,12 @@ struct ZIMECandidateTranslatorTests {
       providerConfig.provider = provider
       let frozenConfiguration = providerConfig
       var providerRequests = 0
+      var providerRefreshes = 0
       let service = ZIMECandidateTranslator(lexicon: lexicon, loadConfiguration: { frozenConfiguration },
         loadCredentials: { _ in .init(identifier: "fixture", secret: "fixture") },
         translate: { _, _, _, _ in providerRequests += 1; return cloudText })
-      _ = service.annotate(snapshot, showTranslation: true) {}
-      try await Task.sleep(nanoseconds: 650_000_000)
+      _ = service.annotate(snapshot, showTranslation: true) { providerRefreshes += 1 }
+      try await waitUntil { providerRefreshes > 0 }
       let annotated = service.annotate(snapshot, showTranslation: true) {}
       let result = LinnetCandidatePresentation.candidateComment(annotated.items[3].comment)
       precondition(providerRequests == 1 && result.sourceLabel == provider.candidateSourceLabel
@@ -188,7 +210,8 @@ struct ZIMECandidateTranslatorTests {
       loadCredentials: { _ in consentReads += 1; return .init(identifier: "fixture") },
       translate: { _, _, text, _ in consentRequests.append(text); return cloudText })
     _ = consentService.annotate(snapshot, showTranslation: true) {}
-    try await Task.sleep(nanoseconds: 200_000_000)
+    // Change consent before yielding; a slow CI host must not accidentally
+    // cross the debounce while a nominal 200 ms sleep is waiting to resume.
     consent.enabled = false
     try await Task.sleep(nanoseconds: 450_000_000)
     precondition(consentReads == 0 && consentRequests.isEmpty, "disabled during debounce still accessed credentials")
@@ -197,9 +220,9 @@ struct ZIMECandidateTranslatorTests {
       .init(absoluteIndex: i, page: 0, indexOnPage: i, text: word, comment: "", selectionLabel: String(i + 1))
     }, currentPage: 0, pageSize: 5, highlightedItemIndex: 0, isLastPage: true)
     _ = consentService.annotate(twoUnknowns, showTranslation: true) {}
-    try await Task.sleep(nanoseconds: 650_000_000)
+    try await waitUntil { consentRequests.count == 1 }
     consent.enabled = false
-    try await Task.sleep(nanoseconds: 900_000_000)
+    try await Task.sleep(nanoseconds: 1_150_000_000)
     precondition(consentReads == 1 && consentRequests == ["ZIME测试未收录词一"],
       "disabled during rate-limit wait still sent a second candidate")
     print("ZIMECandidateTranslatorTests: PASS (mock transport only)")

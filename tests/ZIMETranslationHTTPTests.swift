@@ -15,13 +15,30 @@ private final class HTTPFixtureState: @unchecked Sendable {
   let lock = NSLock()
   private var plan = Plan()
   private var requests: [URLRequest] = []
+  private var requestIDs = Set<ObjectIdentifier>()
   private var stops = 0
-  func reset(_ value: Plan) { lock.withLock { plan = value; requests = []; stops = 0 } }
-  func start(_ request: URLRequest) -> Plan { lock.withLock { requests.append(request); return plan } }
-  func stop() { lock.withLock { stops += 1 } }
+  private var headers = 0
+  private var bodyBytes = 0
+  func reset(_ value: Plan) {
+    lock.withLock { plan = value; requests = []; requestIDs = []; stops = 0; headers = 0; bodyBytes = 0 }
+  }
+  func start(_ owner: URLProtocol, request: URLRequest) -> Plan {
+    lock.withLock { requests.append(request); requestIDs.insert(ObjectIdentifier(owner)); return plan }
+  }
+  func receivedHeaders(_ owner: URLProtocol) {
+    lock.withLock { if requestIDs.contains(ObjectIdentifier(owner)) { headers += 1 } }
+  }
+  func receivedBody(_ owner: URLProtocol, bytes: Int) {
+    lock.withLock { if requestIDs.contains(ObjectIdentifier(owner)) { bodyBytes += bytes } }
+  }
+  func stop(_ owner: URLProtocol) {
+    lock.withLock { if requestIDs.contains(ObjectIdentifier(owner)) { stops += 1 } }
+  }
   var started: Bool { lock.withLock { !requests.isEmpty } }
   var count: Int { lock.withLock { requests.count } }
   var stopCount: Int { lock.withLock { stops } }
+  var headerCount: Int { lock.withLock { headers } }
+  var receivedBytes: Int { lock.withLock { bodyBytes } }
 }
 
 private final class HTTPFixtureProtocol: URLProtocol, @unchecked Sendable {
@@ -29,7 +46,7 @@ private final class HTTPFixtureProtocol: URLProtocol, @unchecked Sendable {
   override class func canInit(with request: URLRequest) -> Bool { true }
   override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
   override func startLoading() {
-    let plan = Self.state.start(request)
+    let plan = Self.state.start(self, request: request)
     precondition(request.httpMethod == "POST", "transport changed request method")
     precondition(request.cachePolicy == .reloadIgnoringLocalCacheData && request.timeoutInterval == 10)
     if let error = plan.error {
@@ -47,13 +64,16 @@ private final class HTTPFixtureProtocol: URLProtocol, @unchecked Sendable {
     let delivered: URLResponse = plan.nonHTTP
       ? URLResponse(url: request.url!, mimeType: nil, expectedContentLength: 0, textEncodingName: nil) : response
     client!.urlProtocol(self, didReceive: delivered, cacheStoragePolicy: .notAllowed)
+    Self.state.receivedHeaders(self)
     // Deliver in separate chunks, including splits inside UTF-8/JSON tokens.
     for start in stride(from: 0, to: plan.data.count, by: 17) {
-      client!.urlProtocol(self, didLoad: plan.data.subdata(in: start..<min(start + 17, plan.data.count)))
+      let chunk = plan.data.subdata(in: start..<min(start + 17, plan.data.count))
+      client!.urlProtocol(self, didLoad: chunk)
+      Self.state.receivedBody(self, bytes: chunk.count)
     }
     if !plan.stall { client!.urlProtocolDidFinishLoading(self) }
   }
-  override func stopLoading() { Self.state.stop() }
+  override func stopLoading() { Self.state.stop(self) }
 }
 
 @main struct ZIMETranslationHTTPTests {
@@ -123,8 +143,16 @@ private final class HTTPFixtureProtocol: URLProtocol, @unchecked Sendable {
     for code: URLError.Code in [.timedOut, .networkConnectionLost, .notConnectedToInternet] {
       await expectFailure(.init(error: code)) { ($0 as? URLError)?.code == code }
     }
-    for malformed in ["", "{", "{\"choices\":[]}", "{\"choices\":[{\"message\":{\"content\":\"\"}}]}"] {
-      await expectFailure(.init(data: Data(malformed.utf8))) { _ in true }
+    for malformed in ["", "{"] {
+      await expectFailure(.init(data: Data(malformed.utf8))) {
+        let error = $0 as NSError
+        return error.domain == NSCocoaErrorDomain && error.code == 3840
+      }
+    }
+    for malformed in ["{\"choices\":[]}", "{\"choices\":[{\"message\":{\"content\":\"\"}}]}"] {
+      await expectFailure(.init(data: Data(malformed.utf8))) {
+        if case ZIMETranslationError.response = $0 { return true }; return false
+      }
     }
     let valid = try JSONSerialization.data(withJSONObject: bodies[0].1)
     var boundary = valid + Data(repeating: 32, count: 65_536 - valid.count)
@@ -137,10 +165,16 @@ private final class HTTPFixtureProtocol: URLProtocol, @unchecked Sendable {
     await expectFailure(.init(data: boundary, stall: true)) {
       if case ZIMETranslationError.response = $0 { return true }; return false
     }
-    for omitHeaders in [false, true] {
-      HTTPFixtureProtocol.state.reset(.init(stall: true, omitHeaders: omitHeaders))
+    for beforeHeaders in [true, false] {
+      HTTPFixtureProtocol.state.reset(.init(data: Data("{\"choices\":".utf8), stall: true, omitHeaders: beforeHeaders))
       let task = Task { try await translate() }
-      try await waitUntil { HTTPFixtureProtocol.state.started }
+      if beforeHeaders {
+        try await waitUntil { HTTPFixtureProtocol.state.started }
+        precondition(HTTPFixtureProtocol.state.headerCount == 0 && HTTPFixtureProtocol.state.receivedBytes == 0,
+          "before-headers cancellation fixture already delivered a response")
+      } else {
+        try await waitUntil { HTTPFixtureProtocol.state.headerCount == 1 && HTTPFixtureProtocol.state.receivedBytes > 0 }
+      }
       task.cancel()
       do { _ = try await task.value; fatalError("cancelled request returned a translation") }
       catch { precondition(error is CancellationError || (error as? URLError)?.code == .cancelled) }

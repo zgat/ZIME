@@ -6,51 +6,24 @@ require "json"
 require "open3"
 require "shellwords"
 require "tmpdir"
+require_relative "compile_artifact_cache"
+require_relative "test_process"
 
 module CxxTestCache
   def self.compile(cache, output, command)
     raise ArgumentError, "missing compiler command" if command.empty? || command.include?("-o")
-    compiler, status = Open3.capture2e(command.first, "--version")
+    compiler, _, status = TestProcess.capture(command.first, "--version", timeout: 10)
     raise "compiler identity unavailable" unless status.success?
     environment = ENV.select { |key, _| key.match?(/\A(CPATH|CPLUS_INCLUDE_PATH|LIBRARY_PATH|SDKROOT|DEVELOPER_DIR|MACOSX_DEPLOYMENT_TARGET)\z/) }
-    key = Digest::SHA256.hexdigest(JSON.generate([Dir.pwd, compiler,
-      Digest::SHA256.file(__FILE__).hexdigest, environment.sort, command]))
-    FileUtils.mkdir_p(cache)
-    raise "unsafe compiler cache" if File.symlink?(cache)
-    slot = File.join(cache, key)
-    FileUtils.mkdir_p(slot)
-    raise "unsafe compiler slot" if File.symlink?(slot)
-    File.open(File.join(slot, "lock"), File::RDWR | File::CREAT, 0600) do |lock|
-      lock.flock(File::LOCK_EX)
-      binary = File.join(slot, "binary")
-      manifest = File.join(slot, "manifest.json")
-      # Re-resolve includes even on a hit: a new higher-priority header or an
-      # __has_include condition can change compilation without changing any old
-      # dependency. Hash preprocessed output as well as the current input set.
-      inputs, preprocessing = self.inputs(command, slot)
-      begin
-        record = JSON.parse(File.read(manifest))
-        valid = File.executable?(binary) && !File.symlink?(binary) && !File.symlink?(manifest) &&
-          Digest::SHA256.file(binary).hexdigest == record.fetch("binary") &&
-          record.fetch("inputs") == inputs && record.fetch("preprocessing") == preprocessing
-      rescue Errno::ENOENT, JSON::ParserError, KeyError
-        valid = false
-      end
-      unless valid
-        Dir.mktmpdir("compile-", slot) do |stage|
-          built = File.join(stage, "binary")
-          raise "C++ compilation failed" unless system(*command, "-o", built)
-          record = {"binary" => Digest::SHA256.file(built).hexdigest,
-            "inputs" => inputs, "preprocessing" => preprocessing}
-          File.write(File.join(stage, "manifest.json"), JSON.generate(record))
-          File.rename(built, binary)
-          File.rename(File.join(stage, "manifest.json"), manifest)
-        end
-      end
-      FileUtils.cp(binary, output)
-      puts "C++ test compile cache: #{valid ? 'HIT' : 'MISS'} #{File.basename(output)}"
-      valid
+    identity = ["cxx", Dir.pwd, compiler, Digest::SHA256.file(__FILE__).hexdigest,
+      Digest::SHA256.file(File.join(__dir__, "test_process.rb")).hexdigest, environment.sort, command]
+    hit = CompileArtifactCache.fetch(cache, identity, output, resolve: ->(slot) { inputs(command, slot) }) do |built|
+      out, err, status = TestProcess.capture(*command, "-o", built, timeout: 180)
+      warn(out + err) unless status.success?
+      raise "C++ compilation failed" unless status.success?
     end
+    puts "C++ test compile cache: #{hit ? 'HIT' : 'MISS'} #{File.basename(output)}"
+    hit
   end
 
   def self.inputs(command, slot)
@@ -66,8 +39,10 @@ module CxxTestCache
         }
         # One unit per invocation; -MD includes SDK/system headers. A stable
         # dependency target avoids injecting this scratch path into the digest.
-        raise "C++ compilation failed" unless system(*preprocessing, "-E", "-MD", "-MF", depfile,
-          "-MT", "probe", "-o", output)
+        out, err, status = TestProcess.capture(*preprocessing, "-E", "-MD", "-MF", depfile,
+          "-MT", "probe", "-o", output, timeout: 60)
+        warn(out + err) unless status.success?
+        raise "C++ compilation failed" unless status.success?
         preprocessed << Digest::SHA256.file(output).hexdigest
         Shellwords.split(File.read(depfile).gsub(/\\\n/, " ").split(": ", 2).fetch(1))
       }
