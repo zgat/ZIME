@@ -37,8 +37,8 @@
 | Release 构建、App 门 | PASS，0.1.22 / 23；Host、独立及内嵌 Settings、隔离数据 dry-run、词库与隐私 |
 | Settings UI 测试编译 | PASS，warnings-as-errors 类型检查；未在当前桌面运行点击测试 |
 | 限定 Swift 覆盖率 | PASS，13 个生产文件/依赖，行 1,444 / 4,439（32.53%），函数 244 / 683（35.72%）；不是全项目或分支覆盖率 |
-| Full / Core / PKG 附件验证 | PENDING，建立干净源码提交后执行 |
-| 本机安装与旧包清理 | PENDING，仅在附件验收成功后执行；当前仍为 0.1.21 |
+| Full / Core / PKG 附件验证 | PASS，干净提交构建，解包核对清单/摘要/正式身份/签名/源码与锁文件/载荷一致性 |
+| 本机安装与旧包清理 | PASS，Core 事务升级至 0.1.22 / 23；保留 0.1.20、0.1.21、0.1.22，旧安装目录可从废纸篓恢复 |
 | GitHub 推送、发布、远端 CI | NOT_EXERCISED |
 | 独立设置 UI 点击、真实 API、跨系统/跨应用/双屏、长时使用 | NOT_EXERCISED |
 
@@ -51,9 +51,38 @@
 CMS 发布流程，也不表示所有历史独立脚本均已运行。未改动旧授权证书或伪造 CMS 验收。
 Xcode 提示本机 iOS Simulator 框架版本较旧，但本次 macOS 构建正常完成；未更改系统组件。
 
-## 继续交付
+## 本地交付结果
 
-完整 core、Release、App 门、strict lint/Periphery 和限定覆盖率均已完成。
-建立干净本地提交，按发布指南构建并校验 Full/Core/PKG。
-使用现有 `zime-install-helper update` 安装并验证 0.1.22/23、签名、进程和数据保留，
-然后按 AGENTS.md 先列清单、再将三代以外的安装包移入可恢复区域。不要自动推送 GitHub。
+产物绑定干净源码提交 `667b96ccea1006bc07c757a68606d9f19a80694d`。
+生产源码与完整回归一致；归档前清理测试夹具四处行尾空白，随后再次完整执行 Swift 回归并通过。
+此节为后续文档收据，不改变已打包的源码或附件字节。
+
+产物目录：`build/zime-0.1.22-delivery-20260915/`。
+
+| 文件 | 字节数 |
+| --- | ---: |
+| ZIME-0.1.22-arm64.zip | 507,753,767 |
+| ZIME-0.1.22-arm64.pkg | 507,984,270 |
+| ZIME-0.1.22-arm64-core.zip | 19,274,191 |
+| wanxiang-lts-zh-hans.gram | 420,339,756 |
+
+目录内 `manifest.json` 与 `SHA256SUMS` 绑定上述四个附件。`make archive` 最终验收退出 0，
+Full/Core 的 App 字节相同，PKG 载荷与 Full ZIP 相同；PKG 仅支持当前用户的暂存式安装。
+仍是 arm64、macOS 13+ 的 Ad-hoc 预览，未签名 PKG、未公证，不是 Developer ID 发布版。
+
+本机随后从同一 Core ZIP 解压，通过自带的 `update-zime-app` / `zime-install-helper update`
+升级至 0.1.22 / 23。已核验正式身份、源码 revision、嵌套签名和运行库，唯一宿主进程
+来自安装路径且 `hidden=false`；简体输入源已选中，繁体保持原先未启用状态，未修改选择偏好。
+
+- App 注册目录 inode、Data 全目录摘要、Host / Settings 两份偏好文件摘要前后一致。
+- 安装事务在静默窗口内核对 UserData 与 `UserData-before` 完全一致；回滚材料完整，
+  `in-progress` 标记已移除。
+- 首次重启后 Runtime 全目录摘要不相同，核查变化仅来自 Logs 的轮换；Runtime/Active
+  及其非日志条目无升级期间的修改。没有把包含活动日志的目录误报为字节不变。
+- UserData 重启后有正常的 LevelDB 日志/压缩和部署元数据变化，不把这一阶段的目录字节
+  与安装事务的静默窗口混为一谈。原始摘要及检查说明保存在本次日志目录的 `install-*.json`。
+
+最后复查可用安装包/安装目录仅有 0.1.20、0.1.21、0.1.22 三代。
+0.1.19 安装目录与 0.1.17 的 Full、Core、PKG 解包目录已移至同卷废纸篓的
+`ZIME-old-packages-20260915`，未清空废纸篓；历史测试数据、日志和安装事务备份未删除。
+没有推送 GitHub、创建标签或发布 Release。
