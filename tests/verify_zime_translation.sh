@@ -11,7 +11,7 @@ compile_run() {
   shift
   linnet_swift_compile "${name}" -warnings-as-errors -parse-as-library \
     -sdk "${LINNET_MACOS_SDK}" -target arm64-apple-macosx13.0 -framework Security "$@"
-  "${LINNET_SWIFT_COMPILED_BINARY}"
+  linnet_test_run 300 "${LINNET_SWIFT_COMPILED_BINARY}"
 }
 compile_run translation \
   sources/ZIMELocalLexicon.swift sources/ZIMETranslationProvider.swift \

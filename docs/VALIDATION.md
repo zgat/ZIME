@@ -32,6 +32,7 @@ README 描述当前产品；这里保留各版本的历史验证范围和实现�
 HTTP 取消阶段和事件驱动测试见 [build 26 测试工程再审查](ZIME-TEST-INFRASTRUCTURE-2026-09-15.md)。
 虚拟时间、缓存容量/到期及变异测试见 [build 27 候选翻译边界](ZIME-TRANSLATOR-BOUNDARIES-2026-09-15.md)。
 SDK 依赖和统一入口实际执行检查见 [build 28 SDK 与入口验证](ZIME-SDK-GATES-2026-09-15.md)。
+运行超时、信号清理及新鲜度门见 [build 29 测试运行边界](ZIME-RUNTIME-OWNERS-2026-09-15.md)。
 
 当前验证体系与覆盖边界见 [完整验证跟进](ZIME-VALIDATION-FOLLOWUP-2026-09-14.md)，
 真实系统/应用/服务验收见 [验收清单](ZIME-ACCEPTANCE.md)。

@@ -2,12 +2,14 @@
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd -P)"
 cd "${root}"
+source tests/swift_test_scratch.sh
+linnet_swift_scratch_init
 make zime-install-helper
-xcrun swiftc -warnings-as-errors -sdk "$(xcrun --show-sdk-path)" \
+linnet_test_run 300 xcrun swiftc -warnings-as-errors -sdk "$(xcrun --show-sdk-path)" \
   -module-cache-path build/swift-module-cache \
   sources/LinnetDirectoryDelta.swift sources/ZIMEInstallTransaction.swift \
-  tests/ZIMEInstallTransactionTests.swift -o build/zime-install-tests
-build/zime-install-tests
+  tests/ZIMEInstallTransactionTests.swift -o "${scratch}/zime-install-tests"
+linnet_test_run 300 "${scratch}/zime-install-tests"
 for script in scripts/install-zime scripts/update-zime-app scripts/build-zime-delivery package/zime-installer-scripts/postinstall; do
   /bin/zsh -n "${script}"
 done

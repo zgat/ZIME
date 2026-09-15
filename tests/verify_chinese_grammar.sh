@@ -16,7 +16,7 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 cd "${repo_root}"
 
 for required in \
-  bin/rime_deployer \
+  linnet_test_run 600 bin/rime_deployer \
   lib/librime.1.dylib \
   lib/rime-plugins/librime-octagram.dylib \
   tests/rime_grammar_probe.cc \
@@ -32,6 +32,7 @@ cleanup() {
   rm -rf -- "${work_root}"
 }
 trap cleanup EXIT
+source tests/test_runner.sh
 
 # Post-Wanxiang migration: Wanxiang LTS grammar replaces octagram. The model
 # is the committed asset data/chinese/grammar; the staged copy must match it.
@@ -107,9 +108,9 @@ done
 
 export DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins"
 RIME_LOG_DIR="${work_root}/on-logs" \
-  bin/rime_deployer --build "${on_user}" "${on_shared}" "${on_user}/build"
+  linnet_test_run 600 bin/rime_deployer --build "${on_user}" "${on_shared}" "${on_user}/build"
 RIME_LOG_DIR="${work_root}/off-logs" \
-  bin/rime_deployer --build "${off_user}" "${off_shared}" "${off_user}/build"
+  linnet_test_run 600 bin/rime_deployer --build "${off_user}" "${off_shared}" "${off_user}/build"
 
 for schema in \
   linnet_zh linnet_zh_pinyin linnet_zh_flypy linnet_zh_mspy \
@@ -124,7 +125,7 @@ done
 compiler="$(xcrun --find clang++)"
 sdk="$(xcrun --show-sdk-path)"
 probe="${work_root}/rime-grammar-probe"
-"${compiler}" -isysroot "${sdk}" -std=c++17 -O2 -Wall -Wextra -Werror \
+linnet_test_run 600 "${compiler}" -isysroot "${sdk}" -std=c++17 -O2 -Wall -Wextra -Werror \
   -isystem librime/dist/include tests/rime_grammar_probe.cc lib/librime.1.dylib \
   -o "${probe}"
 
@@ -134,9 +135,9 @@ fixture="$(rg -v '^#|^[[:space:]]*$' tests/fixtures/chinese_grammar.tsv)"
   exit 1
 }
 IFS=$'\t' read -r key_sequence expected_on expected_off <<<"${fixture}"
-"${probe}" "${on_shared}" "${on_user}" "${key_sequence}" \
+linnet_test_run 600 "${probe}" "${on_shared}" "${on_user}" "${key_sequence}" \
   >"${work_root}/on.out" 2>"${work_root}/on.err"
-"${probe}" "${off_shared}" "${off_user}" "${key_sequence}" \
+linnet_test_run 600 "${probe}" "${off_shared}" "${off_user}" "${key_sequence}" \
   >"${work_root}/off.out" 2>"${work_root}/off.err"
 actual_on="$(awk -F '\t' 'NR == 1 { print $2 }' "${work_root}/on.out")"
 actual_off="$(awk -F '\t' 'NR == 1 { print $2 }' "${work_root}/off.out")"

@@ -17,7 +17,7 @@ case "${1:-}" in
 esac
 
 for required in \
-  bin/rime_deployer \
+  linnet_test_run 600 bin/rime_deployer \
   lib/librime.1.dylib \
   lib/rime-plugins/librime-lua.dylib \
   librime/dist/include/rime_api.h \
@@ -54,6 +54,7 @@ cleanup() {
   rm -rf -- "${work_root}"
 }
 trap cleanup EXIT
+source tests/test_runner.sh
 
 shared="${work_root}/shared"
 user="${work_root}/user"
@@ -92,13 +93,13 @@ swiftc="$(xcrun --find swiftc)"
 sdk="$(xcrun --show-sdk-path)"
 probe="${work_root}/auto_phrase_probe"
 projection_fixture="${work_root}/projection-fixture"
-"${compiler}" -isysroot "${sdk}" -std=c++17 -O2 -Wall -Wextra -Werror \
+linnet_test_run 600 "${compiler}" -isysroot "${sdk}" -std=c++17 -O2 -Wall -Wextra -Werror \
   -isystem librime/dist/include \
   tests/auto_phrase_probe.cc \
   lib/librime.1.dylib lib/rime-plugins/librime-lua.dylib \
   -o "${probe}"
 if [[ "${selection_identity_only}" -eq 0 ]]; then
-  "${swiftc}" -warnings-as-errors -sdk "${sdk}" \
+  linnet_test_run 600 "${swiftc}" -warnings-as-errors -sdk "${sdk}" \
   sources/LinnetPackContract.swift \
   sources/LinnetDataChannel.swift \
   sources/LinnetDataRegistry.swift sources/LinnetDirectoryDelta.swift sources/LinnetDataRegistryTransactions.swift sources/LinnetDataRegistryStorage.swift \
@@ -118,21 +119,21 @@ deploy() {
   local log_dir="${work_root}/logs-${label}"
   mkdir -p "${log_dir}"
   RIME_LOG_DIR="${log_dir}" \
-    bin/rime_deployer --build "${user}" "${shared}" "${user}/build" \
+    linnet_test_run 600 bin/rime_deployer --build "${user}" "${shared}" "${user}/build" \
     >"${work_root}/deploy-${label}.out" \
     2>"${work_root}/deploy-${label}.err"
 }
 
 run_probe() {
   local label="$1"
-  "${probe}" "${shared}" "${user}" linnet_zh_pinyin \
+  linnet_test_run 600 "${probe}" "${shared}" "${user}" linnet_zh_pinyin \
     >"${work_root}/${label}.out" \
     2>"${work_root}/${label}.err"
 }
 
 project_learning_policy() {
   local policy="$1"
-  "${projection_fixture}" chinese-learning "${policy}" "${user}"
+  linnet_test_run 600 "${projection_fixture}" chinese-learning "${policy}" "${user}"
 }
 
 contains_candidate() {

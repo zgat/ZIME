@@ -29,7 +29,8 @@ cleanup() {
     /bin/rm -rf -- "${fixture}"
   fi
 }
-trap cleanup EXIT INT TERM
+trap cleanup EXIT
+source tests/test_runner.sh
 
 macos_sdk="$(xcrun --sdk macosx --show-sdk-path)"
 source tests/swift_test_cache.sh
@@ -112,7 +113,7 @@ start_host() {
     previous_inode="$(stat -f '%i' "${runtime_socket}")"
   fi
   LINNET_IPC_TEST_ROOT="${runtime_root}" \
-    "${host_helper}" "${mode}" "${endpoint}" "$@" \
+    ruby "${LINNET_TEST_RUNNER_SCRIPT}" 60 "${host_helper}" "${mode}" "${endpoint}" "$@" \
     >"${log}" 2>&1 &
   active_host_pid="$!"
   wait_for_socket "${runtime_socket}" "${active_host_pid}" "${previous_inode}" || {
@@ -126,7 +127,7 @@ run_settings() {
   local mode="$2"
   shift 2
   LINNET_IPC_TEST_ROOT="$(runtime_root_for "${endpoint}")" \
-    "${settings_helper}" "${mode}" "${endpoint}" "$@"
+    linnet_test_run 60 "${settings_helper}" "${mode}" "${endpoint}" "$@"
 }
 
 wait_for_host() {

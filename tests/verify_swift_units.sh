@@ -40,7 +40,7 @@ compile_run() {
   begin_phase "compile and run ${name}"
   linnet_swift_compile "${name}" -warnings-as-errors -sdk "${sdk}" \
     tests/LinnetTestScratch.swift "$@"
-  "${LINNET_SWIFT_COMPILED_BINARY}"
+  linnet_test_run 300 "${LINNET_SWIFT_COMPILED_BINARY}"
   end_phase "compile and run ${name}"
 }
 
@@ -65,7 +65,7 @@ appearance_preview() {
   cp data/squirrel.yaml "${preview_app}/Resources/squirrel.yaml"
   plutil -create xml1 "${preview_app}/Info.plist"
   plutil -insert CFBundleExecutable -string AppearancePreview "${preview_app}/Info.plist"
-  "${preview_app}/MacOS/AppearancePreview"
+  linnet_test_run 300 "${preview_app}/MacOS/AppearancePreview"
   end_phase "compile and run appearance-preview"
 }
 
@@ -226,7 +226,7 @@ compile_run pack \
 begin_phase "Rime filesystem projection"
 linnet_swift_compile rime-path -parse-as-library -warnings-as-errors -sdk "${sdk}" \
   tests/RimeFilesystemPathProjectionTests.swift
-"${LINNET_SWIFT_COMPILED_BINARY}" \
+linnet_test_run 300 "${LINNET_SWIFT_COMPILED_BINARY}" \
   sources/SquirrelApplicationDelegate.swift sources/SquirrelApplicationRuntime.swift sources/SquirrelApplicationTransactions.swift \
   sources/SquirrelApplicationPresentation.swift
 end_phase "Rime filesystem projection"
@@ -255,7 +255,7 @@ linnet_swift_compile rime-user-data-bridge \
   "${common_settings_sources[@]}" \
   tests/RimeUserDataBridgeDirectoryTests.swift -L lib -lrime.1
 DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
-  "${LINNET_SWIFT_COMPILED_BINARY}"
+  linnet_test_run 300 "${LINNET_SWIFT_COMPILED_BINARY}"
 end_phase "Rime user-data bridge"
 
 begin_phase "Settings data coordinator"
@@ -274,7 +274,7 @@ linnet_swift_compile settings-data-coordinator \
 mkdir -p "${scratch}/rime-logs"
 if ! RIME_LOG_DIR="${scratch}/rime-logs" \
     DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
-    "${LINNET_SWIFT_COMPILED_BINARY}" \
+    linnet_test_run 300 "${LINNET_SWIFT_COMPILED_BINARY}" \
     >"${scratch}/settings-data.out" 2>&1; then
   rg -n 'FAIL|Fatal|fatal|error:|Assertion|SIG|failed:' "${scratch}/settings-data.out" >&2 || true
   tail -n 160 "${scratch}/settings-data.out" >&2 || true

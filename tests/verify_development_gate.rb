@@ -9,7 +9,7 @@ module DevelopmentGateTest
   class Mismatch < StandardError; end
   APP = "build/Local/Build/Products/Release/ZIME.app".freeze
   PREPARE = ["make\t--no-print-directory\tenglish-data-generator", "tests/verify_english_data_projection.sh"].freeze
-  INFRASTRUCTURE = %w[verify_coverage_gate.rb verify_test_process.rb verify_compile_artifact_cache.rb
+  INFRASTRUCTURE = %w[verify_coverage_gate.rb verify_test_process.rb verify_test_runner.rb verify_compile_artifact_cache.rb
     verify_swift_test_cache.rb verify_cxx_test_cache.rb verify_development_gate.rb
     verify_rime_test_orchestration.sh verify_publication_owner.sh verify_release_automation.sh
     verify_zime_installer.sh verify_zime_privacy.sh].map { |name| "tests/#{name}" }.freeze
@@ -110,6 +110,50 @@ module DevelopmentGateTest
       code, trace, = run(root, arguments)
       raise "invalid profile did work or succeeded" unless code == 2 && trace.empty?
     end
+    # Exercise the actual freshness boundary, not only mocked App leaf gates.
+    # Each producer can print plausible partial output and still fail.
+    %w[git find sort].each do |name|
+      executable = File.join(root, "bin", name)
+      original = File.exist?(executable) ? File.binread(executable) : nil
+      begin
+        write_executable(executable, "#!/bin/sh\nprintf '%s\\n' config/LinnetProduct.xcconfig\nexit 47\n")
+        code, trace, = run(root, ["app"])
+        raise Mismatch, "#{name} enumeration failure did not stop App checks" unless code == 47 && trace.empty?
+      ensure
+        original ? write_executable(executable, original) : File.unlink(executable)
+      end
+    end
+    git = File.join(root, "bin/git")
+    original_git = File.binread(git)
+    begin
+      write_executable(git, "#!/bin/sh\nexit 0\n")
+      code, trace, = run(root, ["app"])
+      raise Mismatch, "empty input inventory accepted" unless code == 1 && trace.empty?
+    ensure
+      write_executable(git, original_git)
+    end
+    input = File.join(root, "config/LinnetProduct.xcconfig")
+    stamp = File.join(root, "build/Local/Build/Products/Release/.linnet-build-complete")
+    begin
+      File.utime(File.mtime(stamp) + 60, File.mtime(stamp) + 60, input)
+      code, trace, = run(root, ["app"])
+      raise Mismatch, "newer source input accepted" unless code == 1 && trace.empty?
+    ensure
+      File.utime(Time.at(1), Time.at(1), input)
+    end
+    original_input = File.binread(input)
+    begin
+      File.unlink(input)
+      code, trace, = run(root, ["app"])
+      raise Mismatch, "deleted tracked source accepted" unless code == 1 && trace.empty?
+      File.symlink(stamp, input)
+      code, trace, = run(root, ["app"])
+      raise Mismatch, "aliased source accepted" unless code == 1 && trace.empty?
+    ensure
+      File.unlink(input) if File.symlink?(input)
+      File.binwrite(input, original_input)
+      File.utime(Time.at(1), Time.at(1), input)
+    end
     # Every release leaf must stop all later work. Also cover core/full's
     # prerequisite branch, which is deliberately absent from release.
     failures = 0
@@ -141,7 +185,7 @@ module DevelopmentGateTest
       end
       raise "development gate mutation escaped: #{name}"
     end
-    puts "Development gate: PASS (8 profiles/default/invalid args; #{failures} fail-fast checks; #{mutations.size} semantic mutations; isolated leaf commands)"
+    puts "Development gate: PASS (8 profiles/default/invalid args; #{failures} fail-fast checks; input enumeration/empty/stale checks; #{mutations.size} semantic mutations; isolated leaf commands)"
   end
 end
 

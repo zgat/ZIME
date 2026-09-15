@@ -44,9 +44,7 @@ cleanup() {
   exit "${status}"
 }
 trap cleanup EXIT
-trap 'exit 130' INT
-trap 'exit 143' TERM
-trap 'exit 129' HUP
+source tests/test_runner.sh
 
 phase_started=0
 begin_phase() {
@@ -154,7 +152,7 @@ linnet_swift_compile projection-fixture -warnings-as-errors -sdk "${sdk}" \
   sources/LinnetSettings/LinnetSettingsDocument.swift sources/LinnetSettings/LinnetSettingsDocumentStore.swift \
   sources/LinnetSettings/LinnetSettingsProjectionRenderer.swift \
   tests/LinnetSettingsProjectionFixture.swift
-"${scratch}/projection-fixture" default "${user}"
+linnet_test_run 600 "${scratch}/projection-fixture" default "${user}"
 for switch_key in Caps_Lock Shift_L Shift_R; do
   test "$(rg -F -c \
     "\"ascii_composer/switch_key/${switch_key}\": commit_code" \
@@ -180,7 +178,7 @@ fi
 compile_compatibility_schemas() {
   for profile in linnet_zh linnet_zh_flypy linnet_zh_mspy linnet_zh_sogou linnet_zh_abc linnet_zh_ziguang linnet_zh_jiajia; do
     DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
-      bin/rime_deployer --compile "${shared}/${profile}.schema.yaml" \
+      linnet_test_run 600 bin/rime_deployer --compile "${shared}/${profile}.schema.yaml" \
         "${user}" "${shared}" "${user}/build" >/dev/null
   done
 }
@@ -193,7 +191,7 @@ if [[ "${runtime_probe}" == --zime-case-probe ]]; then
 fi
 RIME_LOG_DIR="${logs}" \
 DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
-  bin/rime_deployer --build "${user}" "${shared}" "${user}/build" >/dev/null
+  linnet_test_run 600 bin/rime_deployer --build "${user}" "${shared}" "${user}/build" >/dev/null
 if [[ -z "${runtime_probe}" || "${runtime_probe}" == --mixed-input-probe ||
       "${runtime_probe}" == --fast-config-reload-probe ]]; then
   # The legacy mixed matrix directly selects inherited profiles. Compile
@@ -204,7 +202,7 @@ for fixture_schema in \
   linnet_pinyin_limit_64.schema.yaml \
   linnet_pinyin_limit_65.schema.yaml; do
   DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
-    bin/rime_deployer --compile "${shared}/${fixture_schema}" \
+    linnet_test_run 600 bin/rime_deployer --compile "${shared}/${fixture_schema}" \
       "${user}" "${shared}" "${user}/build" >/dev/null
 done
 end_phase "deploy native schemas"
@@ -238,9 +236,12 @@ smoke_args=("${shared}" "${user}")
 if [[ -n "${runtime_probe}" ]]; then
   smoke_args+=("${runtime_probe}")
 fi
-if ! DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
-    "${scratch}/rime-smoke" "${smoke_args[@]}" \
-    2>"${scratch}/stderr" | tee "${scratch}/stdout"; then
+if ! linnet_test_run 600 /bin/bash -o pipefail -c '
+    export DYLD_LIBRARY_PATH="$1"
+    error_log=$2; output_log=$3; shift 3
+    "$@" 2>"$error_log" | tee "$output_log"
+  ' _ "${repo_root}/lib:${repo_root}/lib/rime-plugins" \
+    "${scratch}/stderr" "${scratch}/stdout" "${scratch}/rime-smoke" "${smoke_args[@]}"; then
   tail -n 160 "${scratch}/stdout" >&2 || true
   tail -n 160 "${scratch}/stderr" >&2 || true
   exit 1
@@ -250,49 +251,43 @@ end_phase "run native candidate matrix"
 if [[ "${runtime_probe}" == --zime-shortcuts-probe ]]; then
   begin_phase "reopen and export/restore emoji learning"
   DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
-    "${scratch}/rime-smoke" "${shared}" "${user}" --zime-emoji-reopen-probe
+    linnet_test_run 600 "${scratch}/rime-smoke" "${shared}" "${user}" --zime-emoji-reopen-probe
   restored_user="${scratch}/restored-emoji-user"
   mkdir "${restored_user}"
   cp -R "${user}/build" "${restored_user}/build"
-  (
-    cd "${user}"
-    DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
-      "${repo_root}/bin/rime_dict_manager" --export linnet_zh "${scratch}/emoji-learning.txt"
-  )
-  (
-    cd "${restored_user}"
-    DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
-      "${repo_root}/bin/rime_dict_manager" --import linnet_zh "${scratch}/emoji-learning.txt"
-  )
   DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
-    "${scratch}/rime-smoke" "${shared}" "${restored_user}" --zime-emoji-reopen-probe
+    linnet_test_run 600 --chdir "${user}" "${repo_root}/bin/rime_dict_manager" --export linnet_zh "${scratch}/emoji-learning.txt"
+  DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
+    linnet_test_run 600 --chdir "${restored_user}" "${repo_root}/bin/rime_dict_manager" --import linnet_zh "${scratch}/emoji-learning.txt"
+  DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
+    linnet_test_run 600 "${scratch}/rime-smoke" "${shared}" "${restored_user}" --zime-emoji-reopen-probe
   end_phase "reopen and export/restore emoji learning"
 fi
 
 if [[ "${runtime_probe}" == --zime-bilingual-probe ]]; then
   begin_phase "reopen learned ranking in a fresh process"
   DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
-    "${scratch}/rime-smoke" "${shared}" "${user}" --zime-ranking-reopen-probe
+    linnet_test_run 600 "${scratch}/rime-smoke" "${shared}" "${user}" --zime-ranking-reopen-probe
   end_phase "reopen learned ranking in a fresh process"
   begin_phase "persist English preference and honor the learning switch"
   DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
-    "${scratch}/rime-smoke" "${shared}" "${user}" --zime-english-ranking-reopen-probe
-  "${scratch}/projection-fixture" zime-english-learning-off "${user}"
+    linnet_test_run 600 "${scratch}/rime-smoke" "${shared}" "${user}" --zime-english-ranking-reopen-probe
+  linnet_test_run 600 "${scratch}/projection-fixture" zime-english-learning-off "${user}"
   DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
-    bin/rime_deployer --build "${user}" "${shared}" "${user}/build" >/dev/null
+    linnet_test_run 600 bin/rime_deployer --build "${user}" "${shared}" "${user}/build" >/dev/null
   DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
-    "${scratch}/rime-smoke" "${shared}" "${user}" --zime-english-learning-off-probe
-  "${scratch}/projection-fixture" default "${user}"
-  "${scratch}/projection-fixture" chinese-learning disabled "${user}"
+    linnet_test_run 600 "${scratch}/rime-smoke" "${shared}" "${user}" --zime-english-learning-off-probe
+  linnet_test_run 600 "${scratch}/projection-fixture" default "${user}"
+  linnet_test_run 600 "${scratch}/projection-fixture" chinese-learning disabled "${user}"
   DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
-    bin/rime_deployer --build "${user}" "${shared}" "${user}/build" >/dev/null
+    linnet_test_run 600 bin/rime_deployer --build "${user}" "${shared}" "${user}/build" >/dev/null
   DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
-    "${scratch}/rime-smoke" "${shared}" "${user}" --zime-chinese-learning-off-probe
-  "${scratch}/projection-fixture" default "${user}"
+    linnet_test_run 600 "${scratch}/rime-smoke" "${shared}" "${user}" --zime-chinese-learning-off-probe
+  linnet_test_run 600 "${scratch}/projection-fixture" default "${user}"
   DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
-    bin/rime_deployer --build "${user}" "${shared}" "${user}/build" >/dev/null
+    linnet_test_run 600 bin/rime_deployer --build "${user}" "${shared}" "${user}/build" >/dev/null
   DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
-    "${scratch}/rime-smoke" "${shared}" "${user}" --zime-english-ranking-reopen-probe
+    linnet_test_run 600 "${scratch}/rime-smoke" "${shared}" "${user}" --zime-english-ranking-reopen-probe
   end_phase "persist English preference and honor the learning switch"
 fi
 
@@ -301,26 +296,26 @@ if [[ -z "${runtime_probe}" || "${runtime_probe}" == --mixed-input-probe ]]; the
   mixed_learning_on_user="${scratch}/mixed-learning-on-user"
   mkdir "${mixed_learning_on_user}"
   cp -R "${user}/." "${mixed_learning_on_user}/"
-  printf 'learn 霜河栈 shuanghezhan 霜 河 栈\n' | \
-    DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
-      "${scratch}/auto-phrase-probe" "${shared}" \
-        "${mixed_learning_on_user}" linnet_zh_pinyin >/dev/null
   DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
-    "${scratch}/rime-smoke" "${shared}" "${mixed_learning_on_user}" \
+    linnet_test_run 600 "${scratch}/auto-phrase-probe" "${shared}" \
+      "${mixed_learning_on_user}" linnet_zh_pinyin >/dev/null \
+      <<< 'learn 霜河栈 shuanghezhan 霜 河 栈'
+  DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
+    linnet_test_run 600 "${scratch}/rime-smoke" "${shared}" "${mixed_learning_on_user}" \
       --mixed-learning-on-probe >/dev/null
 
   mixed_learning_off_user="${scratch}/mixed-learning-off-user"
   mkdir "${mixed_learning_off_user}"
   cp -R "${mixed_learning_on_user}/." "${mixed_learning_off_user}/"
-  "${scratch}/projection-fixture" chinese-learning disabled \
+  linnet_test_run 600 "${scratch}/projection-fixture" chinese-learning disabled \
     "${mixed_learning_off_user}"
   DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
-    bin/rime_deployer --build "${mixed_learning_off_user}" "${shared}" \
+    linnet_test_run 600 bin/rime_deployer --build "${mixed_learning_off_user}" "${shared}" \
       "${mixed_learning_off_user}/build" >/dev/null
   rg -Fq 'enable_user_dict: false' \
     "${mixed_learning_off_user}/build/linnet_zh_pinyin.schema.yaml"
   DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
-    "${scratch}/rime-smoke" "${shared}" "${mixed_learning_off_user}" \
+    linnet_test_run 600 "${scratch}/rime-smoke" "${shared}" "${mixed_learning_off_user}" \
       --mixed-learning-off-probe >/dev/null
   end_phase "verify mixed-input learning policy"
 fi
@@ -372,34 +367,22 @@ printf '# Rime user dictionary export\n云同步甲\tyun tong bu jia\t7\nlinnetc
 printf '# Rime user dictionary export\n云同步乙\tyun tong bu yi\t9\nlinnetcloudb\tlinnetcloudb\t9\n' \
   >"${scratch}/device-b-rows.txt"
 for dictionary in linnet_zh linnet_en; do
-  (
-    cd "${device_a}"
-    DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
-      "${repo_root}/bin/rime_dict_manager" --import "${dictionary}" \
-        "${scratch}/device-a-rows.txt" >/dev/null
-  )
-  (
-    cd "${device_b}"
-    DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
-      "${repo_root}/bin/rime_dict_manager" --import "${dictionary}" \
-        "${scratch}/device-b-rows.txt" >/dev/null
-  )
+  DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
+    linnet_test_run 600 --chdir "${device_a}" "${repo_root}/bin/rime_dict_manager" --import "${dictionary}" \
+      "${scratch}/device-a-rows.txt" >/dev/null
+  DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
+    linnet_test_run 600 --chdir "${device_b}" "${repo_root}/bin/rime_dict_manager" --import "${dictionary}" \
+      "${scratch}/device-b-rows.txt" >/dev/null
 done
 for device in "${device_a}" "${device_b}" "${device_a}"; do
-  (
-    cd "${device}"
-    DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
-      "${repo_root}/bin/rime_dict_manager" --sync >/dev/null
-  )
+  DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
+    linnet_test_run 600 --chdir "${device}" "${repo_root}/bin/rime_dict_manager" --sync >/dev/null
 done
 for dictionary in linnet_zh linnet_en; do
   export_file="${scratch}/${dictionary}-merged.txt"
-  (
-    cd "${device_a}"
-    DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
-      "${repo_root}/bin/rime_dict_manager" --export "${dictionary}" \
-        "${export_file}" >/dev/null
-  )
+  DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
+    linnet_test_run 600 --chdir "${device_a}" "${repo_root}/bin/rime_dict_manager" --export "${dictionary}" \
+      "${export_file}" >/dev/null
   rg -Fq $'云同步甲\t' "${export_file}"
   rg -Fq $'云同步乙\t' "${export_file}"
   rg -Fq $'linnetclouda\t' "${export_file}"
@@ -410,7 +393,7 @@ live_sync_user="${scratch}/live-sync-user"
 mkdir "${live_sync_user}"
 cp -R "${user}/." "${live_sync_user}/"
 DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
-  "${scratch}/rime-smoke" "${shared}" "${live_sync_user}" --live-sync-probe
+  linnet_test_run 600 "${scratch}/rime-smoke" "${shared}" "${live_sync_user}" --live-sync-probe
 end_phase "verify upstream user-dictionary sync"
 
 # Exercise the production-shaped exact-11 configuration reload in its own
@@ -421,7 +404,7 @@ fast_user="${scratch}/fast-user"
 mkdir "${fast_user}"
 cp -R "${user}/." "${fast_user}/"
 DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
-  "${scratch}/rime-smoke" "${shared}" "${fast_user}" \
+  linnet_test_run 600 "${scratch}/rime-smoke" "${shared}" "${fast_user}" \
     --fast-config-reload-probe
 
 profile_cases=(
@@ -438,14 +421,14 @@ profile_cases=(
 )
 for profile_case in "${profile_cases[@]}"; do
   IFS=: read -r trigger profile <<<"${profile_case}"
-  "${scratch}/projection-fixture" profile "${profile}" "${trigger}" "${user}"
+  linnet_test_run 600 "${scratch}/projection-fixture" profile "${profile}" "${trigger}" "${user}"
   # The production document normalizes every retained legacy profile to full
   # pinyin. Native compatibility layouts are exercised separately; do not
   # expect retired Settings choices to re-enter the public schema list.
   schema=linnet_zh_pinyin
   code=suanfa
   DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
-    bin/rime_deployer --build "${user}" "${shared}" \
+    linnet_test_run 600 bin/rime_deployer --build "${user}" "${shared}" \
       "${user}/build" >/dev/null
   rg -Fq "prism: ${schema}" "${user}/build/linnet_en.schema.yaml"
   rg -Fq "chinese_schema: ${schema}" "${user}/build/linnet_en.schema.yaml"
@@ -453,34 +436,34 @@ for profile_case in "${profile_cases[@]}"; do
   prefix=';'
   [[ "${trigger}" == vertical_bar ]] && prefix='|'
   DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
-    "${scratch}/rime-smoke" "${shared}" "${user}" \
+    linnet_test_run 600 "${scratch}/rime-smoke" "${shared}" "${user}" \
       --english-profile-probe \
         "${profile}" "${schema}" "${code}" "${prefix}" >/dev/null
 done
 
 for page_size in 3 4 5 6 7 8 9; do
-  "${scratch}/projection-fixture" page-size "${page_size}" "${user}"
+  linnet_test_run 600 "${scratch}/projection-fixture" page-size "${page_size}" "${user}"
   DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
-    bin/rime_deployer --build "${user}" "${shared}" "${user}/build" >/dev/null
+    linnet_test_run 600 bin/rime_deployer --build "${user}" "${shared}" "${user}/build" >/dev/null
   DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
-    "${scratch}/rime-smoke" "${shared}" "${user}" \
+    linnet_test_run 600 "${scratch}/rime-smoke" "${shared}" "${user}" \
       --page-size-probe "${page_size}" >/dev/null
 done
 
-"${scratch}/projection-fixture" english-learning-off "${user}"
+linnet_test_run 600 "${scratch}/projection-fixture" english-learning-off "${user}"
 DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
-  bin/rime_deployer --build "${user}" "${shared}" "${user}/build" >/dev/null
+  linnet_test_run 600 bin/rime_deployer --build "${user}" "${shared}" "${user}/build" >/dev/null
 rg -Fq 'prism: linnet_zh_pinyin' "${user}/build/linnet_en.schema.yaml"
 rg -Fq 'chinese_schema: linnet_zh_pinyin' "${user}/build/linnet_en.schema.yaml"
 rg -Fq 'enable_user_dict: false' "${user}/build/linnet_en.schema.yaml"
 rg -Fq 'learning_enabled: false' "${user}/build/linnet_en.schema.yaml"
 DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
-  "${scratch}/rime-smoke" "${shared}" "${user}" \
+  linnet_test_run 600 "${scratch}/rime-smoke" "${shared}" "${user}" \
     --learning-off-probe >/dev/null
 
-"${scratch}/projection-fixture" english-suggestions-off "${user}"
+linnet_test_run 600 "${scratch}/projection-fixture" english-suggestions-off "${user}"
 DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
-  bin/rime_deployer --build "${user}" "${shared}" "${user}/build" >/dev/null
+  linnet_test_run 600 bin/rime_deployer --build "${user}" "${shared}" "${user}/build" >/dev/null
 # The following native check directly selects inherited schemas too. A normal
 # --build only refreshes the public schema graph; refresh these test-only
 # configs after projection so the check cannot read stale compiled options.
@@ -495,10 +478,10 @@ fi
 rg -Fq 'show_ipa: false' "${user}/build/linnet_en.schema.yaml"
 rg -Fq 'show_translation: false' "${user}/build/linnet_en.schema.yaml"
 DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
-  "${scratch}/rime-smoke" "${shared}" "${user}" \
+  linnet_test_run 600 "${scratch}/rime-smoke" "${shared}" "${user}" \
     --settings-off-probe >/dev/null
 
-"${scratch}/projection-fixture" input-options "${user}"
+linnet_test_run 600 "${scratch}/projection-fixture" input-options "${user}"
 test -s "${user}/linnet_user.custom.yaml"
 test ! -e "${user}/linnet_user.yaml"
 rg -Fq '    - "hello"' "${user}/linnet_user.custom.yaml"
@@ -517,7 +500,7 @@ for settings_schema in \
     "${user}/${settings_schema}.custom.yaml"
 done
 DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
-  bin/rime_deployer --build "${user}" "${shared}" "${user}/build" >/dev/null
+  linnet_test_run 600 bin/rime_deployer --build "${user}" "${shared}" "${user}/build" >/dev/null
 compile_compatibility_schemas
 ruby -ryaml -e '
   ARGV.each do |path|
@@ -531,12 +514,12 @@ ruby -ryaml -e '
 rg -Fq 'prism: linnet_zh_pinyin' "${user}/build/linnet_en.schema.yaml"
 rg -Fq 'chinese_schema: linnet_zh_pinyin' "${user}/build/linnet_en.schema.yaml"
 DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
-  "${scratch}/rime-smoke" "${shared}" "${user}" \
+  linnet_test_run 600 "${scratch}/rime-smoke" "${shared}" "${user}" \
     --input-options-probe >/dev/null
 
-"${scratch}/projection-fixture" input-switches "${user}"
+linnet_test_run 600 "${scratch}/projection-fixture" input-switches "${user}"
 DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
-  bin/rime_deployer --build "${user}" "${shared}" "${user}/build" >/dev/null
+  linnet_test_run 600 bin/rime_deployer --build "${user}" "${shared}" "${user}/build" >/dev/null
 for chinese_schema in \
   linnet_zh linnet_zh_pinyin linnet_zh_flypy linnet_zh_mspy \
   linnet_zh_sogou linnet_zh_abc linnet_zh_ziguang linnet_zh_jiajia; do
@@ -545,7 +528,7 @@ for chinese_schema in \
   rg -Fq '"switches/@4/reset": 1' "${user}/${chinese_schema}.custom.yaml"
 done
 DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
-  "${scratch}/rime-smoke" "${shared}" "${user}" \
+  linnet_test_run 600 "${scratch}/rime-smoke" "${shared}" "${user}" \
     --input-switches-probe >/dev/null
 end_phase "verify legacy-profile migration and Settings projections"
 
@@ -562,10 +545,10 @@ ruby -e '
   File.binwrite(path, source.sub(current, fixture))
 ' "${shared}/default.yaml"
 DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
-  bin/rime_deployer --build "${lifecycle_user}" "${shared}" \
+  linnet_test_run 600 bin/rime_deployer --build "${lifecycle_user}" "${shared}" \
     "${lifecycle_user}/build" >/dev/null
 DYLD_LIBRARY_PATH="${repo_root}/lib:${repo_root}/lib/rime-plugins" \
-  "${scratch}/rime-smoke" "${shared}" "${lifecycle_user}" \
+  linnet_test_run 600 "${scratch}/rime-smoke" "${shared}" "${lifecycle_user}" \
     --lifecycle-raw-exit-probe
 end_phase "verify lifecycle exits with the F4 switcher"
 

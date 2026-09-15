@@ -14,11 +14,11 @@ objects=()
 measure() {
   local name="$1"
   shift
-  xcrun swiftc -warnings-as-errors -parse-as-library \
+  linnet_test_run 300 xcrun swiftc -warnings-as-errors -parse-as-library \
     -module-cache-path "${report}/module-cache" \
     -target arm64-apple-macosx13.0 -profile-generate -profile-coverage-mapping \
     -framework AppKit -framework Security "$@" -o "${report}/${name}"
-  "${report}/${name}"
+  linnet_test_run 300 "${report}/${name}"
   objects+=(-object "${report}/${name}")
 }
 measure translation sources/ZIMELocalLexicon.swift sources/ZIMETranslationProvider.swift \
@@ -35,12 +35,12 @@ measure candidate-translator sources/LinnetPackContract.swift sources/LinnetData
   tests/ZIMECandidateTranslatorBoundaryTests.swift tests/ZIMECandidateTranslatorTestSupport.swift
 measure installer sources/LinnetDirectoryDelta.swift sources/ZIMEInstallTransaction.swift \
   tests/ZIMEInstallTransactionTests.swift
-xcrun llvm-profdata merge -sparse "${report}"/raw/*.profraw -o "${report}/coverage.profdata"
-xcrun llvm-cov export "${objects[@]}" -instr-profile="${report}/coverage.profdata" \
+linnet_test_run 300 xcrun llvm-profdata merge -sparse "${report}"/raw/*.profraw -o "${report}/coverage.profdata"
+linnet_test_run 300 xcrun llvm-cov export "${objects[@]}" -instr-profile="${report}/coverage.profdata" \
   -ignore-filename-regex='/tests/|/Applications/|/usr/' > "${report}/coverage.json"
-xcrun llvm-cov report "${objects[@]}" -instr-profile="${report}/coverage.profdata" \
+linnet_test_run 300 xcrun llvm-cov report "${objects[@]}" -instr-profile="${report}/coverage.profdata" \
   -ignore-filename-regex='/tests/|/Applications/|/usr/' > "${report}/report.txt"
-xcrun llvm-cov show "${objects[@]}" -instr-profile="${report}/coverage.profdata" \
+linnet_test_run 300 xcrun llvm-cov show "${objects[@]}" -instr-profile="${report}/coverage.profdata" \
   -ignore-filename-regex='/tests/|/Applications/|/usr/' -format=html \
   -output-dir="${report}/html"
 ruby tests/verify_coverage_gate.rb

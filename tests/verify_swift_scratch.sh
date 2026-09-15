@@ -7,7 +7,7 @@ if [[ "${1:-}" == --child ]]; then
   source "${repo_root}/tests/swift_test_scratch.sh"
   linnet_swift_scratch_init
   printf '%s\n' "${scratch}"
-  "$3" "$2" "$4"
+  linnet_test_run 30 "$3" "$2" "$4"
   case "$2" in
     term) kill -TERM "$$" ;;
     int) kill -INT "$$" ;;

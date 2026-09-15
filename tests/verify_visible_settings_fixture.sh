@@ -342,9 +342,7 @@ cleanup() {
   exit "${exit_code}"
 }
 trap cleanup EXIT
-trap 'exit 130' INT
-trap 'exit 143' TERM
-trap 'exit 129' HUP
+source tests/test_runner.sh
 
 if [[ "${run_ui_tests}" == true ]]; then
   mkdir -m 0700 "${uat_home}" || fail "could not create the Settings UI fixed home"
@@ -473,7 +471,7 @@ sdk="$(xcrun --sdk macosx --show-sdk-path)"
 release_tool="${repo_root}/build/linnet-pack"
 probe="${fixture}/visible-settings-fixture-probe"
 make -C "${repo_root}" --no-print-directory linnet-pack-tool
-xcrun swiftc -warnings-as-errors -sdk "${sdk}" \
+linnet_test_run 300 xcrun swiftc -warnings-as-errors -sdk "${sdk}" \
   sources/LinnetPackContract.swift sources/LinnetDataChannel.swift \
   sources/LinnetDataRegistry.swift sources/LinnetDirectoryDelta.swift sources/LinnetDataRegistryTransactions.swift sources/LinnetDataRegistryStorage.swift sources/LinnetSettings/SettingsContract.swift \
   tests/LinnetVisibleSettingsFixtureProbe.swift -o "${probe}"
@@ -534,7 +532,7 @@ if [[ "${product_profile}" == candidate ]]; then
 fi
 
 HOME="${isolated_home}" CFFIXED_USER_HOME="${isolated_home}" TMPDIR="${isolated_tmp}/" \
-  "${probe}" "${probe_settings_app}" "${isolated_home}" \
+  linnet_test_run 300 "${probe}" "${probe_settings_app}" "${isolated_home}" \
     "${expected_settings_identifier}" "${expected_host_identifier}" "${product_name}"
 [[ "$(metadata_fingerprint)" == "${before_fingerprint}" ]] ||
   fail "fixed-home probe changed a protected real-user path"
@@ -545,7 +543,7 @@ if [[ "${run_ui_tests}" == true ]]; then
   foreground_app="${fixture}/DerivedData/Build/Products/Debug/ForegroundFixture.app"
   mkdir -p "${foreground_app}/Contents/MacOS"
   cp tests/SettingsUITests/ForegroundFixture-Info.plist "${foreground_app}/Contents/Info.plist"
-  xcrun swiftc -warnings-as-errors -parse-as-library -target arm64-apple-macos13.0 \
+  linnet_test_run 300 xcrun swiftc -warnings-as-errors -parse-as-library -target arm64-apple-macos13.0 \
     tests/SettingsUITests/ForegroundFixture.swift \
     -o "${foreground_app}/Contents/MacOS/ForegroundFixture"
   codesign --sign - "${foreground_app}"
@@ -562,7 +560,7 @@ if [[ "${run_ui_tests}" == true ]]; then
     CODE_SIGNING_ALLOWED=YES CODE_SIGNING_REQUIRED=YES CODE_SIGN_IDENTITY="-")
   [[ -z "${ui_test_name}" ]] || xcodebuild_args+=("${focused_ui_tests[@]}")
   xcodebuild_args+=(test)
-  xcodebuild "${xcodebuild_args[@]}"
+  linnet_test_run 1800 xcodebuild "${xcodebuild_args[@]}"
   [[ "$(metadata_fingerprint)" == "${before_fingerprint}" ]] ||
     fail "Settings UI tests changed a protected real-user path"
   [[ "$(content_fingerprint)" == "${before_content_fingerprint}" ]] ||

@@ -15,7 +15,8 @@ scratch="$(mktemp -d /tmp/linnet-candidate-interaction.XXXXXX)"
 cleanup() {
   [[ "${scratch}" == /tmp/linnet-candidate-interaction.* ]] && /bin/rm -rf -- "${scratch}"
 }
-trap cleanup EXIT INT TERM
+trap cleanup EXIT
+source tests/test_runner.sh
 
 source tests/swift_test_cache.sh
 linnet_swift_cache_init "${repo_root}" "${scratch}"
@@ -45,7 +46,7 @@ if (( $# == 0 )); then
   generated_themes="${scratch}/theme-gallery.png"
   generated_regions="${scratch}/regional-glosses.png"
   generated_appearance="${scratch}/appearance-controls.png"
-  "${candidate_interaction}" \
+  linnet_test_run 300 "${candidate_interaction}" \
     --readme-product-gallery data/squirrel.yaml \
     "${generated_modes}" "${generated_features}" \
     --readme-theme-gallery data/squirrel.yaml "${generated_themes}" \
@@ -63,5 +64,5 @@ if (( $# == 0 )); then
     resources/readme/appearance-controls.png "${generated_appearance}" "README appearance gallery"
   ! rg -n 'resources/readme/[^ )]+[.]svg' README.md
 else
-  "${candidate_interaction}" "$@"
+  linnet_test_run 300 "${candidate_interaction}" "$@"
 fi

@@ -137,6 +137,7 @@ cleanup() {
   rm -rf -- "${scratch}" "${disasm:-}"
 }
 trap cleanup EXIT
+source "${repo_root}/tests/test_runner.sh"
 
 shared="${scratch}/shared"
 user="${scratch}/user"
@@ -206,7 +207,7 @@ YAML
 
 info "deploying lua_date_test with rime_deployer"
 DYLD_FALLBACK_LIBRARY_PATH="${dist}/lib" \
-  "${deployer}" --build "${user}" "${shared}" >/dev/null ||
+  linnet_test_run 300 "${deployer}" --build "${user}" "${shared}" >/dev/null ||
   fail "rime_deployer --build failed"
 [[ -f "${user}/build/lua_date_test.schema.yaml" ]] ||
   fail "deploy produced no compiled schema"
@@ -216,7 +217,7 @@ DYLD_FALLBACK_LIBRARY_PATH="${dist}/lib" \
 # --- 6. run the Lua lifetime probe -----------------------------------------
 
 probe="${scratch}/lua_lifetime_probe"
-clang++ -std=c++17 -O0 -g \
+linnet_test_run 300 clang++ -std=c++17 -O0 -g \
   -I"${dist}/include" \
   -Wl,-rpath,"${runtime_lib}" -Wl,-rpath,"${runtime_plugins}" \
   "${probe_source}" "${runtime_lib}/librime.1.dylib" \
@@ -226,14 +227,14 @@ clang++ -std=c++17 -O0 -g \
 info "running embedded Lua probe against malicious Lua path and sibling roots"
 DYLD_LIBRARY_PATH="${runtime_lib}:${runtime_plugins}" \
 LUA_PATH="${env_lua}/?.lua" LUA_CPATH="${env_c}/?.so" \
-  "${probe}" "${shared}" "${user}" || fail "Lua-path lifetime probe failed"
+  linnet_test_run 300 "${probe}" "${shared}" "${user}" || fail "Lua-path lifetime probe failed"
 [[ -z "$(find "${scratch}" -maxdepth 1 -name 'sentinel-executed-*' -print -quit)" ]] ||
   fail "native probe executed a filesystem/environment Lua sentinel"
 
 info "running embedded Lua probe against malicious C path only"
 DYLD_LIBRARY_PATH="${runtime_lib}:${runtime_plugins}" \
 LUA_PATH="${empty_lua}/?.lua" LUA_CPATH="${env_c}/?.so" \
-  "${probe}" "${shared}" "${user}" || fail "Lua-C-path lifetime probe failed"
+  linnet_test_run 300 "${probe}" "${shared}" "${user}" || fail "Lua-C-path lifetime probe failed"
 [[ -z "$(find "${scratch}" -maxdepth 1 -name 'sentinel-executed-*' -print -quit)" ]] ||
   fail "native probe executed a C loader sentinel"
 info "PASS: embedded-only Lua, unknown modules fail closed, lifetime survives"

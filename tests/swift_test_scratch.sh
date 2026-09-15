@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 
 # Process-level lifetime owner for standalone Swift test fixtures.
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/test_runner.sh"
 linnet_swift_scratch_init() {
   scratch="$(mktemp -d /private/tmp/linnet-swift-units.XXXXXX)"
   readonly scratch
   trap linnet_swift_scratch_cleanup EXIT
-  trap 'exit 130' INT
-  trap 'exit 143' TERM
+  linnet_test_runner_init
   export LINNET_SWIFT_TEST_SCRATCH="${scratch}/fixtures"
   mkdir "${LINNET_SWIFT_TEST_SCRATCH}"
   export TMPDIR="${LINNET_SWIFT_TEST_SCRATCH}/"
@@ -14,7 +14,7 @@ linnet_swift_scratch_init() {
 
 linnet_swift_scratch_cleanup() {
   local result=$?
-  trap - EXIT INT TERM
+  trap - EXIT INT TERM HUP
   # Only this mktemp root is owned here; never follow a fixture's external links.
   if [[ ! "${scratch}" =~ ^/private/tmp/linnet-swift-units\.[A-Za-z0-9]+$ ||
     ! -d "${scratch}" || -L "${scratch}" ]]; then

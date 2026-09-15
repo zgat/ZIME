@@ -40,6 +40,7 @@ fi
 if [[ "${run_swift}" -eq 1 || "${profile}" == quick ]]; then
   ruby tests/verify_coverage_gate.rb
   ruby tests/verify_test_process.rb
+  ruby tests/verify_test_runner.rb
   ruby tests/verify_compile_artifact_cache.rb
   ruby tests/verify_swift_test_cache.rb
   ruby tests/verify_cxx_test_cache.rb
@@ -107,7 +108,10 @@ verify_inputs_predate() {
   local executable="$1"
   local input
   while IFS= read -r input; do
-    [[ -f "${input}" && ! -L "${input}" ]] || continue
+    [[ -f "${input}" && ! -L "${input}" ]] || {
+      echo "verify_development: missing or unsafe build input: ${input}" >&2
+      exit 1
+    }
     [[ ! "${input}" -nt "${executable}" ]] || {
       echo "verify_development: Release is older than build input: ${input}" >&2
       exit 1
@@ -115,14 +119,22 @@ verify_inputs_predate() {
   done
 }
 
-  verify_inputs_predate "${build_stamp}" < <(
+  # A process substitution does not propagate the producer's exit status.
+  # Collect successfully first, so a failed git/find cannot become an empty
+  # (and therefore apparently fresh) source inventory.
+  build_inputs="$(
     {
       git ls-files --cached --others --exclude-standard -- \
         Makefile Linnet.xcodeproj/project.pbxproj config/LinnetProduct.xcconfig \
-        sources resources data/linnet data/squirrel.yaml
-      find data/plum data/opencc lib -type f -print
+        sources resources data/linnet data/squirrel.yaml || exit "$?"
+      find data/plum data/opencc lib -type f -print || exit "$?"
     } | LC_ALL=C sort -u
-  )
+  )" || exit "$?"
+  [[ -n "${build_inputs}" ]] || {
+    echo "verify_development: empty build input inventory" >&2
+    exit 1
+  }
+  verify_inputs_predate "${build_stamp}" <<< "${build_inputs}"
 
   # ZIME's staged ZIP/PKG transaction is not the inherited CMS installer.
   tests/verify_zime_app.sh "${host_app}" local
