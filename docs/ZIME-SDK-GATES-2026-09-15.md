@@ -35,7 +35,17 @@
 改用标准 SDK 框架目录后，新增/移除模块及 `canImport` 的实际编译结果均通过。
 全量门随后发现多文件扫描的单一 `-o` 冲突，已改为 whole-module 扫描并追加多文件
 回归。系统 Ruby 2.6 的全部缓存用例与全部真实 Swift owner（含外观、数据协调和
-双进程 IPC）已通过；完整门与安装状态待补充。
+双进程 IPC）已通过。
+
+最终 `tests/verify_development.sh release` 全量通过：包含上述自检、完整 Swift、
+13 个翻译变异、8 方案共 1,776 个 golden、原生默认矩阵与六项专项、4,096 轮会话
+压力、App/隐私、严格 SwiftLint、Periphery 和覆盖率门。未降低覆盖率门槛。
+五组 README 图的视觉差异均为 0；真实桌面/API 验收仍不包含在此结果中。
+
+完整日志为 `full-release-wmo.log`；早先失败的 `full-release.log`、
+`full-release-final.log` 保留，不混作最终成功。覆盖率报告位于
+`build/zime-coverage/run.8bpP47/`，记录源码提交
+`bfaa92fb8c3ea95c63b3108fe9992dd44090269f` 和 `source_dirty: false`。
 
 本机 SDK 头文件夹具的命中检查约 2 秒，变更重建约 4.2 秒；单独路径清单及补充摘要
 约 1.35 秒；Foundation 三文件 owner 的全部输入核验实测约 2.1 秒。这是当前机器
@@ -43,6 +53,24 @@
 
 日志：`build/testing-sdk-gates-20260915/`。本轮未推送或发布 GitHub。
 真实 UI、在线服务及跨系统/应用验收不由上述隔离夹具替代。
+
+## 本机交付
+
+上述提交已生成 `build/zime-0.1.22-build28-delivery-20260915/` 的 Full/Core ZIP 和 PKG。
+来源、摘要、Ad-hoc 签名、Full/Core/PKG 一致性、用户级安装范围及离线词库验证均通过。
+安装包仍未公证，未上传 GitHub。
+
+通过 Core 包内的事务工具从 build 27 更新到 build 28。安装后正式 App 检查通过，
+唯一运行进程位于 `/Users/zga/Library/Input Methods/ZIME.app`，版本为 0.1.22 build 28，
+未隐藏。简体输入源可选，繁体已注册但尚未启用。
+
+安装前后的 Data、Runtime/Active、偏好文件摘要及 App inode 完全一致；用户学习数据
+由事务安装保留。回滚目录：
+`/Users/zga/Library/Input Methods/.zime-install-0B4B0CC1-94EF-4E6A-AD65-FB968479BEE8`。
+安装、包检查及数据指纹保存在上述日志目录。
+
+已识别的本地 ZIP/PKG 共 29 个，属于 0.1.20、0.1.21、0.1.22 三个版本。
+符合三版本保留规则，无需再删除；源码、测试日志、个人数据和回滚材料未清理。
 
 ## 后续生命周期审查
 
