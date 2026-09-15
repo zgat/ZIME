@@ -27,5 +27,6 @@ compile_run candidate-translator -framework AppKit \
   sources/LinnetDataRegistryTransactions.swift sources/LinnetDataRegistryStorage.swift \
   sources/LinnetSettings/SettingsContract.swift sources/LinnetCandidatePresentation.swift \
   sources/ZIMELocalLexicon.swift sources/ZIMETranslationProvider.swift \
-  sources/ZIMECandidateTranslator.swift tests/ZIMECandidateTranslatorTests.swift
+  sources/ZIMECandidateTranslator.swift tests/ZIMECandidateTranslatorTests.swift \
+  tests/ZIMECandidateTranslatorBoundaryTests.swift tests/ZIMECandidateTranslatorTestSupport.swift
 bash tests/verify_zime_host_routing.sh

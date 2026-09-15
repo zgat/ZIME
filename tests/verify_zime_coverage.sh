@@ -31,7 +31,8 @@ measure candidate-translator sources/LinnetPackContract.swift sources/LinnetData
   sources/LinnetDataRegistryTransactions.swift sources/LinnetDataRegistryStorage.swift \
   sources/LinnetSettings/SettingsContract.swift sources/LinnetCandidatePresentation.swift \
   sources/ZIMELocalLexicon.swift sources/ZIMETranslationProvider.swift \
-  sources/ZIMECandidateTranslator.swift tests/ZIMECandidateTranslatorTests.swift
+  sources/ZIMECandidateTranslator.swift tests/ZIMECandidateTranslatorTests.swift \
+  tests/ZIMECandidateTranslatorBoundaryTests.swift tests/ZIMECandidateTranslatorTestSupport.swift
 measure installer sources/LinnetDirectoryDelta.swift sources/ZIMEInstallTransaction.swift \
   tests/ZIMEInstallTransactionTests.swift
 xcrun llvm-profdata merge -sparse "${report}"/raw/*.profraw -o "${report}/coverage.profdata"

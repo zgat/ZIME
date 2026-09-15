@@ -30,6 +30,7 @@ README 描述当前产品；这里保留各版本的历史验证范围和实现�
 测试分层见 [当前测试入口](testing.md)，缓存、发布门、Host 清理与 HTTP 离线集成
 见 [build 25 测试缺口补齐](ZIME-TEST-GAPS-2026-09-15.md)；后续缓存并发、进程期限、
 HTTP 取消阶段和事件驱动测试见 [build 26 测试工程再审查](ZIME-TEST-INFRASTRUCTURE-2026-09-15.md)。
+虚拟时间、缓存容量/到期及变异测试见 [build 27 候选翻译边界](ZIME-TRANSLATOR-BOUNDARIES-2026-09-15.md)。
 
 当前验证体系与覆盖边界见 [完整验证跟进](ZIME-VALIDATION-FOLLOWUP-2026-09-14.md)，
 真实系统/应用/服务验收见 [验收清单](ZIME-ACCEPTANCE.md)。

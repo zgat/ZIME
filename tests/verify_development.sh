@@ -136,6 +136,7 @@ if [[ "${run_swift}" -eq 1 || "${profile}" == quick ]]; then
   if [[ "${run_swift}" -eq 1 ]]; then tests/verify_swift_units.sh; fi
   bash tests/verify_zime.sh
   bash tests/verify_zime_translation.sh
+  if [[ "${run_swift}" -eq 1 ]]; then ruby tests/verify_candidate_translation_mutations.rb; fi
 fi
 
 if [[ "${run_rime}" -eq 1 ]]; then

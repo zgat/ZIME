@@ -1,40 +1,10 @@
 import Foundation
 
-// Same snapshot fixture boundary used by the Rime snapshot-builder unit tests.
-final class SquirrelInputController {
-  struct CandidateItem: Equatable {
-    let absoluteIndex: Int
-    let page: Int
-    let indexOnPage: Int
-    let text: String
-    var comment: String
-    let selectionLabel: String?
-    var sourceAbsoluteIndex: Int? = nil
-    var commitOverride: String? = nil
-    var emphasizesPrimaryText = false
-  }
-  struct CandidateSnapshot: Equatable {
-    let items: [CandidateItem]
-    let currentPage: Int
-    let pageSize: Int
-    let highlightedItemIndex: Int
-    let isLastPage: Bool
-  }
-}
-
 @main
 struct ZIMECandidateTranslatorTests {
-  @MainActor static func waitUntil(_ condition: () -> Bool) async throws {
-    for _ in 0..<500 {
-      if condition() { return }
-      try await Task.sleep(nanoseconds: 10_000_000)
-    }
-    fatalError("candidate translator fixture event deadline exceeded")
-  }
-
   @MainActor static func main() async throws {
-    let watchdog = DispatchWorkItem { fatalError("candidate translator fixture exceeded 45 seconds") }
-    DispatchQueue.global().asyncAfter(deadline: .now() + 45, execute: watchdog)
+    let watchdog = DispatchWorkItem { fatalError("candidate translator fixture exceeded 60 seconds") }
+    DispatchQueue.global().asyncAfter(deadline: .now() + 60, execute: watchdog)
     defer { watchdog.cancel() }
     let lexicon = ZIMELocalLexicon(url: URL(fileURLWithPath: "resources/zime-cedict.sqlite3"))
     var config = ZIMETranslationConfiguration()
@@ -225,6 +195,7 @@ struct ZIMECandidateTranslatorTests {
     try await Task.sleep(nanoseconds: 1_150_000_000)
     precondition(consentReads == 1 && consentRequests == ["ZIME测试未收录词一"],
       "disabled during rate-limit wait still sent a second candidate")
+    try await runBoundaries(lexicon: lexicon)
     print("ZIMECandidateTranslatorTests: PASS (mock transport only)")
   }
 }

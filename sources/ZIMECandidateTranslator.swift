@@ -4,11 +4,19 @@ import Foundation
 /// One controller owns each cancellable page request. Results are keyed by
 /// exact text + provider configuration, never by candidate position.
 final class ZIMECandidateTranslator {
+  struct Timing {
+    let now: () -> Date
+    let sleep: (UInt64) async throws -> Void
+
+    static let live = Timing(now: Date.init, sleep: { try await Task.sleep(nanoseconds: $0) })
+  }
+
   private static let lexicon = ZIMELocalLexicon(url: Bundle.main.url(forResource: "zime-cedict", withExtension: "sqlite3"))
   private let localLexicon: ZIMELocalLexicon
   private let loadConfiguration: () -> ZIMETranslationConfiguration
   private let loadCredentials: (String) throws -> ZIMETranslationCredentials
   private let translate: (ZIMETranslationConfiguration, ZIMETranslationCredentials, String, Bool) async throws -> String
+  private let timing: Timing
   private var task: Task<Void, Never>?
   private var generation = UUID()
   private var pageKey: [String] = []
@@ -24,12 +32,14 @@ final class ZIMECandidateTranslator {
     loadCredentials: @escaping (String) throws -> ZIMETranslationCredentials = { try ZIMETranslationCredentials.load(account: $0) },
     translate: @escaping (ZIMETranslationConfiguration, ZIMETranslationCredentials, String, Bool) async throws -> String = {
       try await ZIMETranslationHTTP.translate(configuration: $0, credentials: $1, text: $2, chinese: $3)
-    }
+    },
+    timing: Timing = .live
   ) {
     localLexicon = lexicon ?? Self.lexicon
     self.loadConfiguration = loadConfiguration
     self.loadCredentials = loadCredentials
     self.translate = translate
+    self.timing = timing
   }
 
   func cancel() {
@@ -94,7 +104,7 @@ final class ZIMECandidateTranslator {
     let translations = !nativeTranslations.isEmpty ? nativeTranslations
       : chinese ? [] : ZIMELocalLexicon.coreTranslations(localLexicon.translations(for: lookupText))
     let term = item.text.trimmingCharacters(in: .whitespacesAndNewlines)
-    let cached = cache[term].flatMap { $0.expires > Date() ? $0.text : nil }
+    let cached = cache[term].flatMap { $0.expires > timing.now() ? $0.text : nil }
     let canRequest = emojiSource == nil && configuration.enabled && item.page == currentPage && term.count <= 64
       && !term.isEmpty && (chinese || item.comment.hasPrefix(LinnetCandidatePresentation.smartEnglishDetailPrefix))
       && !term.contains("@") && !term.contains("://")
@@ -121,7 +131,7 @@ final class ZIMECandidateTranslator {
         translations: [cached], detailText: "", sourceLabel: label)
     } else {
       // Unmarked comments are spelling hints, never English translations.
-      if canRequest && cached == nil && cooldownUntil <= Date() {
+      if canRequest && cached == nil && cooldownUntil <= timing.now() {
         if !missing.contains(term) { missing.append(term) }
         comment = "译文查询中…"
       } else {
@@ -140,16 +150,17 @@ final class ZIMECandidateTranslator {
     selected: ZIMETranslationConfiguration,
     refresh: @escaping () -> Void
   ) {
+    let sleep = timing.sleep
     task = Task { @MainActor [weak self] in
       do {
-        try await Task.sleep(nanoseconds: 400_000_000)
+        try await sleep(400_000_000)
         guard let self, self.generation == token,
           self.loadConfiguration().hasSameService(as: selected) else { return }
         let credentials = try self.loadCredentials(selected.credentialAccount)
         for (index, text) in missing.enumerated() {
           try Task.checkCancellation()
           guard self.generation == token, self.loadConfiguration().hasSameService(as: selected) else { return }
-          if index > 0 { try await Task.sleep(nanoseconds: 1_000_000_000) }
+          if index > 0 { try await sleep(1_000_000_000) }
           // Consent/provider may change in Settings during the rate-limit
           // wait, without another candidate update to cancel this task.
           guard self.generation == token, self.loadConfiguration().hasSameService(as: selected) else { return }
@@ -166,7 +177,7 @@ final class ZIMECandidateTranslator {
         // A new composition owns the panel; never publish into the old one.
       } catch {
         guard let self, self.generation == token else { return }
-        self.cooldownUntil = Date().addingTimeInterval(30)
+        self.cooldownUntil = self.timing.now().addingTimeInterval(30)
         self.task = nil
         self.pageKey = []
         refresh()
@@ -178,6 +189,6 @@ final class ZIMECandidateTranslator {
       let oldest = cache.min(by: { $0.value.expires < $1.value.expires })?.key {
       cache.removeValue(forKey: oldest)
     }
-    cache[text] = (value, Date().addingTimeInterval(600))
+    cache[text] = (value, timing.now().addingTimeInterval(600))
   }
 }
