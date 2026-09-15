@@ -16,13 +16,13 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 cd "${repo_root}"
 
 for required in \
-  linnet_test_run 600 bin/rime_deployer \
+  bin/rime_deployer \
   lib/librime.1.dylib \
   lib/rime-plugins/librime-octagram.dylib \
   tests/rime_grammar_probe.cc \
   tests/fixtures/chinese_grammar.tsv; do
   [[ -e "${required}" ]] || {
-    echo "verify_chinese_grammar: missing required input" >&2
+    echo "verify_chinese_grammar: missing required input: ${required}" >&2
     exit 1
   }
 done

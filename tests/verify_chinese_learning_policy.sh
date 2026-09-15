@@ -17,7 +17,7 @@ case "${1:-}" in
 esac
 
 for required in \
-  linnet_test_run 600 bin/rime_deployer \
+  bin/rime_deployer \
   lib/librime.1.dylib \
   lib/rime-plugins/librime-lua.dylib \
   librime/dist/include/rime_api.h \
