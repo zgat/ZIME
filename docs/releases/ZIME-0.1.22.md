@@ -1,35 +1,40 @@
-# ZIME 0.1.22
+# ZIME 0.1.22 — 设置清理与测试可靠性
 
-本地维护版本，构建号 30；尚未发布到 GitHub。
+2026-09-16，build 31。Apple Silicon、macOS 13+ 开发预览。
 
-## 更新内容
+## 更新
 
-- 设置启动只读取并校验安装身份，不再保留隐藏的上游更新和运行时诊断流程。
-- 删除退役的自动更新、iCloud 设置和候选展开预览；修正本地数据修复提示的产品名称。
-- 按职责拆分候选按键、译文查询和安装事务，保留原有交互及回滚顺序。
+- 精简设置启动，移除退役的上游自动更新、iCloud 控件和候选展开预览；保留本地备份、导入及恢复。
+- 加固翻译设置保存异常时的凭据恢复，恢复未完成时不将撤销误报为成功。
+- 修复测试取消后的嵌套进程残留、编译缓存错误复用和不安全输出；补齐安装检查、App 新鲜度、覆盖率来源及 CI job 级失败检查。
+- 新增安装过程中 Host 重启的发布/回滚边界测试，精简重复回归；不改变选词规则、词库或 LTS 模型。
 
-不更换词库或模型。Core 更新保留 Data、Runtime 和个人 UserData，安装前创建回滚备份。
+## 下载
 
-## 验证边界
+| 安装包 | 用途 |
+| --- | --- |
+| [完整 ZIP](https://github.com/zgat/ZIME/releases/download/v0.1.22/ZIME-0.1.22-arm64.zip) | 首次安装，含程序、离线词库和模型 |
+| [完整 PKG](https://github.com/zgat/ZIME/releases/download/v0.1.22/ZIME-0.1.22-arm64.pkg) | 同一套完整内容，通过 macOS 安装器安装 |
+| [Core ZIP](https://github.com/zgat/ZIME/releases/download/v0.1.22/ZIME-0.1.22-arm64-core.zip) | 已有 0.1.17 或更新兼容完整数据时，只更新程序及随附资源 |
 
-本轮严格 SwiftLint 与 Periphery 检查已通过，未增加忽略项或降低阈值。
-历史更新数据的生成代码移至测试夹具，不进入产品；当前运行时的旧格式读取、
-事务恢复与备份导入的完整自动化兼容回归已通过。Core / App 门、8 个输入方案的
-1,776 个固定用例、7 项原生专项与 4,096 轮会话压力测试也已通过。产物与安装结果记录在
-[质量清理验证](../ZIME-QUALITY-2026-09-14.md)。
+两种升级均保留个人词频、学习记录和设置，并创建回滚备份。Core 保留已有语言数据，
+完整包会替换内置 Data/Runtime。安装前保存输入内容并关闭 ZIME 设置。
+[最新安装说明](https://github.com/zgat/ZIME/blob/main/docs/ZIME-INSTALL.md)。
 
-当前测试分层见 [测试说明](../testing.md)，缓存、发布检查、Host 状态清理与
-HTTP 离线测试的补齐记录见 [测试缺口验证](../ZIME-TEST-GAPS-2026-09-15.md)。
-构建 26 的缓存并发、子进程期限、HTTP 取消阶段和事件驱动测试见
-[测试工程再审查](../ZIME-TEST-INFRASTRUCTURE-2026-09-15.md)。
-构建 27 的虚拟时间、缓存边界与反例检查见
-[候选翻译边界验证](../ZIME-TRANSLATOR-BOUNDARIES-2026-09-15.md)。
-构建 28 的 SDK 缓存依赖和统一入口实际执行检查见
-[SDK 与入口验证](../ZIME-SDK-GATES-2026-09-15.md)。
-构建 29 的运行超时、信号清理和新鲜度门见
-[测试运行边界](../ZIME-RUNTIME-OWNERS-2026-09-15.md)，具体交付状态以该记录为准。
-构建 30 的多层取消、独立退出码断言和运行器变异检查见
-[多层测试取消与判错能力](../ZIME-OWNER-CANCELLATION-2026-09-15.md)。
+附件同时提供 `SHA256SUMS`、`manifest.json` 和源码构建用的锁定模型镜像；
+模型文件及 GitHub 自动生成的 Source code 归档不是安装器。
 
-真实在线 API、独立桌面上的设置点击、跨应用/双屏和长期运行未在本轮完成。
-自动化结果不能替代这些人工验收；本版本仍为未公证的 Ad-hoc 开发预览。
+## 验证与限制
+
+发布使用已完成本机安装验证的 build 31 原始产物，源码与标签绑定
+`752140e283901752d3f59453427ec76b2152765d`；后续 main 提交仅补充交付与发布文档。
+完整本地 release 回归通过，包含 1,776 条 golden、64 个会话共 4,096 轮压力、
+Swift/Host/离线 HTTP、安装事务、SwiftLint、Periphery 和限定模块覆盖率。
+[详细验证记录](https://github.com/zgat/ZIME/blob/main/docs/ZIME-TEST-HARDENING-2026-09-16.md)。
+
+- App 为 Ad-hoc 签名，PKG 未签名，均未经过 Apple 公证，未启用自动更新。
+- 未完成真实 API、隔离桌面 Settings 点击、跨系统/应用、双屏及长期使用验收；不将本地 PASS 描述为这些场景或远端 CI 已通过。
+- Settings 通用与翻译草稿同时应用的组合流程仍待补测；源码审查发现翻译草稿可能保留为待提交状态的路径，复现与修复暂缓。请分别修改并应用，留意保存状态。
+
+ZIME 源码为 GPL-3.0-or-later；数据与第三方组件归属见仓库的
+`THIRD_PARTY_NOTICES.md`、`upstreams.lock.json` 和 App 内 `ZIMERelease/LICENSES`。
