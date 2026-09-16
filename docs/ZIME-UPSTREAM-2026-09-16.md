@@ -37,4 +37,51 @@ CC-CEDICT 压缩源 SHA-256 为 `855691a1bc34314ebae099e472b7c8e51a94b47c605a5f4
 - `tests/verify_zime_translation.sh` 通过，包含全量源词条无损比对、确定性构建、释义、
   四类离线 HTTP、翻译草稿、候选缓存边界及 Host 上屏路由；没有使用真实凭据或请求在线 API。
 
-完整回归、打包和本机完整升级的结果在完成后另行记录，不以这些专项 PASS 代替。
+## 完整回归收据
+
+2026-09-16，在 Apple Silicon / macOS 26.6.2（25G83）、Xcode 26.6（17F113）上，
+对干净源码 `73e662027330402247a8b01df8b8309d160f127a` 执行 `make release` 和
+`tests/verify_development.sh release`，15:47–16:13（Asia/Shanghai）全部通过。
+
+- 八套输入方案共 1,776 个候选基线；原生 Rime 候选、快捷键、大小写、翻页、
+  字母数字混输、双语学习及跨进程学习隔离通过。
+- 4,096 次会话循环、64 次会话重建通过；这不是长期稳定性或无内存泄漏认证。
+- 安装事务覆盖完整/Core 更新、8 个回滚边界、14 个 Host 重启边界；
+  测试运行器、编译缓存、CI/发布校验及翻译的故障注入门通过。
+- SwiftLint 严格检查 73 个文件、零违规；Periphery 通过。
+- 指定 Swift 模块覆盖率门通过，报告记录上述源码及 `source_dirty: false`；
+  不代表整个工程或 Swift 分支覆盖率。
+
+另外使用相同的新词库和隔离用户目录，对新旧 LTS 模型执行 11 组固定输入，
+包括 `ni`、`nihao`、`key`、`shuai`、`feic`、`shurufa`、`abeierjiang` 及长词/整句；
+首候选全部一致。样本有限且缓存/负载未控制，不据此宣称整体质量或速度提升。
+
+本地原始证据保存在 `build/upstream-refresh-20260916/`，覆盖率报告在
+`build/zime-coverage/run.jthR0P/`；均为本机生成文件，不作为源码提交。
+
+## 产物与本机完整升级
+
+`make archive` 生成 0.1.23 build 32，绑定上述干净源码；
+`scripts/verify-zime-delivery` 通过清单、来源、摘要、嵌套签名、Full/Core App 一致性、
+ZIP/PKG 内容一致性、当前用户安装域和完整离线数据检查。
+
+| 产物 | bytes | SHA-256 |
+| --- | ---: | --- |
+| 完整 ZIP | 507635366 | `e6b9d02c4020f619c07a2f81b210ecd03a9999def1c00bc93879f392e526cbf8` |
+| 完整 PKG | 507864737 | `f843aadce2286d6a99db6f71f9ab7f6452bcae27009680aee71b35b3493e9f6a` |
+| Core ZIP | 19283495 | `70962791629ba1c11eaec55b57cbc20cb2f82ec312c26c0173d2a33f18a58a51` |
+
+本机使用同一完整 ZIP 的生产安装 helper，从 0.1.22 build 31 升级到 0.1.23 build 32。
+实际 App、内置 Data 与 Runtime/Active 和发布材料一致，LTS 摘要与锁文件一致；
+App 注册目录 inode、偏好文件摘要、简繁输入源状态保持不变。
+安装事务在重启前核验 UserData 与备份摘要完全相同，回滚材料保留；
+重启后只有一个正式安装路径的 ZIME 进程，未处于隐藏状态。
+
+首次严格比对将启动后新增的 `Runtime/Logs` 误算入静态发布数据，报告不一致；
+逐项检查确认只有正常运行日志新增。后续单独核对完整 Data、Runtime/Active 原字节、
+Runtime 顶层清单及日志目录安全性，通过；未重复安装或修改生产代码以绕过检查。
+
+仍未覆盖真实在线 API、其他 macOS 版本首次授权、跨应用/双屏和长期手工验收。
+Settings 通用与翻译草稿同时应用的组合问题继续暂缓，本次不宣称修复。
+发布仍为 Ad-hoc App / 未签名 PKG / 未公证开发预览；版本标签指向实际候选源码，
+后续验证文档提交不改变该候选 revision。

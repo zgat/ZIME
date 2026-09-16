@@ -24,6 +24,12 @@
 附件另有 `SHA256SUMS`、`manifest.json` 和锁定模型镜像。
 模型文件及 GitHub 自动生成的 Source code 归档不是安装器。
 
+## 验证
+
+完整 Release 回归通过，包含 1,776 个候选基线、4,096 次会话循环、安装事务、
+翻译及质量检查。完整 ZIP / PKG / Core 内容和摘要已核验，并完成本机完整升级，
+保留学习数据和设置。详见 [更新与验证记录](https://github.com/zgat/ZIME/blob/main/docs/ZIME-UPSTREAM-2026-09-16.md)。
+
 ## 已知限制
 
 - App 为 Ad-hoc 签名、PKG 未签名，均未经过 Apple 公证，未开启自动更新。
