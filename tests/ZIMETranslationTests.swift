@@ -106,6 +106,23 @@ struct ZIMETranslationTests {
       && reference.reference?.simplified == "费城" && reference.reference?.pinyin == "Fei4 cheng2",
       "reference target identity or reading lost")
     let runtimeLexicon = ZIMELocalLexicon(url: URL(fileURLWithPath: "resources/zime-cedict.sqlite3"), usePreparedAnnotations: false)
+    // The 2026-09-15 snapshot adds both script forms and revises existing senses.
+    // Exercise the prepared index and uncached parser without changing semantics.
+    for (spellings, expected) in [
+      (["同行评审", "同行評審", "同行评议", "同行評議"], ["peer review"]),
+      (["来钱", "來錢"], ["to make money"]),
+      (["今宵"], ["tonight"]),
+      (["不对劲", "不對勁"], ["not right; amiss", "to feel uncomfortable or unwell", "to not get along"])
+    ] {
+      for word in spellings {
+        for region in [ZIMELocalLexicon.RegionProfile.all, .mainland, .traditionalRegions] {
+          for dictionary in [lexicon, runtimeLexicon] {
+            require(dictionary.annotation(for: word, region: region).translations == expected,
+              "updated snapshot meaning missing: \(word), \(region)")
+          }
+        }
+      }
+    }
     for word in ["你", "妳", "费城", "費城", "世博", "上汽", "瞭解", "了解", "明天见", "下次见", "看穿", "亦作", "之", "了", "发", "髮", "德士"] {
       for region in [ZIMELocalLexicon.RegionProfile.all, .mainland, .traditionalRegions] {
         let prepared = lexicon.annotation(for: word, region: region, includeDetails: false)

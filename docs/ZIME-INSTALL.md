@@ -1,4 +1,4 @@
-# ZIME 0.1.22 安装与使用
+# ZIME 0.1.23 安装与使用
 
 支持 Apple Silicon、macOS 13 及以上版本。开发预览采用 Ad-hoc 签名，
 尚无 Apple Developer ID 签名或公证；只安装你信任并核对 SHA-256 的副本。
@@ -6,11 +6,11 @@ GitHub 自动生成的 Source code ZIP/TAR 是源码，不是安装包。
 
 ## 选择下载
 
-- `ZIME-0.1.22-arm64.zip`：首次安装推荐，App + 全部离线词库 + LTS 模型。
-- `ZIME-0.1.22-arm64.pkg`：同一套完整数据，通过 macOS 安装器安装到当前用户。
-- `ZIME-0.1.22-arm64-core.zip`：仅更新 App 和运行库；必须已有兼容的完整词库。
-  已安装 0.1.17 或更新完整数据的用户可选此包。空格选词功能随 Core 更新生效，
-  **不会升级万象词库或 LTS 模型**；更早版本若未更新过数据，建议使用完整包。
+- `ZIME-0.1.23-arm64.zip`：首次安装或本次词库升级推荐，App + 全部离线词库 + LTS 模型。
+- `ZIME-0.1.23-arm64.pkg`：同一套完整数据，通过 macOS 安装器安装到当前用户。
+- `ZIME-0.1.23-arm64-core.zip`：更新 App、随附 CC-CEDICT 释义和运行库；必须已有兼容的完整词库。
+  已安装 0.1.17 或更新完整数据的用户可选此包，但 **不会升级万象词库或 LTS 模型**。
+  要获取本次全部新数据，请使用完整 ZIP / PKG，无需先卸载，个人学习和设置保留。
 - `wanxiang-lts-zh-hans.gram`：源码构建使用的锁定模型镜像，不是安装器。
 - `SHA256SUMS`：发布资产校验和。
 
@@ -43,7 +43,7 @@ GitHub 自动生成的 Source code ZIP/TAR 是源码，不是安装包。
 ## PKG
 
 打开完整 PKG，选择“仅为我安装”。PKG 不直接覆盖正在运行的输入法：先把材料放入
-`~/Library/Application Support/ZIME Installer/0.1.22`，再调用与 ZIP 相同的升级事务。
+`~/Library/Application Support/ZIME Installer/0.1.23`，再调用与 ZIP 相同的升级事务。
 该目录为可重复执行的安装材料，不是日常使用的输入法；不应从中直接启动 ZIME.app。
 安装失败时可以进入该目录运行 `./install-zime` 查看终端提示。
 未公证预览可能被 Gatekeeper 拦截；请核对来源和校验和，不要全局关闭系统安全检查。

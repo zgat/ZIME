@@ -3,7 +3,7 @@
 面向 Apple Silicon、macOS 13 及以上版本的本地优先双语输入法。
 输入中文看英文释义，输入英文看中文释义；译文默认只在候选框展示，主动切换并选中后才会上屏。
 
-[下载 0.1.22 开发预览](https://github.com/zgat/ZIME/releases/tag/v0.1.22) ·
+[下载 0.1.23 开发预览](https://github.com/zgat/ZIME/releases/tag/v0.1.23) ·
 [安装说明](docs/ZIME-INSTALL.md) · [更新日志](CHANGELOG.md)
 
 ![中英文候选与逐行释义](resources/readme/bilingual-features.png)
@@ -70,12 +70,14 @@
 - **Core ZIP**：更新程序及随附资源，保留已安装的语言词库和模型；需要已有兼容的完整数据。
 - 两种升级方式均保留个人词频、自定义词和设置，并创建回滚备份，不必先卸载。
 
-已有 0.1.17 完整数据可直接更新 Core。下载入口和操作步骤见 [安装说明](docs/ZIME-INSTALL.md)。
+本次要获取更新的万象词库与 LTS 模型，请使用完整 ZIP / PKG；Core 仅更新程序与随附的 CC-CEDICT 释义。
+已有 0.1.17 或更新完整数据仍可使用 Core。下载入口和操作步骤见 [安装说明](docs/ZIME-INSTALL.md)。
 仍为 Ad-hoc 开发预览：PKG 未使用 Developer ID 签名，App 和 PKG 均未经过 Apple 公证，未开启自动更新频道。
 GitHub 自动生成的 Source code ZIP/TAR 是源码，不是安装包。
 
 ## 更新公告
 
+- **0.1.23**：更新万象 Base 词库、LTS 模型和 CC-CEDICT 本地释义；获取全部新数据请使用完整包，个人学习记录保留。[详情](docs/releases/ZIME-0.1.23.md)
 - **0.1.22**：精简设置与退役功能，加固翻译设置失败恢复，完善测试、缓存和发布校验；词库与输入规则不变。[详情](docs/releases/ZIME-0.1.22.md)
 - **0.1.21**：空格上屏高亮候选，支持原文与译文；Enter 仍提交原始输入。[详情](docs/releases/ZIME-0.1.21.md)
 - **0.1.20**：修复拼音纠错与候选学习，支持 `wov → 我v` 等完整混输候选。[详情](docs/releases/ZIME-0.1.20.md)
