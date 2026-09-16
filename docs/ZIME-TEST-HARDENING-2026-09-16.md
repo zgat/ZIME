@@ -1,6 +1,6 @@
 # 2026-09-16 测试工程缺陷修复
 
-交付目标：0.1.22 build 31。本轮修复测试基础设施，并加固翻译设置保存的失败恢复；
+已验证并安装：0.1.22 build 31。本轮修复测试基础设施，并加固翻译设置保存的失败恢复；
 不调整候选排序、输入交互或内置词库。不自动推送或发布 GitHub。
 
 ## 修复与判错证据
@@ -39,5 +39,40 @@ Swift 桥接头的真实内容依赖仍由编译器报告，父目录只做名�
 
 ## 交付验证
 
-定向负向回归已通过；完整 release 回归、产物和本机安装结果在交付完成后补记。
-本轮日志与定向复现材料位于 `build/testing-hardening-20260916/`。
+交付源码为 `752140e283901752d3f59453427ec76b2152765d`。Homebrew Ruby 和系统
+Ruby 2.6 的运行器、六项变异与产物发布竞争测试通过；Swift/C++ 缓存及各门的定向
+正反例通过。Swift 缓存新增的无关文档用例先在旧实现失败，修复后通过。
+
+`make release` 和 `tests/verify_development.sh release` 均以 0 退出。完整门记录为
+10:41:52–11:07:45（25 分 53 秒），覆盖：
+
+- 43 个 fail-fast 分支、六项运行器变异、13 项候选翻译变异、65 个 CI 负例。
+- 全部 Swift 行为、192 种外观组合、五张 README 渲染对照、设置协调器及双进程 IPC。
+- 四家服务的离线 HTTP、翻译设置、候选翻译和生产 Host 路由。
+- 八方案共 1,776 条 golden、默认原生矩阵及六项专项；64 个会话中共 4,096 轮压力。
+- App、安装事务、隐私、SwiftLint（73 个文件、0 违规）、Periphery 和限定模块覆盖率。
+
+覆盖率报告为 `build/zime-coverage/run.K1WIsd/`，绑定上述提交且 `source_dirty=false`。
+行/函数覆盖率分别为：本地词典 98.57%/93.10%，候选翻译 97.13%/89.47%，
+安装事务 94.47%/95.24%，翻译设置 90.43%/86.05%，离线 HTTP 边界 75.94%/69.23%。
+本机已有 CoreSimulator 版本告警仍出现，但 macOS 构建、分析和最终门通过；未修改模拟器。
+
+Full/Core ZIP、PKG、模型与校验清单位于 `build/zime-0.1.22-build31-delivery-20260916/`。
+来源、SHA256、Ad-hoc 签名、Full/Core/PKG 一致性及离线数据验证通过。仍是未公证的
+本地预览，没有推送或发布 GitHub。
+
+使用 Core 内的 `zime-install-helper update` 完成 build 30 → 31。安装后版本、签名、
+资源、插件及完整 App 字节与来源一致；正式路径仅一个未隐藏的进程。Data、Runtime/Active、
+偏好摘要与 App inode 前后一致，简繁输入源状态未改变；UserData 在事务停止 Host 后
+备份并核验。安装前摘要脚本曾误拒绝 Runtime 指向 Data 的合法链接，修正只读核验后
+才开始安装，没有改变词库布局。回滚目录保留：
+`/Users/zga/Library/Input Methods/.zime-install-FEAD1B1E-EDC1-4B39-B915-53A7F9B5AD7C`。
+
+按包内版本盘点 41 个 ZIP/PKG，仅属 0.1.20、0.1.21、0.1.22 三代，无需删除；
+同版本不同 build 不另算一代，源码、日志和所有回滚材料保留。
+证据位于 `build/testing-hardening-20260916/` 的 `full-release.log`、`package.log`、
+`install.log`、`installed-*.log`、`data-*-install.json` 和 `package-retention-*.json`。
+
+真实 API、独立桌面 Settings、跨应用/双屏和长期使用未在本轮验收。完整 SettingsModel
+同时提交通用设置与翻译的组合层注入测试仍是可继续补充的集成覆盖；当前分别验证协调器、
+IPC、翻译模型和 Host 路由，不将这些分层结果描述为组合层 E2E，也不宣称未知缺陷已归零。
