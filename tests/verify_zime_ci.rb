@@ -10,6 +10,7 @@ REQUIRED_GATES = ["./action-install.sh", "make --no-print-directory release",
   "tests/verify_release_automation.sh", "tests/verify_publication_owner.sh"].freeze
 
 def gate_indices(job)
+  ZIMERelease.check(!job.fetch("continue-on-error", false), "required CI job tolerates failure")
   REQUIRED_GATES.to_h do |command|
     index = job.fetch("steps").index do |step|
       # Require an actual standalone command, not a comment/echo or `|| true`.
@@ -44,6 +45,8 @@ def validate(workflows)
   %w[commit-ci.yml pull-request-ci.yml].each do |name|
     flow = workflows.fetch(name)
     job = flow.fetch("jobs").fetch("product")
+    ZIMERelease.check(name == "commit-ci.yml" ? job["if"] == "inputs.profile == 'full'" : !job.key?("if"),
+      "required CI job can be skipped")
     ZIMERelease.check(job.dig("strategy", "matrix", "os") == %w[macos-15 macos-26], "missing macOS matrix")
     ZIMERelease.check(job["runs-on"] == '$' + '{{ matrix.os }}', "matrix is not used")
     gates = gate_indices(job)
@@ -106,6 +109,11 @@ mutations = [
   ->(w) { w["commit-ci.yml"]["jobs"]["product"]["steps"][0]["uses"] = "actions/checkout@main" },
   ->(w) { w["pull-request-ci.yml"]["jobs"]["product"]["steps"][1]["with"]["save"] = true }
 ]
+%w[commit-ci.yml pull-request-ci.yml release-ci.yml].each do |name|
+  job = name == "release-ci.yml" ? "candidate" : "product"
+  mutations << ->(w) { w[name]["jobs"][job]["continue-on-error"] = true }
+  mutations << ->(w) { w[name]["jobs"][job]["if"] = "false" }
+end
 REQUIRED_GATES.each do |command|
   %i[delete skip tolerate echo short_circuit].each do |mode|
     mutations << ->(w) {

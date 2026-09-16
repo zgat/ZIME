@@ -34,7 +34,7 @@ begin
   pending_signal = nil
   %w[INT TERM HUP].each { |signal| Signal.trap(signal) { pending_signal ||= signal } }
   _, _, status = TestProcess.capture(environment, *ARGV, timeout: duration, inherit_stdio: true,
-    cancelled: -> { pending_signal }, chdir: directory)
+    cancelled: -> { pending_signal }, chdir: directory, owner: false)
   exit(status.exitstatus || 128 + status.termsig)
 rescue TestProcess::Cancelled => error
   diagnostic(error.message)

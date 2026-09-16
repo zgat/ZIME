@@ -4,6 +4,9 @@ set -euo pipefail
 [[ $# -eq 0 ]] || { echo "usage: $0" >&2; exit 2; }
 root="$(cd "$(dirname "$0")/.." && pwd -P)"
 cd "${root}"
+# Capture separately: command substitutions used as another command's argument
+# do not propagate Git failure through errexit. Recheck the revision at export.
+source_revision="$(git rev-parse --verify HEAD)"
 mkdir -p build/zime-coverage
 report="$(mktemp -d "${root}/build/zime-coverage/run.XXXXXX")"
 mkdir "${report}/raw" "${report}/module-cache"
@@ -44,5 +47,5 @@ linnet_test_run 300 xcrun llvm-cov show "${objects[@]}" -instr-profile="${report
   -ignore-filename-regex='/tests/|/Applications/|/usr/' -format=html \
   -output-dir="${report}/html"
 ruby tests/verify_coverage_gate.rb
-ruby tests/zime_coverage_gate.rb "${root}" "${report}" "$(git rev-parse HEAD)"
+ruby tests/zime_coverage_gate.rb "${root}" "${report}" "${source_revision}"
 echo "ZIME scoped coverage: PASS; report=${report}/report.txt"

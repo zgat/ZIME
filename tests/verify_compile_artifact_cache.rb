@@ -78,6 +78,21 @@ Dir.mktmpdir("zime-artifact-cache-") do |dir|
     CompileArtifactCache.fetch(cache, "fixture", alias_output, resolve: ->(_) { inputs.dup }) { |b| artifact(b, "c") }
   }
   check(File.read(outside) == "protected", "output symlink clobbered target")
+  directory_output = File.join(dir, "directory-output")
+  Dir.mkdir(directory_output)
+  File.symlink(outside, File.join(directory_output, "binary"))
+  rejects(/unsafe test output/) {
+    CompileArtifactCache.fetch(cache, "fixture", directory_output, resolve: ->(_) { inputs.dup }) { |b| artifact(b, "c") }
+  }
+  hardlink_output = File.join(dir, "hardlink-output")
+  File.link(outside, hardlink_output)
+  CompileArtifactCache.fetch(cache, "fixture", hardlink_output, resolve: ->(_) { inputs.dup }) { |b| artifact(b, "c") }
+  check(File.read(outside) == "protected" && File.read(hardlink_output).include?("'c'"),
+    "output publication followed a directory symlink or clobbered a hardlink")
+  check(!File.identical?(outside, hardlink_output), "output was not atomically replaced")
+  slot_alias = File.join(dir, "slot-alias")
+  File.symlink(slot, slot_alias)
+  rejects(/unsafe test output/) { CompileArtifactCache.publish(File.join(slot, "binary"), File.join(slot_alias, "binary")) }
   alias_root = File.join(dir, "cache-alias")
   File.symlink(cache, alias_root)
   rejects(/unsafe compiler cache directory/) {
@@ -91,43 +106,72 @@ Dir.mktmpdir("zime-artifact-cache-") do |dir|
   check(fetch.call, "lock recovery lost valid binary")
   check(File.read(outside) == "protected", "lock symlink modified target")
 
-  # Deterministic race: A holds the publication lock while B requests the same
-  # command with different source content. A's output must still be A, and B's B.
-  ready_r, ready_w = IO.pipe
-  release_r, release_w = IO.pipe
-  children = []
-  begin
-    children << fork do
-      ready_r.close; release_w.close
-      CompileArtifactCache.fetch(cache, "race", File.join(dir, "a"), resolve: ->(_) { {"source" => "A"} }) do |built|
-        artifact(built, "A")
-        ready_w.write("a"); ready_w.flush
-        message(release_r)
+  # Stop A during both compilation and output publication. B reports an actual
+  # failed nonblocking lock attempt before A is allowed to continue.
+  %w[compile publish].each do |phase|
+    ready_r, ready_w = IO.pipe
+    release_r, release_w = IO.pipe
+    contender_r = contender_w = nil
+    children = []
+    begin
+      children << fork do
+        ready_r.close; release_w.close
+        if phase == "publish"
+          boundary = Module.new do
+            define_method(:publish) do |binary, destination|
+              ready_w.write("a"); ready_w.flush
+              message(release_r)
+              super(binary, destination)
+            end
+          end
+          CompileArtifactCache.singleton_class.prepend(boundary)
+        end
+        CompileArtifactCache.fetch(cache, "race-#{phase}", File.join(dir, "a"), resolve: ->(_) { {"source" => "A"} }) do |built|
+          artifact(built, "A")
+          if phase == "compile"
+            ready_w.write("a"); ready_w.flush
+            message(release_r)
+          end
+        end
+        exit! 0
       end
-      exit! 0
-    end
-    ready_w.close; release_r.close
-    message(ready_r)
-    locked = Dir[File.join(cache, "*", "lock")].any? do |path|
-      File.open(path, "r+") { |io| !io.flock(File::LOCK_EX | File::LOCK_NB) }
-    end
-    check(locked, "publication lock not held during compilation")
-    children << fork do
-      CompileArtifactCache.fetch(cache, "race", File.join(dir, "b"), resolve: ->(_) { {"source" => "B"} }) do |built|
-        artifact(built, "B")
+      ready_w.close; release_r.close
+      message(ready_r)
+      locked = Dir[File.join(cache, "*", "lock")].any? do |path|
+        File.open(path, "r+") { |io| !io.flock(File::LOCK_EX | File::LOCK_NB) }
       end
-      exit! 0
+      check(locked, "publication lock not held during #{phase}")
+      contender_r, contender_w = IO.pipe
+      children << fork do
+        contender_r.close
+        observer = Module.new do
+          define_method(:flock) do |operation|
+            if operation == File::LOCK_EX && File.basename(path) == "lock"
+              raise "contender did not encounter publication lock" if super(operation | File::LOCK_NB)
+              contender_w.write("b"); contender_w.flush
+            end
+            super(operation)
+          end
+        end
+        File.prepend(observer)
+        CompileArtifactCache.fetch(cache, "race-#{phase}", File.join(dir, "b"), resolve: ->(_) { {"source" => "B"} }) do |built|
+          artifact(built, "B")
+        end
+        exit! 0
+      end
+      contender_w.close
+      check(message(contender_r) == "b", "contender never requested the owned lock")
+      release_w.write("g"); release_w.close
+      children.dup.each do |pid|
+        _, status = wait_child(pid)
+        children.delete(pid)
+        check(status.success?, "concurrent cache worker failed")
+      end
+      %w[a b].each { |v| check(File.read(File.join(dir, v)).include?("'#{v.upcase}'"), "concurrent cache returned another request's binary") }
+    ensure
+      children.each { |pid| Process.kill("KILL", pid); Process.waitpid(pid) }
+      [ready_r, ready_w, release_r, release_w, contender_r, contender_w].compact.each { |io| io.close unless io.closed? }
     end
-    release_w.write("g"); release_w.close
-    children.dup.each do |pid|
-      _, status = wait_child(pid)
-      children.delete(pid)
-      check(status.success?, "concurrent cache worker failed")
-    end
-    %w[a b].each { |v| check(File.read(File.join(dir, v)).include?("'#{v.upcase}'"), "concurrent cache returned another request's binary") }
-  ensure
-    children.each { |pid| Process.kill("KILL", pid); Process.waitpid(pid) }
-    [ready_r, ready_w, release_r, release_w].each { |io| io.close unless io.closed? }
   end
 
   ready_r, ready_w = IO.pipe

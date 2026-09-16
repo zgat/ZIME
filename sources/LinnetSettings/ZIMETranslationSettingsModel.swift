@@ -24,6 +24,7 @@ final class ZIMETranslationSettingsModel: ObservableObject {
   private var baseline: ZIMETranslationConfiguration
   private var testTask: Task<Void, Never>?
   private var generation = UUID()
+  private var credentialRollback: (() throws -> Void)?
   private let saveConfiguration: (ZIMETranslationConfiguration) throws -> Void
   private let loadCredentials: (String) throws -> ZIMETranslationCredentials
   private let saveCredentials: (ZIMETranslationCredentials, String) throws -> Void
@@ -51,7 +52,7 @@ final class ZIMETranslationSettingsModel: ObservableObject {
   }
 
   var pendingChanges: Bool {
-    configuration != baseline || !identifier.isEmpty || !secret.isEmpty || deletesCredentials
+    configuration != baseline || !identifier.isEmpty || !secret.isEmpty || deletesCredentials || credentialRollback != nil
   }
 
   private func credentials() throws -> ZIMETranslationCredentials {
@@ -78,16 +79,11 @@ final class ZIMETranslationSettingsModel: ObservableObject {
     guard pendingChanges else { return }
     do {
       try validate()
-      if deletesCredentials {
-        try deleteCredentials(configuration.credentialAccount)
-      } else if !identifier.isEmpty || !secret.isEmpty {
-        try saveCredentials(credentials(), configuration.credentialAccount)
-      }
       var submitted = configuration
       if !configuration.hasSameService(as: baseline) || deletesCredentials || !identifier.isEmpty || !secret.isEmpty {
         submitted.revision = UUID().uuidString
       }
-      try saveConfiguration(submitted)
+      try persist(submitted)
       configuration = submitted
       baseline = submitted
       identifier = ""
@@ -101,11 +97,54 @@ final class ZIMETranslationSettingsModel: ObservableObject {
   }
 
   func discard() {
+    do { try restoreCredentials() } catch {
+      status = CredentialRecoveryFailure().localizedDescription
+      return
+    }
     configuration = baseline
     identifier = ""
     secret = ""
     deletesCredentials = false
     invalidateTest()
+  }
+
+  private struct CredentialRecoveryFailure: LocalizedError {
+    var errorDescription: String? { "密钥恢复未完成。请解锁钥匙串后重试应用或撤销；更改尚未确认。" }
+  }
+
+  private func restoreCredentials() throws {
+    try credentialRollback?()
+    credentialRollback = nil
+  }
+
+  /// Persistence callbacks must leave their value unchanged when they throw.
+  /// Keep compensation until configuration succeeds; a failed compensation
+  /// remains pending and Discard must not falsely acknowledge a clean state.
+  private func persist(_ submitted: ZIMETranslationConfiguration) throws {
+    try restoreCredentials()
+    if deletesCredentials || !identifier.isEmpty || !secret.isEmpty {
+      let account = configuration.credentialAccount
+      let previous = try loadCredentials(account)
+      if deletesCredentials {
+        try deleteCredentials(account)
+      } else {
+        try saveCredentials(credentials(), account)
+      }
+      credentialRollback = { [saveCredentials, deleteCredentials] in
+        if previous.identifier.isEmpty && previous.secret.isEmpty {
+          try deleteCredentials(account)
+        } else {
+          try saveCredentials(previous, account)
+        }
+      }
+    }
+    do {
+      try saveConfiguration(submitted)
+      credentialRollback = nil
+    } catch {
+      do { try restoreCredentials() } catch { throw CredentialRecoveryFailure() }
+      throw error
+    }
   }
 
   func stageCredentialDeletion() {

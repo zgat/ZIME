@@ -29,6 +29,8 @@ Dir.mktmpdir("zime-swift-cache-") do |dir|
   FileUtils.mkdir_p(bridge_dir)
   File.rename(bridge, File.join(bridge_dir, "bridge.h"))
   bridge = File.join(bridge_dir, "bridge.h")
+  notes = File.join(bridge_dir, "unused-notes.txt")
+  File.write(notes, "unrelated documentation\n")
   command = [compiler.strip, "-sdk", sdk.strip, "-module-cache-path", modules,
     "-I", alias_headers, "-import-objc-header", bridge, alias_source]
   run = ->(expected_hit, expected_value, args = command) {
@@ -38,6 +40,8 @@ Dir.mktmpdir("zime-swift-cache-") do |dir|
     check(status.success? && out == "#{expected_value}\n", "stale Swift executable: #{out} #{err}")
   }
   run.call(false, 1)
+  run.call(true, 1)
+  File.write(notes, "edited unrelated documentation\n")
   run.call(true, 1)
   File.write(header, "#define VALUE 2\n")
   run.call(false, 2)

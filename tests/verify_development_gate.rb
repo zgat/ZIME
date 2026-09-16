@@ -9,7 +9,7 @@ module DevelopmentGateTest
   class Mismatch < StandardError; end
   APP = "build/Local/Build/Products/Release/ZIME.app".freeze
   PREPARE = ["make\t--no-print-directory\tenglish-data-generator", "tests/verify_english_data_projection.sh"].freeze
-  INFRASTRUCTURE = %w[verify_coverage_gate.rb verify_test_process.rb verify_test_runner.rb verify_test_owner_chain.rb verify_runtime_mutations.rb verify_compile_artifact_cache.rb
+  INFRASTRUCTURE = %w[verify_coverage_gate.rb verify_test_process.rb verify_runtime_mutations.rb verify_compile_artifact_cache.rb
     verify_swift_test_cache.rb verify_cxx_test_cache.rb verify_development_gate.rb
     verify_rime_test_orchestration.sh verify_publication_owner.sh verify_release_automation.sh
     verify_zime_installer.sh verify_zime_privacy.sh].map { |name| "tests/#{name}" }.freeze
@@ -155,6 +155,33 @@ module DevelopmentGateTest
       File.unlink(input) if File.symlink?(input)
       File.binwrite(input, original_input)
       File.utime(Time.at(1), Time.at(1), input)
+    end
+    # Use real Git pathspec filtering, so omitted build-input owners cannot be
+    # hidden by a stub which returns the same xcconfig for every invocation.
+    begin
+      write_executable(git, "#!/bin/sh\nexec /usr/bin/git \"$@\"\n")
+      _, err, status = TestProcess.capture("/usr/bin/git", "init", "-q", root, timeout: 10)
+      raise err unless status.success?
+      %w[plugins/smart_english/new.cc plugins/smart_english/new.h scripts/build-linnet-app
+        scripts/build-privacy tools/NewTool.swift config/Extra.xcconfig].each do |name|
+        path = File.join(root, name)
+        previous = File.exist?(path) ? File.binread(path) : nil
+        FileUtils.mkdir_p(File.dirname(path))
+        File.write(path, "# newer build input\n")
+        File.utime(File.mtime(stamp) + 60, File.mtime(stamp) + 60, path)
+        code, trace, output = run(root, ["app"])
+        raise Mismatch, "omitted build input owner accepted: #{name}: #{output}" unless
+          code == 1 && trace.empty? && output.include?("older than build input: #{name}")
+        if previous
+          File.binwrite(path, previous)
+          File.chmod(0700, path)
+          File.utime(Time.at(1), Time.at(1), path)
+        else
+          File.unlink(path)
+        end
+      end
+    ensure
+      write_executable(git, original_git)
     end
     # Every release leaf must stop all later work. Also cover core/full's
     # prerequisite branch, which is deliberately absent from release.

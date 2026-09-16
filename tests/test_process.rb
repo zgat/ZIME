@@ -28,7 +28,8 @@ module TestProcess
   end
 
   def self.capture(*command, timeout: 600, stdin_data: "", term_grace: 0.25, output_limit: 32 * 1024 * 1024,
-    inherit_stdio: false, cancelled: nil, chdir: nil)
+    inherit_stdio: false, cancelled: nil, chdir: nil, owner: true)
+    pid = nil
     limits = [timeout, term_grace]
     raise ArgumentError, "invalid subprocess limits" unless limits.all? { |v| (v.is_a?(Integer) || v.is_a?(Float)) && v.finite? } &&
       timeout > 0 && term_grace >= 0 && output_limit.is_a?(Integer) && output_limit > 0
@@ -37,7 +38,16 @@ module TestProcess
       (!inherit_stdio || stdin_data.empty?)
     raise ArgumentError, "invalid cancellation observer" unless cancelled.nil? || cancelled.respond_to?(:call)
     raise ArgumentError, "invalid working directory" unless chdir.nil? || (chdir.is_a?(String) && !chdir.empty?)
+    raise ArgumentError, "invalid subprocess owner" unless [true, false].include?(owner)
+    # Cooperative owners may own separate process groups. Give each inner
+    # owner a smaller shutdown budget so it can kill/reap its leaf before its
+    # parent falls back to KILL. Leaves retain the short TERM grace.
+    owner_grace = Float(ENV.fetch("LINNET_TEST_OWNER_GRACE", "4"))
+    raise ArgumentError, "invalid owner shutdown budget" unless owner_grace.finite? &&
+      owner_grace > 0 && (!owner || owner_grace > term_grace + 0.5)
+    shutdown_grace = owner ? owner_grace : term_grace
     environment = command.first.is_a?(Hash) ? command.shift : {}
+    environment = environment.merge("LINNET_TEST_OWNER_GRACE" => (owner ? owner_grace - 0.5 : owner_grace).to_s)
     raise ArgumentError, "empty command" if command.empty?
     # Ruby 2.6 treats a lone command String as shell syntax. Always use the
     # explicit executable/argv0 form, including commands with no arguments.
@@ -49,13 +59,17 @@ module TestProcess
     if inherit_stdio
       # The child writes directly to the caller's terminal/files/pipeline.
       # Backpressure blocks the child, never this deadline/cancellation owner.
-      pid = Process.spawn(environment, *spawn_command, **spawn_options, in: STDIN, out: STDOUT, err: STDERR)
+      Thread.handle_interrupt(SignalException => :never) do
+        pid = Process.spawn(environment, *spawn_command, **spawn_options, in: STDIN, out: STDOUT, err: STDERR)
+      end
       buffers = {}
     else
       input_read, input_write = IO.pipe.tap { |pair| descriptors.concat(pair) }
       output_read, output_write = IO.pipe.tap { |pair| descriptors.concat(pair) }
       error_read, error_write = IO.pipe.tap { |pair| descriptors.concat(pair) }
-      pid = Process.spawn(environment, *spawn_command, **spawn_options, in: input_read, out: output_write, err: error_write)
+      Thread.handle_interrupt(SignalException => :never) do
+        pid = Process.spawn(environment, *spawn_command, **spawn_options, in: input_read, out: output_write, err: error_write)
+      end
       [input_read, output_write, error_write].each(&:close)
       buffers = { output_read => +"".b, error_read => +"".b }
     end
@@ -72,7 +86,7 @@ module TestProcess
         cancellation = requested_signal
         expired = true
         signal_group(requested_signal, pid)
-        deadline = now + term_grace
+        deadline = now + shutdown_grace
       end
       unless status
         waited = Process.waitpid2(pid, Process::WNOHANG)
@@ -87,7 +101,7 @@ module TestProcess
         end
         expired = true
         signal_group("TERM", pid)
-        deadline = now + term_grace
+        deadline = now + shutdown_grace
       end
       writers = input_write && !input_write.closed? ? [input_write] : []
       ready = IO.select(readers, writers, nil, [deadline - now, 0.02].min.clamp(0, 0.02))
@@ -123,14 +137,34 @@ module TestProcess
     raise DeadlineExceeded.new(command, stdout, stderr) if expired
     [stdout, stderr, status]
   ensure
-    if pid
-      signal_group("KILL", pid) unless killed
-      begin
-        Process.waitpid(pid) unless status
-      rescue Errno::ECHILD
-        nil
+    Thread.handle_interrupt(SignalException => :never) do
+      if pid
+        if owner && !status && !killed
+          # Ruby's default INT/TERM/HUP handler unwinds here. Do not kill an
+          # inner CLI before it has forwarded cancellation to its own group.
+          reason = $!
+          signal = reason.is_a?(SignalException) ? reason.signo : "TERM"
+          signal_group(signal, pid)
+          deadline = now + shutdown_grace
+          until status || now >= deadline
+            waited = Process.waitpid2(pid, Process::WNOHANG)
+            status = waited[1] if waited
+            break if status
+            # Drain while unwinding too: a child writing diagnostics must not
+            # block the cooperative shutdown on its captured stdout/stderr.
+            active = (readers || []).reject(&:closed?)
+            ready = IO.select(active, nil, nil, 0.01)
+            ready&.first&.each { |io| io.close if io.read_nonblock(65_536, exception: false).nil? }
+          end
+        end
+        signal_group("KILL", pid) unless killed
+        begin
+          Process.waitpid(pid) unless status
+        rescue Errno::ECHILD
+          nil
+        end
       end
+      descriptors&.each { |io| io.close unless io.closed? }
     end
-    descriptors&.each { |io| io.close unless io.closed? }
   end
 end

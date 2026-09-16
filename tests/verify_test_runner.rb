@@ -11,7 +11,7 @@ module TestRunnerTests
   end
 
   def self.run(*arguments, **options)
-    TestProcess.capture(RUBY, RUNNER, *arguments, timeout: 8, **options)
+    TestProcess.capture(RUBY, RUNNER, *arguments, timeout: 8, owner: true, **options)
   end
 
   def self.wait_child(pid)
@@ -37,7 +37,7 @@ module TestRunnerTests
       TestProcess.now
     end
     sender.report_on_exception = false
-    out, err, status = TestProcess.capture(environment, *command, timeout: 8)
+    out, err, status = TestProcess.capture(environment, *command, timeout: 8, owner: true)
     begin
       sent_at = sender.value
     rescue StandardError => error
@@ -56,7 +56,7 @@ module TestRunnerTests
     {"CLI" => [RUBY, RUNNER, *arguments],
       "shell" => ["/bin/bash", "-c", 'source "$1"; shift; linnet_test_run "$@"', "_",
         File.join(__dir__, "test_runner.sh"), *arguments]}.each do |owner, command|
-      out, err, status = TestProcess.capture(*command, stdin_data: payload, timeout: 8)
+      out, err, status = TestProcess.capture(*command, stdin_data: payload, timeout: 8, owner: true)
       check(out.b == payload && err == 'a b|$(literal)' && status.exitstatus == 7, "#{owner} runtime IO/argv/status changed")
     end
     _, _, status = run("5", RUBY, "-e", 'Process.kill("TERM", Process.pid)')
@@ -88,7 +88,7 @@ module TestRunnerTests
         }
       C
       _, err, status = TestProcess.capture("xcrun", "clang", "-Wall", "-Wextra", "-Werror",
-        source, "-o", binary, timeout: 30)
+        source, "-o", binary, timeout: 30, owner: false)
       check(status.success?, "native loader fixture compilation failed: #{err}")
       Dir.mkdir(File.join(root, "bin"))
       [RUBY, "/usr/bin/ruby"].uniq.each do |interpreter|

@@ -41,8 +41,8 @@ fi
 if [[ "${run_swift}" -eq 1 || "${profile}" == quick ]]; then
   linnet_test_call ruby tests/verify_coverage_gate.rb
   linnet_test_call ruby tests/verify_test_process.rb
-  linnet_test_call ruby tests/verify_test_runner.rb
-  linnet_test_call ruby tests/verify_test_owner_chain.rb
+  # The mutation gate executes the three unchanged suites before any mutation,
+  # in a byte-identical private copy whose path deliberately contains spaces.
   linnet_test_call ruby tests/verify_runtime_mutations.rb
   linnet_test_call ruby tests/verify_compile_artifact_cache.rb
   linnet_test_call ruby tests/verify_swift_test_cache.rb
@@ -128,8 +128,8 @@ verify_inputs_predate() {
   build_inputs="$(
     {
       git ls-files --cached --others --exclude-standard -- \
-        Makefile Linnet.xcodeproj/project.pbxproj config/LinnetProduct.xcconfig \
-        sources resources data/linnet data/squirrel.yaml || exit "$?"
+        Makefile action-install.sh Linnet.xcodeproj config \
+        sources resources plugins scripts tools data/linnet data/squirrel.yaml || exit "$?"
       find data/plum data/opencc lib -type f -print || exit "$?"
     } | LC_ALL=C sort -u
   )" || exit "$?"

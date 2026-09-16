@@ -37,7 +37,7 @@ check(out == "closed\n" && status.success?, "early stdin close broke capture")
           end
   start = TestProcess.now
   error = rejects(TestProcess::DeadlineExceeded) {
-    TestProcess.capture(ruby, "-e", code, timeout: 0.25, term_grace: 0.1)
+    TestProcess.capture(ruby, "-e", code, timeout: 0.25, term_grace: 0.1, owner: false)
   }
   check(TestProcess.now - start < 1.5, "#{mode} deadline waited for natural process exit")
   pid = Integer(error.stdout.lines.first)

@@ -2,10 +2,21 @@ require "digest"
 require "fileutils"
 require "json"
 require "tmpdir"
+require "tempfile"
 
 # Common publication boundary. Every read/copy and write is under the same
 # per-command lock; each build has private staging files, never shared .nexts.
 module CompileArtifactCache
+  def self.measure(label)
+    started = Process.clock_gettime(Process::CLOCK_MONOTONIC) if ENV["LINNET_TEST_CACHE_TIMINGS"] == "1"
+    yield
+  ensure
+    if started
+      elapsed = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - started) * 1000
+      warn "Test cache timing #{label}: #{elapsed.round(1)}ms"
+    end
+  end
+
   def self.directory(path)
     FileUtils.mkdir_p(path, mode: 0700)
     stat = File.lstat(path)
@@ -17,6 +28,21 @@ module CompileArtifactCache
     stat.file? && stat.uid == Process.uid
   rescue Errno::ENOENT
     false
+  end
+
+  def self.publish(binary, output)
+    # Resolve parent aliases before comparison. Never pass a directory to cp,
+    # and replace one directory entry rather than writing through hardlinks.
+    destination = File.join(File.realpath(File.dirname(output)), File.basename(output))
+    exists = File.exist?(destination) || File.symlink?(destination)
+    raise "unsafe test output" if (exists && !file?(destination)) ||
+      destination == File.realpath(binary) || (exists && File.identical?(binary, destination))
+    Tempfile.create([".zime-test-output-", ""], File.dirname(destination)) do |temporary|
+      IO.copy_stream(binary, temporary)
+      temporary.flush
+      temporary.chmod(File.stat(binary).mode & 0777)
+      File.rename(temporary.path, destination)
+    end
   end
 
   def self.fetch(cache, identity, output, resolve:)
@@ -59,8 +85,7 @@ module CompileArtifactCache
           File.rename(File.join(stage, "manifest.json"), manifest)
         end
       end
-      raise "unsafe test output" if File.symlink?(output) || File.expand_path(output) == File.expand_path(binary)
-      FileUtils.cp(binary, output)
+      publish(binary, output)
       valid
     end
   end

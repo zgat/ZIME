@@ -12,18 +12,35 @@ require_relative "test_process"
 module CxxTestCache
   def self.compile(cache, output, command)
     raise ArgumentError, "missing compiler command" if command.empty? || command.include?("-o")
-    compiler, _, status = TestProcess.capture(command.first, "--version", timeout: 10)
+    # Dependency preprocessing cannot observe linker search results, framework
+    # contents or response-file options. Do not guess them: compile in a private
+    # stage and atomically publish only a successful result, without cache reuse.
+    if command.any? { |arg| arg.start_with?("-l", "-Wl,", "@") ||
+      %w[-framework -weak_framework -reexport_framework -Xlinker].include?(arg) }
+      Dir.mktmpdir("zime-cxx-uncached-") do |stage|
+        built = File.join(stage, "binary")
+        build(command, built)
+        CompileArtifactCache.publish(built, output)
+      end
+      puts "C++ test compile cache: BYPASS #{File.basename(output)} (indirect linker inputs)"
+      return false
+    end
+    compiler, _, status = TestProcess.capture(command.first, "--version", timeout: 10, owner: false)
     raise "compiler identity unavailable" unless status.success?
     environment = ENV.select { |key, _| key.match?(/\A(CPATH|CPLUS_INCLUDE_PATH|LIBRARY_PATH|SDKROOT|DEVELOPER_DIR|MACOSX_DEPLOYMENT_TARGET)\z/) }
     identity = ["cxx", Dir.pwd, compiler, Digest::SHA256.file(__FILE__).hexdigest,
       Digest::SHA256.file(File.join(__dir__, "test_process.rb")).hexdigest, environment.sort, command]
     hit = CompileArtifactCache.fetch(cache, identity, output, resolve: ->(slot) { inputs(command, slot) }) do |built|
-      out, err, status = TestProcess.capture(*command, "-o", built, timeout: 180)
-      warn(out + err) unless status.success?
-      raise "C++ compilation failed" unless status.success?
+      build(command, built)
     end
     puts "C++ test compile cache: #{hit ? 'HIT' : 'MISS'} #{File.basename(output)}"
     hit
+  end
+
+  def self.build(command, output)
+    out, err, status = TestProcess.capture(*command, "-o", output, timeout: 180, owner: false)
+    warn(out + err) unless status.success?
+    raise "C++ compilation failed" unless status.success?
   end
 
   def self.inputs(command, slot)
@@ -40,7 +57,7 @@ module CxxTestCache
         # One unit per invocation; -MD includes SDK/system headers. A stable
         # dependency target avoids injecting this scratch path into the digest.
         out, err, status = TestProcess.capture(*preprocessing, "-E", "-MD", "-MF", depfile,
-          "-MT", "probe", "-o", output, timeout: 60)
+          "-MT", "probe", "-o", output, timeout: 60, owner: false)
         warn(out + err) unless status.success?
         raise "C++ compilation failed" unless status.success?
         preprocessed << Digest::SHA256.file(output).hexdigest

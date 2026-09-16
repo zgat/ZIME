@@ -77,6 +77,35 @@ Dir.mktmpdir("zime-cache-test-") do |dir|
   check.call(false, shadow)
   system(output)
   abort "removed optional header ignored" unless $?.exitstatus == 4
+
+  # Indirect linker inputs must never reuse an untracked archive. Until the
+  # linker owns a dependency manifest these commands deliberately compile fresh.
+  library_source = File.join(dir, "value.cc")
+  object = File.join(dir, "value.o")
+  library = File.join(dir, "libvalue.a")
+  File.write(source, "extern int value(); int main() { return value(); }\n")
+  linked = [compiler.strip, "-isysroot", sdk.strip, source, "-L", dir, "-lvalue"]
+  [1, 2, 2].each do |value|
+    File.write(library_source, "int value() { return #{value}; }\n")
+    [[compiler.strip, "-isysroot", sdk.strip, "-c", library_source, "-o", object],
+      ["xcrun", "ar", "rcs", library, object]].each do |cmd|
+      out, err, status = TestProcess.capture(*cmd, timeout: 30)
+      raise "link fixture compilation failed: #{out}#{err}" unless status.success?
+    end
+    check.call(false, linked)
+    _, _, status = TestProcess.capture(output, timeout: 5)
+    raise "indirect linked library reused stale behavior" unless status.exitstatus == value
+  end
+  # A failed fallback cannot replace the preceding usable output.
+  previous = File.binread(output)
+  File.unlink(library)
+  begin
+    check.call(false, linked)
+    abort "missing indirect library accepted"
+  rescue RuntimeError => error
+    raise unless error.message == "C++ compilation failed"
+  end
+  raise "failed fallback replaced output" unless File.binread(output) == previous
   File.write(source, "#include \"a header.h\"\nint main() { return VALUE; }\n")
   File.unlink(header)
   begin

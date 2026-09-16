@@ -1,5 +1,9 @@
 #!/usr/bin/env ruby
 require_relative "zime_coverage_gate"
+require "tmpdir"
+require "fileutils"
+require "rbconfig"
+require_relative "test_process"
 policy = {"scope" => ["sources/a.swift"],
   "minimums" => {"sources/a.swift" => {"lines" => 90.0, "functions" => 80.0, "covered_functions" => 8}}}
 document = {"type" => "llvm.coverage.json.export", "data" => [{"files" => [{
@@ -32,4 +36,45 @@ mutations.each do |mutation|
   end
   abort "coverage negative case accepted"
 end
-puts "Coverage gate: PASS (#{mutations.size} regression/scope/corruption negative cases)"
+Dir.mktmpdir("zime-coverage-provenance-") do |root|
+  bin = File.join(root, "bin")
+  Dir.mkdir(bin)
+  git = File.join(bin, "git")
+  File.write(git, <<~RUBY)
+    #!/usr/bin/ruby
+    mode = ENV.fetch("COVERAGE_GIT_FIXTURE")
+    command = ARGV.fetch(2)
+    exit 42 if mode == command + "-failure"
+    if command == "rev-parse"
+      puts(mode == "invalid" ? "invalid" : (mode == "mismatch" ? "b" : "a") * 40)
+    elsif command == "status"
+      puts " M source.swift" if mode == "dirty"
+    else
+      abort "unexpected Git command"
+    end
+  RUBY
+  File.chmod(0700, git)
+  current_policy = JSON.parse(File.read(File.join(__dir__, "zime_coverage_policy.json")))
+  coverage = {"type" => "llvm.coverage.json.export", "data" => [{"files" => current_policy.fetch("scope").map { |name|
+    {"filename" => File.join(root, name), "summary" => %w[lines functions regions].to_h { |kind|
+      [kind, {"count" => 1000, "covered" => 1000}]
+    }}
+  }}]}
+  [["clean", "a" * 40, 0], ["dirty", "a" * 40, 0], ["rev-parse-failure", "a" * 40, 1],
+    ["status-failure", "a" * 40, 1], ["invalid", "a" * 40, 1], ["mismatch", "a" * 40, 1],
+    ["clean", "", 1], ["clean", "invalid", 1]].each_with_index do |(mode, revision, expected), index|
+    report = File.join(root, index.to_s)
+    Dir.mkdir(report)
+    File.write(File.join(report, "coverage.json"), JSON.generate(coverage))
+    out, err, status = TestProcess.capture({"PATH" => "#{bin}:#{ENV.fetch('PATH')}", "COVERAGE_GIT_FIXTURE" => mode},
+      RbConfig.ruby, File.join(__dir__, "zime_coverage_gate.rb"), root, report, revision, timeout: 15)
+    summary = File.join(report, "summary.json")
+    raise "coverage provenance failed open: #{mode}/#{revision}: #{out}#{err}" unless
+      status.exitstatus == expected && File.exist?(summary) == (expected == 0)
+    next unless expected == 0
+    result = JSON.parse(File.read(summary))
+    raise "coverage provenance incorrectly recorded" unless result["source_revision"] == revision &&
+      result["source_dirty"] == (mode == "dirty")
+  end
+end
+puts "Coverage gate: PASS (#{mutations.size} regression/scope/corruption negative cases; eight provenance cases)"

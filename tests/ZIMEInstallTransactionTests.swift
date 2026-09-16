@@ -11,10 +11,18 @@ struct ZIMEInstallTransactionTests {
       attributes: [.posixPermissions: 0o700])
     try Data(value.utf8).write(to: url.appendingPathComponent(name))
   }
-  static func main() throws {
+  static func main() {
+    do { try verify() } catch {
+      fputs(error.localizedDescription + "\n", stderr)
+      exit(1)
+    }
+  }
+
+  static func verify() throws {
     let root = URL(fileURLWithPath: "/private/tmp/zime-install-tests-" + UUID().uuidString, isDirectory: true)
     try fm.createDirectory(at: root, withIntermediateDirectories: false)
     defer { try? fm.removeItem(at: root) }
+    try verifyRestartBoundaries(root)
     for fresh in [false, true] {
       for fault in [nil, ZIMEInstallTransaction.Step.data, .runtime, .app, .verified] {
         let work = root.appendingPathComponent(UUID().uuidString)
@@ -102,6 +110,77 @@ struct ZIMEInstallTransactionTests {
     let unsafe = root.appendingPathComponent("symlink")
     try fm.createSymbolicLink(at: unsafe, withDestinationURL: root)
     do { try ZIMEInstallTransaction.directory(unsafe); fatalError("symlink accepted") } catch {}
-    print("ZIME install transaction: PASS (fresh/full/core, 8 rollback boundaries, 4 preflight refusals, App inode and learning preserved, symlink rejection)")
+    print("ZIME install transaction: PASS (fresh/full/core, 8 rollback boundaries, 4 preflight refusals, 14 restart boundaries, recovery refusal, App inode and learning preserved, symlink rejection)")
+  }
+
+  static func verifyRestartBoundaries(_ root: URL) throws {
+    let steps: [ZIMEInstallTransaction.Step] = [.data, .runtime, .app, .verified]
+    for fresh in [false, true] {
+      for forcedFailure in [false, true] {
+        for boundary in steps where forcedFailure || boundary != .verified {
+          let work = root.appendingPathComponent(UUID().uuidString)
+          let methods = work.appendingPathComponent("Input Methods")
+          let support = work.appendingPathComponent("Support")
+          try fm.createDirectory(at: methods, withIntermediateDirectories: true)
+          try fm.createDirectory(at: support, withIntermediateDirectories: true)
+          let txn = ZIMEInstallTransaction(inputMethods: methods, support: support)
+          let app = work.appendingPathComponent("source.app")
+          let data = work.appendingPathComponent("data")
+          try make(app.appendingPathComponent("Contents"), "payload", "new")
+          for name in ["Data", "Runtime"] {
+            try make(data.appendingPathComponent(name), "payload", "new")
+            if !fresh { try make(txn.dataRoot.appendingPathComponent(name), "payload", "old") }
+          }
+          if !fresh { try make(txn.installed.appendingPathComponent("Contents"), "payload", "old") }
+          try make(txn.dataRoot.appendingPathComponent("UserData"), "learning", "retained")
+          let userDigest = try LinnetDirectoryDelta.digest(txn.dataRoot.appendingPathComponent("UserData"))
+          var running = false
+          var published: [ZIMEInstallTransaction.Step] = []
+          var rejected = false
+          do {
+            _ = try txn.run(sourceApp: app, sourceData: data, validateApp: { _ in }, validateData: { _ in },
+              quiesce: {}, assertQuiescent: { try require(!running, "host restarted") }, after: { step in
+                published.append(step)
+                if step == boundary {
+                  running = true
+                  if forcedFailure { throw ZIMEInstallTransaction.Failure.invalid("injected publication failure") }
+                }
+              })
+          } catch {
+            rejected = error.localizedDescription.contains("暂不回滚正在使用的文件")
+          }
+          let index = steps.firstIndex(of: boundary)!
+          try require(rejected && published == Array(steps.prefix(index + 1)), "restart allowed later publication or unsafe rollback")
+          for (offset, name) in ["Data", "Runtime", "App"].enumerated() {
+            let payload = name == "App" ? txn.installed.appendingPathComponent("Contents/payload")
+              : txn.dataRoot.appendingPathComponent(name + "/payload")
+            if fresh && offset > index {
+              try require(!fm.fileExists(atPath: payload.path), "restart created an unpublished component")
+            } else {
+              try require(try String(contentsOf: payload, encoding: .utf8) == (offset <= index ? "new" : "old"),
+                "restart changed a published or untouched component")
+            }
+          }
+          let backups = try fm.contentsOfDirectory(at: methods, includingPropertiesForKeys: nil)
+            .filter { $0.lastPathComponent.hasPrefix(".zime-install-") }
+          try require(backups.count == 1 && fm.fileExists(atPath: backups[0].appendingPathComponent("in-progress").path),
+            "restart discarded recovery marker")
+          try require(try LinnetDirectoryDelta.digest(txn.dataRoot.appendingPathComponent("UserData")) == userDigest,
+            "restart changed learning")
+          let partialDigest = try LinnetDirectoryDelta.digest(txn.dataRoot)
+          var retried = false
+          var retryRejected = false
+          do {
+            _ = try txn.run(sourceApp: app, sourceData: data, validateApp: { _ in }, validateData: { _ in },
+              quiesce: { retried = true }, assertQuiescent: {})
+          } catch {
+            try require(error.localizedDescription.contains("发现中断的安装"), "wrong recovery refusal")
+            retryRejected = true
+          }
+          try require(!retried && retryRejected && (try LinnetDirectoryDelta.digest(txn.dataRoot)) == partialDigest,
+            "incomplete transaction allowed another install")
+        }
+      }
+    }
   }
 }

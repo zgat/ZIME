@@ -14,6 +14,11 @@ module SwiftTestDependencies
     args.each_with_index.map do |arg, index|
       if SEARCH_FLAGS.include?(arg)
         args.fetch(index + 1)
+      elsif arg == "-import-objc-header"
+        # Observe relative negative lookups beside the bridge, without hashing
+        # unrelated sibling source/document contents. Actual headers are hashed
+        # from the compiler's bridgingHeader.sourceFiles dependency list.
+        File.dirname(args.fetch(index + 1))
       elsif arg.match?(/\A-[IF].+/) && !arg.start_with?("-Fsystem")
         arg[2..-1]
       end
@@ -59,7 +64,7 @@ module SwiftTestDependencies
       # Scan all source files as one module. Otherwise swiftc creates one
       # primary-file job per source and rejects a single JSON -o destination.
       out, err, status = TestProcess.capture(*command, *name, "-disable-bridging-pch",
-        "-scan-dependencies", "-whole-module-optimization", "-o", output, timeout: 60)
+        "-scan-dependencies", "-whole-module-optimization", "-o", output, timeout: 60, owner: false)
       raise "Swift compilation failed during dependency scan:\n#{out}#{err}" unless status.success?
       graph = JSON.parse(File.read(output))
       modules = graph.fetch("modules").select { |item| item.key?("details") }
@@ -81,18 +86,19 @@ module SwiftTestDependencies
           end
         end
       end
-      out, err, status = TestProcess.capture(*command, "-print-target-info", timeout: 15)
+      out, err, status = TestProcess.capture(*command, "-print-target-info", timeout: 15, owner: false)
       raise "Swift target info failed:\n#{out}#{err}" unless status.success?
       paths = JSON.parse(out).fetch("paths")
       sdk = paths["sdkPath"]
       unless sdk
-        sdk, err, status = TestProcess.capture("xcrun", "--show-sdk-path", timeout: 10)
+        sdk, err, status = TestProcess.capture("xcrun", "--show-sdk-path", timeout: 10, owner: false)
         raise "Swift default SDK unavailable: #{err}" unless status.success?
         sdk = sdk.strip
       end
       roots = [*search, sdk, paths.fetch("runtimeResourcePath"), *paths.fetch("runtimeLibraryImportPaths"),
         *paths.fetch("runtimeLibraryPaths")]
-      [fingerprints(files), inventory(roots)]
+      [CompileArtifactCache.measure("Swift dependency fingerprints") { fingerprints(files) },
+        CompileArtifactCache.measure("Swift search inventory") { inventory(roots) }]
     end
   end
 end

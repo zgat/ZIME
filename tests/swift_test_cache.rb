@@ -33,9 +33,6 @@ module SwiftTestCache
         directories << arguments.fetch(i + 1)
       elsif arg.match?(/\A-[ILF].+/)
         directories << arg[2..-1]
-      elsif arg == "-import-objc-header"
-        # Relative quoted imports can live beside the bridging header.
-        directories << File.dirname(arguments.fetch(i + 1))
       end
     end
     directories.uniq.each do |dir|
@@ -53,9 +50,12 @@ module SwiftTestCache
       *%w[swift_test_cache.rb swift_test_dependencies.rb test_process.rb].map { |file|
         Digest::SHA256.file(File.join(__dir__, file)).hexdigest
       }]
-    resolve = ->(slot) { [inputs(repo, command), SwiftTestDependencies.resolve(command, slot)] }
+    resolve = ->(slot) {
+      [CompileArtifactCache.measure("Swift explicit inputs") { inputs(repo, command) },
+        CompileArtifactCache.measure("Swift dependency resolution") { SwiftTestDependencies.resolve(command, slot) }]
+    }
     hit = CompileArtifactCache.fetch(cache, identity, output, resolve: resolve) do |built|
-      out, err, status = TestProcess.capture(*command, "-o", built, timeout: 180)
+      out, err, status = TestProcess.capture(*command, "-o", built, timeout: 180, owner: false)
       raise "Swift compilation failed:\n#{out}#{err}" unless status.success?
     end
     puts "Swift test compile cache: #{hit ? 'HIT' : 'MISS'} #{File.basename(output)}"

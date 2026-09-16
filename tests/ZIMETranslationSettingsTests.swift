@@ -3,6 +3,7 @@ import Foundation
 @main
 struct ZIMETranslationSettingsTests {
   @MainActor static func main() async throws {
+    try verifyCredentialRecovery()
     // Migrate the actual old JSON shape without silently losing a provider,
     // endpoint or credential revision when the optional display key is added.
     let legacy = Data(#"{"enabled":true,"provider":"compatible","baseURL":"https://example.com/v1","model":"fixture-model","deeplFree":false,"region":"ap-shanghai","revision":"saved-key-revision"}"#.utf8)
@@ -77,5 +78,46 @@ struct ZIMETranslationSettingsTests {
     precondition(ZIMETranslationConfiguration() == ZIMETranslationConfiguration(),
       "default configuration invalidates caches on every keystroke")
     print("ZIME translation Settings: shared draft, save/discard, staged deletion, stale test and failed save: PASS")
+  }
+
+  @MainActor static func verifyCredentialRecovery() throws {
+    for operation in ["replace", "delete", "new"] {
+      for recoveryFails in [false, true] {
+        var original = ZIMETranslationConfiguration()
+        original.provider = .deepl
+        original.enabled = true
+        let account = original.credentialAccount
+        let prior = ZIMETranslationCredentials(identifier: "old-fixture-key", secret: "")
+        var store: [String: ZIMETranslationCredentials] = operation == "new" ? [:] : [account: prior]
+        var configurationWrites = 0
+        var recovering = false
+        var failRecovery = recoveryFails
+        let model = ZIMETranslationSettingsModel(configuration: original,
+          saveConfiguration: { _ in
+            configurationWrites += 1
+            recovering = true
+            throw ZIMETranslationError.configuration
+          }, loadCredentials: { store[$0] ?? .init() },
+          saveCredentials: { value, key in
+            if recovering && failRecovery { throw ZIMETranslationError.credentials }
+            store[key] = value
+          }, deleteCredentials: { key in
+            if recovering && failRecovery { throw ZIMETranslationError.credentials }
+            store.removeValue(forKey: key)
+          }, translate: { _, _ in preconditionFailure("recovery sent a network request") })
+        if operation == "delete" { model.stageCredentialDeletion() } else { model.identifier = "new-fixture-key" }
+        do { try model.apply(); preconditionFailure("injected configuration save succeeded") }
+        catch { precondition(model.pendingChanges && !model.status.isEmpty && configurationWrites == 1) }
+        if recoveryFails {
+          model.discard()
+          precondition(model.pendingChanges && model.status.contains("恢复"), "failed recovery was hidden by Discard")
+          failRecovery = false
+        }
+        model.discard()
+        precondition(!model.pendingChanges && model.configuration == original)
+        precondition(operation == "new" ? store.isEmpty : store[account]?.identifier == prior.identifier,
+          "failed save did not restore credential storage")
+      }
+    }
   }
 }

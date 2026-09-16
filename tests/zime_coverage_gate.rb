@@ -1,9 +1,20 @@
 require "json"
+require_relative "test_process"
 
 module ZIMECoverageGate
   class Invalid < StandardError; end
   def self.check(condition, message)
     raise Invalid, message unless condition
+  end
+
+  def self.provenance(root, expected_revision)
+    check(expected_revision.match?(/\A(?:[0-9a-f]{40}|[0-9a-f]{64})\z/), "invalid source revision")
+    revision, error, status = TestProcess.capture("git", "-C", root, "rev-parse", "--verify", "HEAD", timeout: 10)
+    check(status.success?, "coverage Git revision failed: #{error}")
+    check(revision.strip == expected_revision, "coverage source revision changed or is invalid")
+    changes, error, status = TestProcess.capture("git", "-C", root, "status", "--porcelain=v1", "-z", timeout: 10)
+    check(status.success?, "coverage Git status failed: #{error}")
+    {"source_revision" => expected_revision, "source_dirty" => !changes.empty?}
   end
 
   def self.validate(document, policy, root)
@@ -60,8 +71,7 @@ if $PROGRAM_NAME == __FILE__
   begin
     result = ZIMECoverageGate.validate(JSON.parse(File.read(File.join(dir, "coverage.json"))),
       JSON.parse(File.read(File.join(__dir__, "zime_coverage_policy.json"))), root)
-    result["source_revision"] = revision
-    result["source_dirty"] = !IO.popen(["git", "-C", root, "status", "--porcelain=v1"], &:read).empty?
+    result.merge!(ZIMECoverageGate.provenance(root, revision))
     File.write(File.join(dir, "summary.json"), JSON.pretty_generate(result) + "\n")
     puts JSON.pretty_generate(result)
   rescue ZIMECoverageGate::Invalid => error

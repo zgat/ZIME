@@ -55,7 +55,7 @@ module TestOwnerChainTests
             File.write(ENV.fetch("RUNNER_READY"), ENV.fetch("RUNNER_OWNER"))
             sleep 3
             puts "compiler escaped"
-          ', timeout: 5)
+          ', timeout: 5, owner: false)
           puts "compiler returned naturally"
         ensure
           puts "compiler released; scratch=#{File.directory?(ENV.fetch('LINNET_SWIFT_TEST_SCRATCH'))}"
