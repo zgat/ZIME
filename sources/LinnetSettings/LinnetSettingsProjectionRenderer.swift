@@ -224,7 +224,7 @@ private extension LinnetSettingsProjectionRenderer {
     // before every Rime start, so this projection is the installed-product
     // owner for policies that must override an older Active pack immediately.
     var entries = [
-      ("ascii_composer/switch_key/Caps_Lock", "commit_code"), ("ascii_composer/switch_key/Shift_L", "commit_code"), ("ascii_composer/switch_key/Shift_R", "commit_code"),
+      ("ascii_composer/switch_key/Caps_Lock", "commit_code"), ("ascii_composer/switch_key/Shift_L", "inline_ascii"), ("ascii_composer/switch_key/Shift_R", "inline_ascii"),
       ("linnet/recognizer_patterns/zz_code_token", quoted(codeTokenRecognizerPattern)),
       ("punctuator/half_shape/,", "{ commit: \"，\" }"),
       ("punctuator/half_shape/.", "{ commit: \"。\" }"),

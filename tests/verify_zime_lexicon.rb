@@ -81,12 +81,12 @@ Zlib::GzipReader.open('data/zime/cedict.txt.gz') do |gzip|
     index += 1
   end
 end
-abort 'shipped source row count differs' unless rows.length == index && index == 125_067
+abort 'shipped source row count differs' unless rows.length == index && index == 125_215
 metadata = query(path, 'SELECT key,value FROM metadata').to_h { |row| [row['key'], row['value']] }
 abort 'source snapshot hash differs' unless metadata['source_sha256'] == Digest::SHA256.file('data/zime/cedict.txt.gz').hexdigest
 abort 'source metadata count differs' unless metadata['source_entries'] == index.to_s
 abort 'database schema version differs' unless query(path, 'PRAGMA user_version').first['user_version'] == 3
 abort 'prepared projection revision differs' unless query(path, "SELECT value FROM metadata WHERE key='projection_revision'").first['value'] == '3'
-abort 'raw senses were dropped' unless query(path, 'SELECT SUM(json_array_length(senses)) AS n FROM source_entries').first['n'] == 199_675
+abort 'raw senses were dropped' unless query(path, 'SELECT SUM(json_array_length(senses)) AS n FROM source_entries').first['n'] == 199_725
 abort 'database integrity failed' unless query(path, 'PRAGMA integrity_check').first['integrity_check'] == 'ok'
 puts "ZIME source identity: PASS (#{index} complete source rows, script/readings preserved; deterministic fixture; overwrite rejected)"

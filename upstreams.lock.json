@@ -158,8 +158,8 @@
         "lua": {
           "repository": "https://github.com/hchunhui/librime-lua.git",
           "ref": "refs/heads/master",
-          "commit": "ad1e4a6c98abf634dd34242a747f9b1d5d069fbe",
-          "tree": "82c5d05c6c6b832f76295c74ba6a1c59a596bb63",
+          "commit": "6f30968058a3ca83c47949308ef0ddc51a11a264",
+          "tree": "31a782fb1e09958202d849375f866772299360cd",
           "source_dir": "lua",
           "declared_license": "BSD-3-Clause",
           "license_path": "LICENSE",
@@ -178,11 +178,11 @@
               },
               "script_translator": {
                 "path": "src/script_translator.cc",
-                "sha256": "1e1f97b19240a16aea8f1883cbe9fbe5cd72cdbaf5491fba90c5335d5e2c145c"
+                "sha256": "2245f1eb4bfcea852a4e8b4134f5cea970bac35c0c04d244952a8b14bf77fc46"
               },
               "table_translator": {
                 "path": "src/table_translator.cc",
-                "sha256": "f7bd7eed3674f810860e6b8247b76d774b9f2b4e81eb3a6dd8c8ac4451f23f0c"
+                "sha256": "0ed4952ca798ab58a8e7a6719a6ddb967a8d5f6eaf758c54d38aa99f5a4309f0"
               },
               "translator": {
                 "path": "src/translator.h",
@@ -232,7 +232,7 @@
       "repository": "https://github.com/rime/plum.git",
       "submodule_path": "plum",
       "ref": "refs/heads/master",
-      "commit": "4c28f11f451facef809b380502874a48ba964ddb"
+      "commit": "b1be1969f914cc005add4090631b855db00c2591"
     },
     "rime_octagram_data": {
       "repository": "https://github.com/lotem/rime-octagram-data.git",
@@ -268,10 +268,10 @@
       "repository": "https://github.com/amzxyz/rime-wanxiang.git",
       "submodule_path": "upstreams/rime-wanxiang",
       "submodule_name": "rime-wanxiang",
-      "tag": "v17.10.3",
-      "tag_ref": "refs/tags/v17.10.3",
-      "commit": "ad775fa2cc2bf94dd322e4a8cc8707b36765f511",
-      "tree": "052bc12dc494a8945b795ff2496d1e6657330a71",
+      "tag": "v18.1.1",
+      "tag_ref": "refs/tags/v18.1.1",
+      "commit": "26a9efeb18e604c091f4d3890d00bec723fe755f",
+      "tree": "3d44122695ba8bfdc435b3bfccb58bdeb74381f2",
       "declared_license": "CC-BY-4.0",
       "license_path": "LICENSE",
       "license_sha256": "9e5f1b3c610b9c2da5c313bf81d577a7d1acec686bdb0384edefa6df0f90cd94",
@@ -318,21 +318,21 @@
       "repository": "https://github.com/amzxyz/RIME-LMDG.git",
       "release": "LTS",
       "asset": "wanxiang-lts-zh-hans.gram",
-      "asset_id": 564514627,
-      "asset_api_url": "https://api.github.com/repos/amzxyz/RIME-LMDG/releases/assets/564514627",
+      "asset_id": 616996347,
+      "asset_api_url": "https://api.github.com/repos/amzxyz/RIME-LMDG/releases/assets/616996347",
       "asset_download_url": "https://github.com/amzxyz/RIME-LMDG/releases/download/LTS/wanxiang-lts-zh-hans.gram",
       "declared_license": "CC-BY-4.0",
       "license_path": "LICENSES/RIME-LMDG-CC-BY-4.0.txt",
       "license_sha256": "9ba9550ad48438d0836ddab3da480b3b69ffa0aac7b7878b5a0039e7ab429411",
-      "bytes": 419910700,
-      "sha256": "8f1b2d3ed2b2755fdd445f6ab103eff613052080b62a0c049f4b166043a16ac4",
+      "bytes": 398309420,
+      "sha256": "c330bca73a4102b097fd6b239e6d10097a41995864f13004dec06e8cec98f2cc",
       "mirror": {
         "repository": "https://github.com/zgat/ZIME.git",
-        "release": "v0.1.23",
+        "release": "v0.1.24",
         "asset": "wanxiang-lts-zh-hans.gram",
-        "asset_download_url": "https://github.com/zgat/ZIME/releases/download/v0.1.23/wanxiang-lts-zh-hans.gram",
-        "bytes": 419910700,
-        "sha256": "8f1b2d3ed2b2755fdd445f6ab103eff613052080b62a0c049f4b166043a16ac4"
+        "asset_download_url": "https://github.com/zgat/ZIME/releases/download/v0.1.24/wanxiang-lts-zh-hans.gram",
+        "bytes": 398309420,
+        "sha256": "c330bca73a4102b097fd6b239e6d10097a41995864f13004dec06e8cec98f2cc"
       }
     }
   }

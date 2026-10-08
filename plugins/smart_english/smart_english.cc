@@ -117,7 +117,8 @@ bool HasHostShortcutModifier(const KeyEvent& key) {
 }
 
 // `ascii_composer` immediately precedes this processor and remains the sole
-// owner of Shift tap/chord/hold classification and raw-code commit policy.
+// owner of Shift tap/chord/hold classification. Its inline policy preserves
+// the input until this owner rebuilds it in the destination schema.
 // A true ascii_mode on Shift release therefore means librime accepted one
 // isolated Shift tap. Linnet maps only that accepted transition to its Smart
 // English schema; Caps Lock remains the explicit raw-ASCII path.
@@ -152,6 +153,29 @@ class ModeSwitchProcessor : public Processor {
       if (return_schema.empty()) return kNoop;
     }
 
+    const string input = context->input();
+    const size_t caret = context->caret_pos();
+    Composition confirmed;
+    confirmed.Reset(input);
+    for (const auto& segment : context->composition()) {
+      if (segment.status < Segment::kSelected || segment.end > caret) break;
+      const auto candidate = segment.GetSelectedCandidate();
+      if (!candidate) break;
+      // Keep explicitly selected text, but never carry an old translator's
+      // Menu/Filter/Language pointers across ApplySchema. Frozen prefixes are
+      // literal: they must not train the destination mode's dictionary.
+      Segment retained(segment.start, segment.end);
+      retained.status = segment.status;
+      retained.tags.insert("raw");
+      retained.commit_text = segment.commit_text;
+      retained.menu = New<Menu>();
+      retained.menu->AddTranslation(New<UniqueTranslation>(New<SimpleCandidate>(
+          "raw", segment.start, segment.end, candidate->text())));
+      retained.menu->Prepare(1);
+      confirmed.push_back(std::move(retained));
+    }
+    confirmed.Forward();
+
     // Do not expose ascii_composer's transient classification state after the
     // schema change. Each context owns its paired Chinese return identity;
     // process-global schema history must not couple simultaneous sessions.
@@ -163,6 +187,13 @@ class ModeSwitchProcessor : public Processor {
     } else {
       context->set_property(kModeReturnSchemaProperty, current_schema);
       engine_->ApplySchema(new Schema(kSmartEnglishSchema));
+    }
+    // ApplySchema destroys this processor. Only stack-owned values and the
+    // engine-owned Context may be used below; no access to members of `this`.
+    if (!input.empty()) {
+      context->set_composition(std::move(confirmed));
+      context->set_input(input);
+      context->set_caret_pos(caret);
     }
     return kAccepted;
   }
@@ -479,10 +510,8 @@ class LinnetInteractionProcessor : public Processor {
          key.keycode() == XK_Up || key.keycode() == XK_Down)) {
       return ProcessPredictionArrow(context, key);
     }
-    // ascii_composer precedes this owner and, on an isolated Shift release,
-    // confirms any remaining composition before the schema switch runs. Drop
-    // the passive projection on Shift down so neither a tap nor an uppercase
-    // chord can implicitly commit its first suggestion.
+    // Drop passive predictions on Shift down: changing mode or starting an
+    // uppercase chord must neither preserve nor commit a stale suggestion.
     if (key.keycode() == XK_Shift_L || key.keycode() == XK_Shift_R) {
       RemovePredictionProjection(context);
       return kNoop;

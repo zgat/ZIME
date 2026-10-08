@@ -1,7 +1,7 @@
 ZIME bilingual dictionary attribution
 
 zime-cedict.sqlite3 is derived from CC-CEDICT, published by MDBG and
-maintained by the CC-CEDICT community. Source release: 2026-09-15T08:05:39Z.
+maintained by the CC-CEDICT community. Source release: 2026-10-07T03:26:22Z.
 Original source: https://www.mdbg.net/chinese/dictionary?page=cc-cedict
 License: Creative Commons Attribution-ShareAlike 4.0 International
 https://creativecommons.org/licenses/by-sa/4.0/
@@ -12,8 +12,8 @@ ranked common readings before proper names; generated a bounded reverse English 
 The runtime additionally prefers explicit regional usage labels and projects
 the mixed Mainland/Taiwan note for 你/妳 into region-specific definitions.
 These projected definition strings also remain under CC BY-SA 4.0.
-Index revision 3 retains 125,067 complete source entries / 199,675 source senses
-and generates annotations for 198,106 spellings using the shared build/runtime
+Index revision 3 retains 125,215 complete source entries / 199,725 source senses
+and generates annotations for 198,335 spellings using the shared build/runtime
 parser in sources/ZIMELocalLexicon.swift. Meanings, annotations and explicit
 references are classified separately; alias/abbreviation targets are resolved
 with spelling/reading identity and cycle/depth guards. Ordinary English beginning

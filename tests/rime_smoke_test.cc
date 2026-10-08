@@ -3414,7 +3414,8 @@ void ExpectCapsLockCommitsRawCode(RimeApi_stdbool* api,
 }
 
 RimeSessionId CreateExplicitChinesePrefixFixture(RimeApi_stdbool* api,
-                                                 const std::string& reason) {
+                                                 const std::string& reason,
+                                                 bool translate = false) {
   constexpr char kSchema[] = "linnet_zh";
   constexpr char kInput[] = "xwvbii";
   constexpr char kRawPrefix[] = "xwvb";
@@ -3428,9 +3429,14 @@ RimeSessionId CreateExplicitChinesePrefixFixture(RimeApi_stdbool* api,
                candidate.start == 0 &&
                candidate.end == std::strlen(kRawPrefix);
       });
-  if (prefix == origins.end() ||
-      !api->select_candidate(
-          session, static_cast<size_t>(prefix - origins.begin()))) {
+  if (prefix == origins.end()) {
+    Fail(reason + " has no Chinese prefix candidate");
+  }
+  const auto index = static_cast<size_t>(prefix - origins.begin());
+  const bool selected = translate
+      ? api->select_candidate_with_text(session, index, "next week")
+      : api->select_candidate(session, index);
+  if (!selected) {
     Fail(reason + " could not explicitly confirm its Chinese prefix");
   }
   const auto live = rime::Service::instance().GetSession(session);
@@ -3529,7 +3535,23 @@ void TapShift(RimeApi_stdbool* api, RimeSessionId session, int shift_key) {
   api->process_key(session, shift_key, kReleaseMask);
 }
 
-void ExpectShiftCommitsRawCode(RimeApi_stdbool* api,
+void ExpectShiftPending(RimeApi_stdbool* api,
+                        RimeSessionId session,
+                        const std::string& input,
+                        size_t caret,
+                        const std::string& reason) {
+  ExpectNoCommit(api, session, reason);
+  const auto native = rime::Service::instance().GetSession(session);
+  const char* remaining = api->get_input(session);
+  if (!native || !native->context() || !remaining || remaining != input ||
+      native->context()->caret_pos() != caret ||
+      !native->context()->IsComposing() || Candidates(api, session).empty() ||
+      api->get_option(session, "ascii_mode")) {
+    Fail(reason + " lost input/caret/candidates or entered raw ASCII");
+  }
+}
+
+void ExpectShiftPreservesRawCode(RimeApi_stdbool* api,
                                const char* schema_id,
                                const ShiftKeyCase& shift,
                                const char* input) {
@@ -3548,44 +3570,50 @@ void ExpectShiftCommitsRawCode(RimeApi_stdbool* api,
   if (api->get_option(session, "ascii_mode")) {
     Fail(reason + " entered raw ASCII instead of Smart English");
   }
-  const std::string actual = TakeCommit(api, session, reason);
-  if (actual != input) {
-    Fail(reason + " selected or changed pending input: got '" + actual + "'");
+  ExpectShiftPending(api, session, input, std::strlen(input), reason);
+  TapShift(api, session, shift.keycode);
+  ExpectCurrentSchema(api, session, schema_id, reason + " round trip");
+  ExpectShiftPending(api, session, input, std::strlen(input), reason + " round trip");
+  api->process_key(session, XK_Return, 0);
+  if (TakeCommit(api, session, reason + " Return") != input) {
+    Fail(reason + " changed the later explicit raw commit");
   }
-  ExpectNoCommit(api, session, "duplicate " + reason);
-  const char* remaining = api->get_input(session);
-  const auto after = rime::Service::instance().GetSession(session);
-  if ((remaining && *remaining) || !Candidates(api, session).empty() ||
-      !after || !after->context() || !after->context()->composition().empty()) {
-    Fail(reason + " retained hidden input or candidates after the commit");
-  }
+  ExpectNoCommit(api, session, reason + " duplicate Return");
   api->destroy_session(session);
 }
 
 void ExpectShiftPreservesExplicitPrefix(RimeApi_stdbool* api) {
-  constexpr char kExpected[] = "下周ii";
   for (const auto& shift : kShiftKeyCases) {
-    const std::string reason =
-        std::string(shift.name) + " partial-confirmed Chinese composition";
-    const RimeSessionId session =
-        CreateExplicitChinesePrefixFixture(api, reason);
-    TapShift(api, session, shift.keycode);
-    ExpectCurrentSchema(api, session, "linnet_en", reason);
-    if (api->get_option(session, "ascii_mode")) {
-      Fail(reason + " entered raw ASCII instead of Smart English");
+    for (const bool translate : {false, true}) {
+      const std::string expected = translate ? "next weekii" : "下周ii";
+      const std::string reason =
+          std::string(shift.name) +
+          (translate ? " translated prefix" : " source prefix");
+      const RimeSessionId session =
+          CreateExplicitChinesePrefixFixture(api, reason, translate);
+      TapShift(api, session, shift.keycode);
+      ExpectCurrentSchema(api, session, "linnet_en", reason);
+      if (api->get_option(session, "ascii_mode")) {
+        Fail(reason + " entered raw ASCII instead of Smart English");
+      }
+      ExpectNoCommit(api, session, reason);
+      TapShift(api, session, shift.keycode);
+      ExpectCurrentSchema(api, session, "linnet_zh", reason + " round trip");
+      ExpectNoCommit(api, session, reason + " round trip");
+      api->process_key(session, XK_Return, 0);
+      if (TakeCommit(api, session, reason) != expected) {
+        Fail(reason + " did not preserve the selected prefix and raw tail");
+      }
+      ExpectNoCommit(api, session, "duplicate " + reason);
+      const char* remaining = api->get_input(session);
+      const auto after = rime::Service::instance().GetSession(session);
+      if ((remaining && *remaining) || !Candidates(api, session).empty() ||
+          !after || !after->context() ||
+          !after->context()->composition().empty()) {
+        Fail(reason + " retained hidden input or candidates after the commit");
+      }
+      api->destroy_session(session);
     }
-    if (TakeCommit(api, session, reason) != kExpected) {
-      Fail(reason + " did not preserve the selected prefix and raw tail");
-    }
-    ExpectNoCommit(api, session, "duplicate " + reason);
-    const char* remaining = api->get_input(session);
-    const auto after = rime::Service::instance().GetSession(session);
-    if ((remaining && *remaining) || !Candidates(api, session).empty() ||
-        !after || !after->context() ||
-        !after->context()->composition().empty()) {
-      Fail(reason + " retained hidden input or candidates after the commit");
-    }
-    api->destroy_session(session);
   }
 }
 
@@ -3669,7 +3697,64 @@ void ExpectOverlappingShiftRepressDoesNotToggle(RimeApi_stdbool* api) {
   api->destroy_session(session);
 }
 
+void ExpectShiftCompositionEditing(RimeApi_stdbool* api) {
+  for (const auto& shift : kShiftKeyCases) {
+    for (const char* schema : {"linnet_zh_pinyin", "linnet_en"}) {
+      const std::string target = std::string(schema) == "linnet_en"
+          ? "linnet_zh_pinyin" : "linnet_en";
+      const auto session = CreateSchemaSession(api, schema);
+      Enter(api, session, "nihao");
+      const auto native = rime::Service::instance().GetSession(session);
+      native->context()->set_caret_pos(2);
+      for (int cycle = 0; cycle < 8; ++cycle) {
+        TapShift(api, session, shift.keycode);
+        ExpectCurrentSchema(api, session, cycle % 2 == 0 ? target : schema,
+                            "edited-caret Shift round trip");
+        ExpectShiftPending(api, session, "nihao", 2, "edited-caret Shift");
+      }
+      api->process_key(session, XK_BackSpace, 0);
+      ExpectShiftPending(api, session, "nhao", 1, "edit after Shift");
+      api->process_key(session, 'i', 0);
+      ExpectShiftPending(api, session, "nihao", 2, "continue after Shift");
+      api->process_key(session, XK_Return, 0);
+      if (TakeCommit(api, session) != "nihao") Fail("Shift lost the tail past the caret");
+      ExpectNoCommit(api, session, "duplicate edited-caret commit");
+      api->destroy_session(session);
+    }
+
+    // 0 is never a selection key, including in the nine-candidate matrix.
+    for (const char* input : {"hElLo", "x0"}) {
+      const auto session = CreateSchemaSession(api, "linnet_zh_pinyin");
+      Enter(api, session, input);
+      ExpectNoCommit(api, session, "mixed/case fixture before Shift");
+      TapShift(api, session, shift.keycode);
+      ExpectShiftPending(api, session, input, std::strlen(input), "mixed/case Shift");
+      api->process_key(session, XK_Escape, 0);
+      ExpectNoCommit(api, session, "cancel after Shift");
+      if (api->get_input(session) && *api->get_input(session)) Fail("cancel retained Shift input");
+      api->destroy_session(session);
+    }
+
+    // A real selection still commits, but the tap itself must never learn or
+    // accept the highlighted candidate. Verify both numeric and Space paths.
+    for (const int selection : {static_cast<int>('1'), static_cast<int>(XK_space)}) {
+      const auto session = CreateSchemaSession(api, "linnet_en");
+      Enter(api, session, "nihao");
+      TapShift(api, session, shift.keycode);
+      ExpectShiftPending(api, session, "nihao", 5, "Chinese selection after Shift");
+      if (BaseText(Candidates(api, session).front().text) != "你好")
+        Fail("Shift did not rebuild Chinese candidates");
+      api->process_key(session, selection, 0);
+      if (TakeCommit(api, session) != "你好") Fail("selection after Shift did not commit Chinese");
+      ExpectNoCommit(api, session, "duplicate selection after Shift");
+      api->destroy_session(session);
+    }
+  }
+  std::cout << "ZIME composing Shift: left/right, both modes, caret, round trips, editing, case/digits, cancellation and explicit selection: PASS\n";
+}
+
 void ExpectDirectShiftSmartEnglish(RimeApi_stdbool* api) {
+  ExpectShiftCompositionEditing(api);
   ExpectOverlappingShiftRepressDoesNotToggle(api);
   ExpectShiftPreservesExplicitPrefix(api);
   for (const auto& chinese_schema : RuntimeChineseSchemaIDs(api)) {
@@ -3696,7 +3781,7 @@ void ExpectDirectShiftSmartEnglish(RimeApi_stdbool* api) {
     api->destroy_session(session);
 
     for (const auto& shift : kShiftKeyCases) {
-      ExpectShiftCommitsRawCode(api, chinese_schema.c_str(), shift, "a");
+      ExpectShiftPreservesRawCode(api, chinese_schema.c_str(), shift, "a");
     }
   }
 
@@ -3746,18 +3831,7 @@ void ExpectDirectShiftSmartEnglish(RimeApi_stdbool* api) {
     ExpectCurrentSchema(api, composing, "linnet_en",
                         std::string(shift.name) +
                             " with an active full-pinyin composition");
-    if (TakeCommit(api, composing) != "shuru") {
-      Fail(std::string(shift.name) +
-           " did not preserve uncommitted full-pinyin letters");
-    }
-    const char* remaining_composition = api->get_input(composing);
-    ExpectNoCommit(api, composing,
-                   std::string(shift.name) +
-                       " duplicate full-pinyin composition commit");
-    if (remaining_composition && remaining_composition[0] != '\0') {
-      Fail(std::string(shift.name) +
-           " duplicated or retained the full-pinyin composition");
-    }
+    ExpectShiftPending(api, composing, "shuru", 5, shift.name);
     api->destroy_session(composing);
   }
 
@@ -3770,11 +3844,7 @@ void ExpectDirectShiftSmartEnglish(RimeApi_stdbool* api) {
   TapShift(api, english_composing, XK_Shift_L);
   ExpectCurrentSchema(api, english_composing, "linnet_zh_pinyin",
                       "direct Shift with pending Smart English letters");
-  if (TakeCommit(api, english_composing) != "worl") {
-    Fail("direct Shift accepted or duplicated a Smart English completion");
-  }
-  ExpectNoCommit(api, english_composing,
-                 "duplicate Smart English Shift commit");
+  ExpectShiftPending(api, english_composing, "worl", 4, "English to Chinese");
   api->destroy_session(english_composing);
 
   const RimeSessionId raw_composing =
@@ -3789,12 +3859,7 @@ void ExpectDirectShiftSmartEnglish(RimeApi_stdbool* api) {
   TapShift(api, raw_composing, XK_Shift_L);
   ExpectCurrentSchema(api, raw_composing, "linnet_en",
                       "direct Shift with raw letters");
-  const std::string raw_shift_commit = TakeCommit(api, raw_composing);
-  if (raw_shift_commit != "uuuuuuuu") {
-    Fail("direct Shift changed or discarded raw letters without a Chinese "
-         "candidate: expected 'uuuuuuuu', got '" +
-         raw_shift_commit + "'");
-  }
+  ExpectShiftPending(api, raw_composing, "uuuuuuuu", 8, "raw fallback");
   api->destroy_session(raw_composing);
 
   // A partial Chinese match plus an untranslated suffix must stay literal too;
@@ -3825,9 +3890,8 @@ void ExpectDirectShiftSmartEnglish(RimeApi_stdbool* api) {
   TapShift(api, partial_composing, XK_Shift_L);
   ExpectCurrentSchema(api, partial_composing, "linnet_en",
                       "direct Shift with a partial Chinese match");
-  if (TakeCommit(api, partial_composing) != kPartialInput) {
-    Fail("direct Shift translated part of a pending letter composition");
-  }
+  ExpectShiftPending(api, partial_composing, kPartialInput,
+                     std::strlen(kPartialInput), "unselected partial preview");
   api->destroy_session(partial_composing);
 
   const RimeSessionId chord = CreateSchemaSession(api, "linnet_zh");
@@ -6748,8 +6812,8 @@ void WriteFastReloadProjection(const std::filesystem::path& user_directory,
   std::ostringstream defaults;
   defaults << "patch:\n"
            << "  \"ascii_composer/switch_key/Caps_Lock\": commit_code\n"
-           << "  \"ascii_composer/switch_key/Shift_L\": commit_code\n"
-           << "  \"ascii_composer/switch_key/Shift_R\": commit_code\n"
+           << "  \"ascii_composer/switch_key/Shift_L\": inline_ascii\n"
+           << "  \"ascii_composer/switch_key/Shift_R\": inline_ascii\n"
            << "  \"linnet/recognizer_patterns/zz_code_token\": \"^(?:(?:www[.]|https?:|ftp[.:]|mailto:|file:).*|(?:[a-z]+[A-Z]|[A-Z][a-z]+[A-Z]|[A-Z]{2,}[a-z]|v[0-9]+|[A-Z][A-Za-z]*[0-9]|[A-Z]{2,}[._/@:+-])[0-9A-Za-z._/@:+?&=%#~-]*)$\"\n"
            << "  \"menu/page_size\": 5\n";
   if (original_index + 1 >= schema_ids.size() ||

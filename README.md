@@ -3,7 +3,7 @@
 面向 Apple Silicon、macOS 13 及以上版本的本地优先双语输入法。
 输入中文看英文释义，输入英文看中文释义；译文默认只在候选框展示，主动切换并选中后才会上屏。
 
-[下载 0.1.23 开发预览](https://github.com/zgat/ZIME/releases/tag/v0.1.23) ·
+[下载 0.1.24 开发预览](https://github.com/zgat/ZIME/releases/tag/v0.1.24) ·
 [安装说明](docs/ZIME-INSTALL.md) · [更新日志](CHANGELOG.md)
 
 ![中英文候选与逐行释义](resources/readme/bilingual-features.png)
@@ -23,7 +23,7 @@
 | `Enter` | 提交原始输入，不选择高亮候选 |
 | 空格 | 上屏当前高亮候选，原文／译文均支持 |
 | `Option-Tab` | 智能补全 |
-| 轻按 `Shift` | 切换中文／智能英文 |
+| 轻按 `Shift` | 切换中文／智能英文，保留正在输入的内容，不上屏 |
 | `Caps Lock` | 切换原始 ASCII 输入 |
 | `-` / `=` / `+` | 上一页／下一页，到首尾页停留 |
 
@@ -77,6 +77,7 @@ GitHub 自动生成的 Source code ZIP/TAR 是源码，不是安装包。
 
 ## 更新公告
 
+- **0.1.24**：输入途中轻按 Shift 切换中英文，不再直接上屏；更新万象 Base、LTS 模型和本地释义。[详情](docs/releases/ZIME-0.1.24.md)
 - **0.1.23**：更新万象 Base 词库、LTS 模型和 CC-CEDICT 本地释义；获取全部新数据请使用完整包，个人学习记录保留。[详情](docs/releases/ZIME-0.1.23.md)
 - **0.1.22**：精简设置与退役功能，加固翻译设置失败恢复，完善测试、缓存和发布校验；词库与输入规则不变。[详情](docs/releases/ZIME-0.1.22.md)
 - **0.1.21**：空格上屏高亮候选，支持原文与译文；Enter 仍提交原始输入。[详情](docs/releases/ZIME-0.1.21.md)

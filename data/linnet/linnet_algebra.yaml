@@ -6,53 +6,30 @@
 # selector markers and broad single-character double-pinyin derivations, keeps
 # Natural Code's reviewed `a` syllable shortcut, uses a shared compatibility/
 # typo suffix, and narrows full-pinyin typo transforms while adding j/q/x/y
-# v/u compatibility.
+# v/u compatibility and the existing ng/eng alias.
 # Each section is a complete, self-contained algebra pipeline.
 # Sections: /full_pinyin, /ziranma (DEFAULT), /flypy, /sogou, /mspy, /abc, /ziguang, /jiajia
 # DO NOT EDIT — owned by Linnet.
 
+
 full_pinyin:
     - xform/^([a-z]+)$/$1④/
-    - xform/ā([a-z]*)$/a$1①/
-    - xform/á([a-z]*)$/a$1②/
-    - xform/ǎ([a-z]*)$/a$1③/
-    - xform/à([a-z]*)$/a$1④/
-    - xform/ō([a-z]*)$/o$1①/
-    - xform/ó([a-z]*)$/o$1②/
-    - xform/ǒ([a-z]*)$/o$1③/
-    - xform/ò([a-z]*)$/o$1④/
-    - xform/ē([a-z]*)$/e$1①/
-    - xform/é([a-z]*)$/e$1②/
-    - xform/ě([a-z]*)$/e$1③/
-    - xform/è([a-z]*)$/e$1④/
-    - xform/ī([a-z]*)$/i$1①/
-    - xform/í([a-z]*)$/i$1②/
-    - xform/ǐ([a-z]*)$/i$1③/
-    - xform/ì([a-z]*)$/i$1④/
-    - xform/ū([a-z]*)$/u$1①/
-    - xform/ú([a-z]*)$/u$1②/
-    - xform/ǔ([a-z]*)$/u$1③/
-    - xform/ù([a-z]*)$/u$1④/
-    - xform/ǖ([a-z]*)$/v$1①/
-    - xform/ǘ([a-z]*)$/v$1②/
-    - xform/ǚ([a-z]*)$/v$1③/
-    - xform/ǜ([a-z]*)$/v$1④/
-    - xform/ü/v/
-    - xform/ń([a-z]*)$/n$1②/
-    - xform/ň([a-z]*)$/n$1③/
-    - xform/ǹ([a-z]*)$/n$1④/
+    - xform/(ā|ē|ī|ō|ū|ǖ)([a-z]*)$/$1$2①/
+    - xform/(á|é|í|ó|ú|ǘ|ń|ḿ)([a-z]*)$/$1$2②/
+    - xform/(ǎ|ě|ǐ|ǒ|ǔ|ǚ|ň)([a-z]*)$/$1$2③/
+    - xform/(à|è|ì|ò|ù|ǜ|ǹ)([a-z]*)$/$1$2④/
     - xform/m̄([a-z]*)$/m$1①/
-    - xform/ḿ([a-z]*)$/m$1②/
     - xform/m̀([a-z]*)$/m$1④/
+    - xlit/āáǎàēéěèīíǐìōóǒòūúǔùüǖǘǚǜńňǹḿ/aaaaeeeeiiiioooouuuuvvvvvnnnm/
     - xlit/①②③④/7890
     - derive/^ng(\d)$/eng$1/
     - xform/^n(\d)/en$1/
     - xform/^m(\d)/me$1/
+    - abbrev/^([zcs]h).+$/$1/
+    - abbrev/^([zcs]h).+(\d)$/$1$2/
     - derive/([nl])ve(\d)/$1ue$2/
     - derive/^([jqxy])v(\d)$/$1u$2/
     - derive/^([jqxy])u(\d)$/$1v$2/
-    - abbrev/^([zcs]h).+$/$1/
-    - abbrev/^([zcs]h).+(\d)$/$1$2/
     - abbrev/^([qwrtypsdfghjklzxcbnm]).+$/$1/
     - abbrev/^([qwrtypsdfghjklzxcbnm]).+(\d)$/$1$2/
     - abbrev/^([aoe])([ioun])(\d)$/$1/
@@ -78,41 +55,18 @@ full_pinyin:
 
 ziranma:
     - xform/^([a-z]+)$/$1④/
-    - xform/ā([a-z]*)$/a$1①/
-    - xform/á([a-z]*)$/a$1②/
-    - xform/ǎ([a-z]*)$/a$1③/
-    - xform/à([a-z]*)$/a$1④/
-    - xform/ō([a-z]*)$/o$1①/
-    - xform/ó([a-z]*)$/o$1②/
-    - xform/ǒ([a-z]*)$/o$1③/
-    - xform/ò([a-z]*)$/o$1④/
-    - xform/ē([a-z]*)$/e$1①/
-    - xform/é([a-z]*)$/e$1②/
-    - xform/ě([a-z]*)$/e$1③/
-    - xform/è([a-z]*)$/e$1④/
-    - xform/ī([a-z]*)$/i$1①/
-    - xform/í([a-z]*)$/i$1②/
-    - xform/ǐ([a-z]*)$/i$1③/
-    - xform/ì([a-z]*)$/i$1④/
-    - xform/ū([a-z]*)$/u$1①/
-    - xform/ú([a-z]*)$/u$1②/
-    - xform/ǔ([a-z]*)$/u$1③/
-    - xform/ù([a-z]*)$/u$1④/
-    - xform/ǖ([a-z]*)$/v$1①/
-    - xform/ǘ([a-z]*)$/v$1②/
-    - xform/ǚ([a-z]*)$/v$1③/
-    - xform/ǜ([a-z]*)$/v$1④/
-    - xform/ü/v/
-    - xform/ń([a-z]*)$/n$1②/
-    - xform/ň([a-z]*)$/n$1③/
-    - xform/ǹ([a-z]*)$/n$1④/
+    - xform/(ā|ē|ī|ō|ū|ǖ)([a-z]*)$/$1$2①/
+    - xform/(á|é|í|ó|ú|ǘ|ń|ḿ)([a-z]*)$/$1$2②/
+    - xform/(ǎ|ě|ǐ|ǒ|ǔ|ǚ|ň)([a-z]*)$/$1$2③/
+    - xform/(à|è|ì|ò|ù|ǜ|ǹ)([a-z]*)$/$1$2④/
     - xform/m̄([a-z]*)$/m$1①/
-    - xform/ḿ([a-z]*)$/m$1②/
     - xform/m̀([a-z]*)$/m$1④/
+    - xlit/āáǎàēéěèīíǐìōóǒòūúǔùüǖǘǚǜńňǹḿ/aaaaeeeeiiiioooouuuuvvvvvnnnm/
     - xlit/①②③④/7890
     - derive/^ng(\d)$/eng$1/
     - xform/^n(\d)/en$1/
     - xform/^m(\d)/me$1/
+    - derive/^([jqxy])u(\d)$/$1v$2/
     - derive/^([aoe])([ioun])(\d)$/$1$1$2$3/
     - xform/^([aoe])(ng)?(\d)$/$1$1$2$3/
     - derive/^aa(\d)$/a/
@@ -120,8 +74,7 @@ ziranma:
     - xform/[iu]a(\d)$/Ⓦ$1/
     - xform/[uv]an(\d)$/Ⓡ$1/
     - xform/[uv]e(\d)$/Ⓣ$1/
-    - xform/ing(\d)$/Ⓨ$1/
-    - xform/uai(\d)$/Ⓨ$1/
+    - xform/(ing|uai)(\d)$/Ⓨ$2/
     - xform/^sh/Ⓤ/
     - xform/^ch/Ⓘ/
     - xform/^zh/Ⓥ/
@@ -173,37 +126,13 @@ ziranma:
 
 flypy:
     - xform/^([a-z]+)$/$1④/
-    - xform/ā([a-z]*)$/a$1①/
-    - xform/á([a-z]*)$/a$1②/
-    - xform/ǎ([a-z]*)$/a$1③/
-    - xform/à([a-z]*)$/a$1④/
-    - xform/ō([a-z]*)$/o$1①/
-    - xform/ó([a-z]*)$/o$1②/
-    - xform/ǒ([a-z]*)$/o$1③/
-    - xform/ò([a-z]*)$/o$1④/
-    - xform/ē([a-z]*)$/e$1①/
-    - xform/é([a-z]*)$/e$1②/
-    - xform/ě([a-z]*)$/e$1③/
-    - xform/è([a-z]*)$/e$1④/
-    - xform/ī([a-z]*)$/i$1①/
-    - xform/í([a-z]*)$/i$1②/
-    - xform/ǐ([a-z]*)$/i$1③/
-    - xform/ì([a-z]*)$/i$1④/
-    - xform/ū([a-z]*)$/u$1①/
-    - xform/ú([a-z]*)$/u$1②/
-    - xform/ǔ([a-z]*)$/u$1③/
-    - xform/ù([a-z]*)$/u$1④/
-    - xform/ǖ([a-z]*)$/v$1①/
-    - xform/ǘ([a-z]*)$/v$1②/
-    - xform/ǚ([a-z]*)$/v$1③/
-    - xform/ǜ([a-z]*)$/v$1④/
-    - xform/ü/v/
-    - xform/ń([a-z]*)$/n$1②/
-    - xform/ň([a-z]*)$/n$1③/
-    - xform/ǹ([a-z]*)$/n$1④/
+    - xform/(ā|ē|ī|ō|ū|ǖ)([a-z]*)$/$1$2①/
+    - xform/(á|é|í|ó|ú|ǘ|ń|ḿ)([a-z]*)$/$1$2②/
+    - xform/(ǎ|ě|ǐ|ǒ|ǔ|ǚ|ň)([a-z]*)$/$1$2③/
+    - xform/(à|è|ì|ò|ù|ǜ|ǹ)([a-z]*)$/$1$2④/
     - xform/m̄([a-z]*)$/m$1①/
-    - xform/ḿ([a-z]*)$/m$1②/
     - xform/m̀([a-z]*)$/m$1④/
+    - xlit/āáǎàēéěèīíǐìōóǒòūúǔùüǖǘǚǜńňǹḿ/aaaaeeeeiiiioooouuuuvvvvvnnnm/
     - xlit/①②③④/7890
     - derive/^ng(\d)$/eng$1/
     - xform/^n(\d)/en$1/
@@ -222,8 +151,7 @@ flypy:
     - xform/uo(\d)$/Ⓞ$1/
     - xform/ie(\d)$/Ⓟ$1/
     - xform/(.)i?ong(\d)$/$1Ⓢ$2/
-    - xform/ing(\d)$/Ⓚ$1/
-    - xform/uai(\d)$/Ⓚ$1/
+    - xform/(ing|uai)(\d)$/Ⓚ$2/
     - xform/(.)ai(\d)$/$1Ⓓ$2/
     - xform/(.)eng(\d)$/$1Ⓖ$2/
     - xform/(.)en(\d)$/$1Ⓕ$2/
@@ -268,37 +196,13 @@ flypy:
 
 sogou:
     - xform/^([a-z]+)$/$1④/
-    - xform/ā([a-z]*)$/a$1①/
-    - xform/á([a-z]*)$/a$1②/
-    - xform/ǎ([a-z]*)$/a$1③/
-    - xform/à([a-z]*)$/a$1④/
-    - xform/ō([a-z]*)$/o$1①/
-    - xform/ó([a-z]*)$/o$1②/
-    - xform/ǒ([a-z]*)$/o$1③/
-    - xform/ò([a-z]*)$/o$1④/
-    - xform/ē([a-z]*)$/e$1①/
-    - xform/é([a-z]*)$/e$1②/
-    - xform/ě([a-z]*)$/e$1③/
-    - xform/è([a-z]*)$/e$1④/
-    - xform/ī([a-z]*)$/i$1①/
-    - xform/í([a-z]*)$/i$1②/
-    - xform/ǐ([a-z]*)$/i$1③/
-    - xform/ì([a-z]*)$/i$1④/
-    - xform/ū([a-z]*)$/u$1①/
-    - xform/ú([a-z]*)$/u$1②/
-    - xform/ǔ([a-z]*)$/u$1③/
-    - xform/ù([a-z]*)$/u$1④/
-    - xform/ǖ([a-z]*)$/v$1①/
-    - xform/ǘ([a-z]*)$/v$1②/
-    - xform/ǚ([a-z]*)$/v$1③/
-    - xform/ǜ([a-z]*)$/v$1④/
-    - xform/ü/v/
-    - xform/ń([a-z]*)$/n$1②/
-    - xform/ň([a-z]*)$/n$1③/
-    - xform/ǹ([a-z]*)$/n$1④/
+    - xform/(ā|ē|ī|ō|ū|ǖ)([a-z]*)$/$1$2①/
+    - xform/(á|é|í|ó|ú|ǘ|ń|ḿ)([a-z]*)$/$1$2②/
+    - xform/(ǎ|ě|ǐ|ǒ|ǔ|ǚ|ň)([a-z]*)$/$1$2③/
+    - xform/(à|è|ì|ò|ù|ǜ|ǹ)([a-z]*)$/$1$2④/
     - xform/m̄([a-z]*)$/m$1①/
-    - xform/ḿ([a-z]*)$/m$1②/
     - xform/m̀([a-z]*)$/m$1④/
+    - xlit/āáǎàēéěèīíǐìōóǒòūúǔùüǖǘǚǜńňǹḿ/aaaaeeeeiiiioooouuuuvvvvvnnnm/
     - xlit/①②③④/7890
     - derive/^ng(\d)$/eng$1/
     - xform/^n(\d)/en$1/
@@ -308,11 +212,9 @@ sogou:
     - xform/^([ae])(.*)(\d)$/$1$1$2$3/
     - xform/iu(\d)$/Ⓠ$1/
     - xform/[iu]a(\d)$/Ⓦ$1/
-    - xform/er(\d)$/Ⓡ$1/
-    - xform/[uv]an(\d)$/Ⓡ$1/
+    - xform/(?:er|[uv]an)(\d)$/Ⓡ$1/
     - xform/[uv]e(\d)$/Ⓣ$1/
-    - xform/v(\d)$/Ⓨ$1/
-    - xform/uai(\d)$/Ⓨ$1/
+    - xform/(?:v|uai)(\d)$/Ⓨ$1/
     - xform/^sh/Ⓤ/
     - xform/^ch/Ⓘ/
     - xform/^zh/Ⓥ/
@@ -364,37 +266,13 @@ sogou:
 
 mspy:
     - xform/^([a-z]+)$/$1④/
-    - xform/ā([a-z]*)$/a$1①/
-    - xform/á([a-z]*)$/a$1②/
-    - xform/ǎ([a-z]*)$/a$1③/
-    - xform/à([a-z]*)$/a$1④/
-    - xform/ō([a-z]*)$/o$1①/
-    - xform/ó([a-z]*)$/o$1②/
-    - xform/ǒ([a-z]*)$/o$1③/
-    - xform/ò([a-z]*)$/o$1④/
-    - xform/ē([a-z]*)$/e$1①/
-    - xform/é([a-z]*)$/e$1②/
-    - xform/ě([a-z]*)$/e$1③/
-    - xform/è([a-z]*)$/e$1④/
-    - xform/ī([a-z]*)$/i$1①/
-    - xform/í([a-z]*)$/i$1②/
-    - xform/ǐ([a-z]*)$/i$1③/
-    - xform/ì([a-z]*)$/i$1④/
-    - xform/ū([a-z]*)$/u$1①/
-    - xform/ú([a-z]*)$/u$1②/
-    - xform/ǔ([a-z]*)$/u$1③/
-    - xform/ù([a-z]*)$/u$1④/
-    - xform/ǖ([a-z]*)$/v$1①/
-    - xform/ǘ([a-z]*)$/v$1②/
-    - xform/ǚ([a-z]*)$/v$1③/
-    - xform/ǜ([a-z]*)$/v$1④/
-    - xform/ü/v/
-    - xform/ń([a-z]*)$/n$1②/
-    - xform/ň([a-z]*)$/n$1③/
-    - xform/ǹ([a-z]*)$/n$1④/
+    - xform/(ā|ē|ī|ō|ū|ǖ)([a-z]*)$/$1$2①/
+    - xform/(á|é|í|ó|ú|ǘ|ń|ḿ)([a-z]*)$/$1$2②/
+    - xform/(ǎ|ě|ǐ|ǒ|ǔ|ǚ|ň)([a-z]*)$/$1$2③/
+    - xform/(à|è|ì|ò|ù|ǜ|ǹ)([a-z]*)$/$1$2④/
     - xform/m̄([a-z]*)$/m$1①/
-    - xform/ḿ([a-z]*)$/m$1②/
     - xform/m̀([a-z]*)$/m$1④/
+    - xlit/āáǎàēéěèīíǐìōóǒòūúǔùüǖǘǚǜńňǹḿ/aaaaeeeeiiiioooouuuuvvvvvnnnm/
     - xlit/①②③④/7890
     - derive/^ng(\d)$/eng$1/
     - xform/^n(\d)/en$1/
@@ -404,11 +282,9 @@ mspy:
     - xform/^([ae])(.*)(\d)$/$1$1$2$3/
     - xform/iu(\d)$/Ⓠ$1/
     - xform/[iu]a(\d)$/Ⓦ$1/
-    - xform/er(\d)$/Ⓡ$1/
-    - xform/[uv]an(\d)$/Ⓡ$1/
+    - xform/(?:er|[uv]an)(\d)$/Ⓡ$1/
     - xform/[uv]e(\d)$/Ⓣ$1/
-    - xform/v(\d)$/Ⓨ$1/
-    - xform/uai(\d)$/Ⓨ$1/
+    - xform/(?:v|uai)(\d)$/Ⓨ$1/
     - xform/^sh/Ⓤ/
     - xform/^ch/Ⓘ/
     - xform/^zh/Ⓥ/
@@ -461,37 +337,13 @@ mspy:
 
 abc:
     - xform/^([a-z]+)$/$1④/
-    - xform/ā([a-z]*)$/a$1①/
-    - xform/á([a-z]*)$/a$1②/
-    - xform/ǎ([a-z]*)$/a$1③/
-    - xform/à([a-z]*)$/a$1④/
-    - xform/ō([a-z]*)$/o$1①/
-    - xform/ó([a-z]*)$/o$1②/
-    - xform/ǒ([a-z]*)$/o$1③/
-    - xform/ò([a-z]*)$/o$1④/
-    - xform/ē([a-z]*)$/e$1①/
-    - xform/é([a-z]*)$/e$1②/
-    - xform/ě([a-z]*)$/e$1③/
-    - xform/è([a-z]*)$/e$1④/
-    - xform/ī([a-z]*)$/i$1①/
-    - xform/í([a-z]*)$/i$1②/
-    - xform/ǐ([a-z]*)$/i$1③/
-    - xform/ì([a-z]*)$/i$1④/
-    - xform/ū([a-z]*)$/u$1①/
-    - xform/ú([a-z]*)$/u$1②/
-    - xform/ǔ([a-z]*)$/u$1③/
-    - xform/ù([a-z]*)$/u$1④/
-    - xform/ǖ([a-z]*)$/v$1①/
-    - xform/ǘ([a-z]*)$/v$1②/
-    - xform/ǚ([a-z]*)$/v$1③/
-    - xform/ǜ([a-z]*)$/v$1④/
-    - xform/ü/v/
-    - xform/ń([a-z]*)$/n$1②/
-    - xform/ň([a-z]*)$/n$1③/
-    - xform/ǹ([a-z]*)$/n$1④/
+    - xform/(ā|ē|ī|ō|ū|ǖ)([a-z]*)$/$1$2①/
+    - xform/(á|é|í|ó|ú|ǘ|ń|ḿ)([a-z]*)$/$1$2②/
+    - xform/(ǎ|ě|ǐ|ǒ|ǔ|ǚ|ň)([a-z]*)$/$1$2③/
+    - xform/(à|è|ì|ò|ù|ǜ|ǹ)([a-z]*)$/$1$2④/
     - xform/m̄([a-z]*)$/m$1①/
-    - xform/ḿ([a-z]*)$/m$1②/
     - xform/m̀([a-z]*)$/m$1④/
+    - xlit/āáǎàēéěèīíǐìōóǒòūúǔùüǖǘǚǜńňǹḿ/aaaaeeeeiiiioooouuuuvvvvvnnnm/
     - xlit/①②③④/7890
     - derive/^ng(\d)$/eng$1/
     - xform/^n(\d)/en$1/
@@ -502,8 +354,7 @@ abc:
     - xform/^([aoe].*)(\d)$/Ⓞ$1$2/
     - xform/ei(\d)$/Ⓠ$1/
     - xform/ian(\d)$/Ⓦ$1/
-    - xform/er(\d)$/Ⓡ$1/
-    - xform/iu(\d)$/Ⓡ$1/
+    - xform/(?:er|iu)(\d)$/Ⓡ$1/
     - xform/[iu]ang(\d)$/Ⓣ$1/
     - xform/ing(\d)$/Ⓨ$1/
     - xform/uo(\d)$/Ⓞ$1/
@@ -516,14 +367,12 @@ abc:
     - xform/an(\d)$/Ⓙ$1/
     - xform/iao(\d)$/Ⓩ$1/
     - xform/ao(\d)$/Ⓚ$1/
-    - xform/in(\d)$/Ⓒ$1/
-    - xform/uai(\d)$/Ⓒ$1/
+    - xform/(?:in|uai)(\d)$/Ⓒ$1/
     - xform/ai(\d)$/Ⓛ$1/
     - xform/ie(\d)$/Ⓧ$1/
     - xform/ou(\d)$/Ⓑ$1/
     - xform/un(\d)$/Ⓝ$1/
-    - xform/[uv]e(\d)$/Ⓜ$1/
-    - xform/ui(\d)$/Ⓜ$1/
+    - xform/(?:[uv]e|ui)(\d)$/Ⓜ$1/
     - xlit/ⓆⓌⒺⓇⓉⓎⓄⓅⒶⓈⒹⒻⒼⒽⒿⓀⓁⓏⓍⒸⓋⒷⓃⓂ/qwertyopasdfghjklzxcvbnm/
     - derive/^(..)(\d)$/$1/
     - derive/([nl])ve(\d)/$1ue$2/
@@ -554,37 +403,13 @@ abc:
 
 ziguang:
     - xform/^([a-z]+)$/$1④/
-    - xform/ā([a-z]*)$/a$1①/
-    - xform/á([a-z]*)$/a$1②/
-    - xform/ǎ([a-z]*)$/a$1③/
-    - xform/à([a-z]*)$/a$1④/
-    - xform/ō([a-z]*)$/o$1①/
-    - xform/ó([a-z]*)$/o$1②/
-    - xform/ǒ([a-z]*)$/o$1③/
-    - xform/ò([a-z]*)$/o$1④/
-    - xform/ē([a-z]*)$/e$1①/
-    - xform/é([a-z]*)$/e$1②/
-    - xform/ě([a-z]*)$/e$1③/
-    - xform/è([a-z]*)$/e$1④/
-    - xform/ī([a-z]*)$/i$1①/
-    - xform/í([a-z]*)$/i$1②/
-    - xform/ǐ([a-z]*)$/i$1③/
-    - xform/ì([a-z]*)$/i$1④/
-    - xform/ū([a-z]*)$/u$1①/
-    - xform/ú([a-z]*)$/u$1②/
-    - xform/ǔ([a-z]*)$/u$1③/
-    - xform/ù([a-z]*)$/u$1④/
-    - xform/ǖ([a-z]*)$/v$1①/
-    - xform/ǘ([a-z]*)$/v$1②/
-    - xform/ǚ([a-z]*)$/v$1③/
-    - xform/ǜ([a-z]*)$/v$1④/
-    - xform/ü/v/
-    - xform/ń([a-z]*)$/n$1②/
-    - xform/ň([a-z]*)$/n$1③/
-    - xform/ǹ([a-z]*)$/n$1④/
+    - xform/(ā|ē|ī|ō|ū|ǖ)([a-z]*)$/$1$2①/
+    - xform/(á|é|í|ó|ú|ǘ|ń|ḿ)([a-z]*)$/$1$2②/
+    - xform/(ǎ|ě|ǐ|ǒ|ǔ|ǚ|ň)([a-z]*)$/$1$2③/
+    - xform/(à|è|ì|ò|ù|ǜ|ǹ)([a-z]*)$/$1$2④/
     - xform/m̄([a-z]*)$/m$1①/
-    - xform/ḿ([a-z]*)$/m$1②/
     - xform/m̀([a-z]*)$/m$1④/
+    - xlit/āáǎàēéěèīíǐìōóǒòūúǔùüǖǘǚǜńňǹḿ/aaaaeeeeiiiioooouuuuvvvvvnnnm/
     - xlit/①②③④/7890
     - derive/^ng(\d)$/eng$1/
     - xform/^n(\d)/en$1/
@@ -593,8 +418,7 @@ ziguang:
     - xform/^([aoe].*)(\d)$/Ⓞ$1$2/
     - xform/en(\d)$/Ⓦ$1/
     - xform/eng(\d)$/Ⓣ$1/
-    - xform/in(\d)$/Ⓨ$1/
-    - xform/uai(\d)$/Ⓨ$1/
+    - xform/(?:in|uai)(\d)$/Ⓨ$1/
     - xform/^zh/Ⓤ/
     - xform/^sh/Ⓘ/
     - xform/uo(\d)$/Ⓞ$1/
@@ -605,17 +429,14 @@ ziguang:
     - xform/ie(\d)$/Ⓓ$1/
     - xform/ian(\d)$/Ⓕ$1/
     - xform/(.)i?ong(\d)$/$1Ⓗ$2/
-    - xform/er(\d)$/Ⓙ$1/
-    - xform/iu(\d)$/Ⓙ$1/
+    - xform/(?:er|iu)(\d)$/Ⓙ$1/
     - xform/ei(\d)$/Ⓚ$1/
     - xform/uan(\d)$/Ⓛ$1/
     - xform/ing(\d)$/;$1/
     - xform/ou(\d)$/Ⓩ$1/
     - xform/[iu]a(\d)$/Ⓧ$1/
     - xform/iao(\d)$/Ⓑ$1/
-    - xform/ue(\d)$/Ⓝ$1/
-    - xform/ui(\d)$/Ⓝ$1/
-    - xform/ve(\d)$/Ⓝ$1/
+    - xform/(?:ue|ui|ve)(\d)$/Ⓝ$1/
     - xform/un(\d)$/Ⓜ$1/
     - xform/ao(\d)$/Ⓠ$1/
     - xform/an(\d)$/Ⓡ$1/
@@ -649,37 +470,13 @@ ziguang:
 
 jiajia:
     - xform/^([a-z]+)$/$1④/
-    - xform/ā([a-z]*)$/a$1①/
-    - xform/á([a-z]*)$/a$1②/
-    - xform/ǎ([a-z]*)$/a$1③/
-    - xform/à([a-z]*)$/a$1④/
-    - xform/ō([a-z]*)$/o$1①/
-    - xform/ó([a-z]*)$/o$1②/
-    - xform/ǒ([a-z]*)$/o$1③/
-    - xform/ò([a-z]*)$/o$1④/
-    - xform/ē([a-z]*)$/e$1①/
-    - xform/é([a-z]*)$/e$1②/
-    - xform/ě([a-z]*)$/e$1③/
-    - xform/è([a-z]*)$/e$1④/
-    - xform/ī([a-z]*)$/i$1①/
-    - xform/í([a-z]*)$/i$1②/
-    - xform/ǐ([a-z]*)$/i$1③/
-    - xform/ì([a-z]*)$/i$1④/
-    - xform/ū([a-z]*)$/u$1①/
-    - xform/ú([a-z]*)$/u$1②/
-    - xform/ǔ([a-z]*)$/u$1③/
-    - xform/ù([a-z]*)$/u$1④/
-    - xform/ǖ([a-z]*)$/v$1①/
-    - xform/ǘ([a-z]*)$/v$1②/
-    - xform/ǚ([a-z]*)$/v$1③/
-    - xform/ǜ([a-z]*)$/v$1④/
-    - xform/ü/v/
-    - xform/ń([a-z]*)$/n$1②/
-    - xform/ň([a-z]*)$/n$1③/
-    - xform/ǹ([a-z]*)$/n$1④/
+    - xform/(ā|ē|ī|ō|ū|ǖ)([a-z]*)$/$1$2①/
+    - xform/(á|é|í|ó|ú|ǘ|ń|ḿ)([a-z]*)$/$1$2②/
+    - xform/(ǎ|ě|ǐ|ǒ|ǔ|ǚ|ň)([a-z]*)$/$1$2③/
+    - xform/(à|è|ì|ò|ù|ǜ|ǹ)([a-z]*)$/$1$2④/
     - xform/m̄([a-z]*)$/m$1①/
-    - xform/ḿ([a-z]*)$/m$1②/
     - xform/m̀([a-z]*)$/m$1④/
+    - xlit/āáǎàēéěèīíǐìōóǒòūúǔùüǖǘǚǜńňǹḿ/aaaaeeeeiiiioooouuuuvvvvvnnnm/
     - xlit/①②③④/7890
     - derive/^ng(\d)$/eng$1/
     - xform/^n(\d)/en$1/
@@ -689,11 +486,9 @@ jiajia:
     - xform/^([ae])(.*)(\d)$/$1$1$2$3/
     - xform/iu(\d)$/Ⓝ$1/
     - xform/[iu]a(\d)$/Ⓑ$1/
-    - xform/er(\d)$/Ⓠ$1/
-    - xform/ing(\d)$/Ⓠ$1/
+    - xform/(ing|er)(\d)$/Ⓠ$2/
     - xform/[uv]an(\d)$/Ⓒ$1/
-    - xform/[uv]e(\d)$/Ⓧ$1/
-    - xform/uai(\d)$/Ⓧ$1/
+    - xform/(?:[uv]e|uai)(\d)$/Ⓧ$1/
     - xform/^sh/Ⓘ/
     - xform/^ch/Ⓤ/
     - xform/^zh/Ⓥ/

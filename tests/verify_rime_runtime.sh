@@ -100,8 +100,8 @@ ruby -e '
   source = File.binread(path)
   placeholder = "    zz_code_token: \"^$\"\n"
   stale = "    zz_code_token: \"^(?:(?:/|~).*|(?:www[.]|https?:|ftp[.:]|mailto:|file:).*)$\"\n"
-  current_shift = "    Shift_L: commit_code\n    Shift_R: commit_code\n"
-  stale_shift = "    Shift_L: commit_text\n    Shift_R: commit_text\n"
+  current_shift = "    Shift_L: inline_ascii\n    Shift_R: inline_ascii\n"
+  stale_shift = "    Shift_L: commit_code\n    Shift_R: commit_code\n"
   current_schemas = "  - schema: linnet_zh_pinyin\n  - schema: linnet_en\n"
   stale_schemas = "  - schema: linnet_en\n  - schema: linnet_zh_pinyin\n"
   abort "Core compile placeholder is missing" unless source.scan(placeholder).length == 1
@@ -154,8 +154,10 @@ linnet_swift_compile projection-fixture -warnings-as-errors -sdk "${sdk}" \
   tests/LinnetSettingsProjectionFixture.swift
 linnet_test_run 600 "${scratch}/projection-fixture" default "${user}"
 for switch_key in Caps_Lock Shift_L Shift_R; do
+  switch_style=inline_ascii
+  if [[ "${switch_key}" == Caps_Lock ]]; then switch_style=commit_code; fi
   test "$(rg -F -c \
-    "\"ascii_composer/switch_key/${switch_key}\": commit_code" \
+    "\"ascii_composer/switch_key/${switch_key}\": ${switch_style}" \
     "${user}/default.custom.yaml")" -eq 1
 done
 test "$(rg -F -c '"linnet/recognizer_patterns/zz_code_token"' \

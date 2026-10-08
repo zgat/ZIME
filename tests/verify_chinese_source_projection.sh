@@ -49,9 +49,11 @@ generic_single_tone = %q{derive/^(.).+(\d)$/$1$2/}
 natural_single_key_a = %q{derive/^aa(\d)$/a/}
 full_broad_tail_start = %q{derive/([qtpdjlxbnm])iao$/$1ioa/}
 english_entity_projection = %q{xlit/ABCDEFGHIJKLMNOPQRSTUVWXYZ/abcdefghijklmnopqrstuvwxyz/}
+upstream_ng = %q{xform/^ng(\d)/eng$1/}
+compatible_ng = %q{derive/^ng(\d)$/eng$1/}
 full_individual_omissions = [
-  %q{abbrev/^ng(\d)$/ng/},
-  %q{erase/^ng(\d)$/},
+  %q{abbrev/^ng(\d)/ng/},
+  %q{erase/^ng(\d)/},
   %q{derive/([wrtpsdfghklzcbnm])eng$/$1wng/},
   %q{derive/([rtysdghklzcn])ong$/$1ogn/}
 ]
@@ -64,11 +66,11 @@ profiles.each do |local_name, source_name|
   source_profile = source.fetch(source_name)
   raise "unexpected upstream profile shape" unless source_profile.keys == ["__append"]
   source_rules = source_profile.fetch("__append")
-  # v17.9.9 repeats the same idempotent m-macron normalization in full pinyin.
-  # Keep one copy without changing any other ordered projection rule.
-  macron_rule = %q{xform/m̄([a-z]*)$/m$1①/}
-  source_rules = source_rules.each_with_object([]) do |rule, rules|
-    rules << rule unless rule == macron_rule && rules.include?(rule)
+  # Keep the pre-v18 ng alias; upstream now replaces it instead of deriving it.
+  raise "#{local_name} ng normalization anchor changed" unless
+    source_rules.count(upstream_ng) == 1
+  source_rules = source_rules.map do |rule|
+    rule == upstream_ng ? compatible_ng : rule
   end
   local_rules = local.fetch(local_name)
   raise "#{local_name} entity projection must be its final algebra rule" unless
@@ -93,8 +95,10 @@ profiles.each do |local_name, source_name|
     next
   end
 
+  normalization_end = source_rules.index(%q{xform/^m(\d)/me$1/})
+  raise "#{local_name} normalization anchor changed" unless normalization_end
   raise "#{local_name} normalization drifted" unless
-    local_rules.first(35) == source_rules.drop(1).first(35)
+    local_rules.first(normalization_end) == source_rules[1..normalization_end]
   required = source_rules.drop(1).reject { |rule| rule == generic_single_tone }
   raise "#{local_name} lost an upstream layout rule" unless
     required.all? { |rule| local_rules.include?(rule) }
