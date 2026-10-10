@@ -1827,6 +1827,73 @@ void ExpectZIMEBilingualCandidateContract(RimeApi_stdbool* api) {
   api->destroy_session(english);
 }
 
+void ExpectZIMEPinyinEntityBoundaries(RimeApi_stdbool* api) {
+  const auto expect_chinese = [&](const char* input) {
+    const auto session = CreateSchemaSession(api, "linnet_zh_pinyin");
+    Enter(api, session, input);
+    bool has_chinese = false;
+    // Include the lazy tail, not only the first candidate page.
+    for (const auto& row : CandidateOrigins(session, 128)) {
+      if (row.genuine_language != "linnet_zh") continue;
+      const auto text = BaseText(row.text);
+      const bool has_non_ascii = std::any_of(text.begin(), text.end(),
+          [](unsigned char byte) { return byte >= 0x80; });
+      if (has_non_ascii && ContainsAscii(text)) {
+        Fail(std::string("an English entity split a complete pinyin syllable: ") +
+             input + " -> " + text);
+      }
+      has_chinese = has_chinese ||
+          (has_non_ascii && row.end == std::strlen(input));
+    }
+    if (!has_chinese) Fail(std::string("complete Chinese candidates disappeared: ") + input);
+    api->destroy_session(session);
+  };
+  const auto expect_no_split = [&] {
+    for (const auto* input : {"liang", "xiang", "jing", "ying", "hang",
+                             "jiang", "cang", "nihaoliang", "liangshi", "nihao'liang", "liangnihao"})
+      expect_chinese(input);
+  };
+  expect_no_split();
+
+  const auto complete_entity = CreateSchemaSession(api, "linnet_zh_pinyin");
+  ExpectCandidate(api, complete_entity, "chaip", "查IP");
+  api->destroy_session(complete_entity);
+
+  // An explicit separator or shifted uppercase still permits this exact
+  // mixed phrase. Learning it must not reintroduce it under plain liang.
+  for (const bool uppercase : {false, true}) {
+    const auto session = CreateSchemaSession(api, "linnet_zh_pinyin");
+    if (uppercase) {
+      Enter(api, session, "lia");
+      AppendShiftedUppercase(api, session, "NG");
+      if (!api->simulate_key_sequence(session, "nihao"))
+        Fail("could not append Chinese input after explicit NG");
+    } else {
+      Enter(api, session, "lia'ng");
+    }
+    const char* expected = uppercase ? "俩NG你好" : "俩NG";
+    if (!api->select_candidate(session, CandidateIndex(api, session, expected)) ||
+        TakeCommit(api, session) != expected)
+      Fail("explicit NG mixing could not be selected and learned");
+    api->destroy_session(session);
+  }
+  expect_no_split();
+  api->finalize();
+  api->initialize(nullptr);
+  expect_no_split();
+
+  const auto partial = CreateSchemaSession(api, "linnet_zh_pinyin");
+  Enter(api, partial, "nihaoliang");
+  if (!api->select_candidate(partial, CandidateIndex(api, partial, "你好")))
+    Fail("could not select a Chinese prefix before liang");
+  for (const auto& row : CandidateOrigins(partial, 128)) {
+    if (row.genuine_language == "linnet_zh" && row.text.find("NG") != std::string::npos)
+      Fail("a confirmed Chinese prefix bypassed the pinyin boundary rule");
+  }
+  api->destroy_session(partial);
+  std::cout << "ZIME pinyin/entity boundaries, explicit mixing and learned phrases: PASS\n";
+}
+
 void ExpectZIMEAsciiCompletionContract(RimeApi_stdbool* api) {
   const auto expect_first = [&](const char* schema, const char* input,
                                 const char* expected) {
@@ -8508,6 +8575,7 @@ int main(int argc, char** argv) {
   if (zime_bilingual_probe) {
     ExpectZIMETranspositionContract(api);
     ExpectZIMEBilingualCandidateContract(api);
+    ExpectZIMEPinyinEntityBoundaries(api);
     ExpectZIMEAsciiCompletionContract(api);
     ExpectZIMELiteralMixedContract(api);
     ExpectZIMEChineseRankingContract(api);

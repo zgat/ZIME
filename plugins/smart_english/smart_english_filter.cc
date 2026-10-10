@@ -65,11 +65,56 @@ bool AsciiDictionaryPhrase(const an<Candidate>& candidate) {
   return ChineseDictionaryPhrase(phrase) && !AsciiEntity(phrase->text()).empty();
 }
 
-bool HasIncompleteAsciiSyllable(const an<Candidate>& candidate,
-                                const string& input,
-                                const an<Dictionary>& dictionary) {
+class MixedCandidateAdmission {
+ public:
+  MixedCandidateAdmission(an<Dictionary> dictionary, string input)
+      : dictionary_(std::move(dictionary)), input_(std::move(input)) {}
+
+  bool Reject(const an<Candidate>& candidate);
+
+ private:
+  bool HasCompleteChineseSpelling(size_t start, size_t minimum_end, size_t end);
+
+  const an<Dictionary> dictionary_;
+  const string input_;
+  // One lookup per source position for the entire lazy translation, including
+  // later pages. Pure Chinese and English rows never query this cache.
+  std::map<size_t, std::set<size_t>> chinese_spelling_ends_;
+};
+
+bool MixedCandidateAdmission::HasCompleteChineseSpelling(
+    size_t start, size_t minimum_end, size_t end) {
+  auto found = chinese_spelling_ends_.find(start);
+  if (found == chinese_spelling_ends_.end()) {
+    std::set<size_t> ends;
+    vector<Prism::Match> matches;
+    dictionary_->prism()->CommonPrefixSearch(input_.substr(start), &matches);
+    for (const auto& match : matches) {
+      for (auto spelling = dictionary_->prism()->QuerySpelling(match.value);
+           !spelling.exhausted(); spelling.Next()) {
+        const auto properties = spelling.properties();
+        if (properties.type != kNormalSpelling || properties.is_correction)
+          continue;
+        Code code;
+        code.push_back(spelling.syllable_id());
+        vector<string> decoded;
+        if (!dictionary_->Decode(code, &decoded) ||
+            decoded.empty()) continue;
+        const auto entity = AsciiEntity(decoded.front());
+        if (!entity.empty() && decoded.front() != entity) continue;
+        ends.insert(start + match.length);
+        break;
+      }
+    }
+    found = chinese_spelling_ends_.emplace(start, std::move(ends)).first;
+  }
+  const auto crossing = found->second.lower_bound(minimum_end);
+  return crossing != found->second.end() && *crossing <= end;
+}
+
+bool MixedCandidateAdmission::Reject(const an<Candidate>& candidate) {
   const auto phrase = As<Phrase>(Candidate::GetGenuineCandidate(candidate));
-  if (!dictionary || !ChineseDictionaryPhrase(phrase)) return false;
+  if (!dictionary_ || !ChineseDictionaryPhrase(phrase)) return false;
   bool has_non_ascii = false, has_ascii_letter = false;
   for (unsigned char c : phrase->text()) {
     has_non_ascii = has_non_ascii || c >= 0x80;
@@ -80,23 +125,46 @@ bool HasIncompleteAsciiSyllable(const an<Candidate>& candidate,
   // unchanged and need no dictionary decoding.
   if (!has_non_ascii || !has_ascii_letter) return false;
   vector<string> syllables;
-  if (!dictionary->Decode(phrase->code(), &syllables)) return false;
+  if (!dictionary_->Decode(phrase->code(), &syllables)) return false;
   auto spans = phrase->spans();
   size_t start = phrase->start();
-  for (const auto& syllable : syllables) {
+  size_t previous_start = start;
+  bool previous_chinese = false;
+  for (size_t index = 0; index < syllables.size(); ++index) {
+    const auto& syllable = syllables[index];
     const size_t end = spans.NextStop(start);
     const auto entity = AsciiEntity(syllable);
     // linnet_english_entities uses uppercase canonical codes as a marker;
     // normal pinyin syllables are lowercase. Use that identity, not token
     // boundaries in the surface text (which can join adjacent entities).
     if (!entity.empty() && syllable != entity) {
-      if (end <= start || end > input.size()) return true;
-      const auto part = input.substr(start, end - start);
+      if (end <= start || end > input_.size()) return true;
+      const auto part = input_.substr(start, end - start);
       const auto first = part.find_first_not_of(" '");
       const auto last = part.find_last_not_of(" '");
       if (first == string::npos || AsciiEntity(part.substr(first, last - first + 1)) != entity)
         return true;
+      // Exact lowercase entities can still steal part of a complete Chinese
+      // syllable: lia+ng -> 俩NG, can+g -> CAN个. Compare native spellings,
+      // never a hardcoded acronym list. Uppercase and explicit separators
+      // preserve deliberate mixing; the active prism owns each layout.
+      // Consume the whole entity, so cha+ip keeps 查IP even though chai is
+      // itself pinyin: the remaining p belongs to the explicitly typed IP.
+      if (part.substr(first, last - first + 1) == entity) {
+        if (previous_chinese &&
+            HasCompleteChineseSpelling(previous_start, end, phrase->end()))
+          return true;
+        if (index + 1 < syllables.size()) {
+          const auto next_entity = AsciiEntity(syllables[index + 1]);
+          const bool next_chinese = next_entity.empty() ||
+              syllables[index + 1] == next_entity;
+          if (next_chinese && HasCompleteChineseSpelling(start, end + 1, phrase->end()))
+            return true;
+        }
+      }
     }
+    previous_start = start;
+    previous_chinese = entity.empty() || syllable == entity;
     start = end;
   }
   // Check native code/spans, not the surface string. This also covers a
@@ -454,10 +522,12 @@ an<Translation> SmartEnglishFilter::Apply(an<Translation> translation,
   Context* context = engine_->context();
   // One lazy admission boundary covers both the ranked prefix and all later
   // pages. Reject wo+i -> 我IME before it can displace the safe partial 我;
-  // keep wo+ime -> 我IME and every ordinary Chinese abbreviation.
+  // keep wo+ime -> 我IME and every ordinary Chinese abbreviation. Also reject
+  // complete entities that split a native Chinese syllable, even if learned.
+  const auto admission = New<MixedCandidateAdmission>(chinese_dictionary_, context->input());
   translation = New<SmartEnglishTailTranslation>(translation, false, false,
-      [dictionary = chinese_dictionary_, input = context->input()](const an<Candidate>& candidate) {
-        return HasIncompleteAsciiSyllable(candidate, input, dictionary) ? nullptr : candidate;
+      [admission](const an<Candidate>& candidate) {
+        return admission->Reject(candidate) ? nullptr : candidate;
       });
   const auto pending_segment =
       std::exchange(pending_segment_, std::nullopt);

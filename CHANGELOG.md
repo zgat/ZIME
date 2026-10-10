@@ -4,7 +4,15 @@
 README、文档、CI、构建及发布脚本调整不属于版本更新。继承的 Squirrel 历史请查阅
 [Squirrel changelog](https://github.com/rime/squirrel/blob/master/CHANGELOG.md)。
 
-## 1.1 ZIME 0.1.24
+## 1.1 ZIME 0.1.25
+
+- 修复完整拼音被英文缩写拆开组词的问题：`liang` 不再出现“俩NG”，同类的 `xiang / jing / ying / hang / jiang / cang` 也按当前布局的中文音节边界判断。
+- 既有学习词条与后续候选页采用相同规则，无需清空学习记录；`woime → 我IME`、`你好AI` 等正常混输继续保留。
+- 明确使用拼音分隔符仍可输入混合词，例如 `lia'ng → 俩NG`；中文之间的显式大写混输继续保留。完整包和 Core 均包含修复。
+
+2026-10-10，构建号 34，仍为未公证开发预览。下载与限制见 [0.1.25 版本说明](docs/releases/ZIME-0.1.25.md)。
+
+## 1.2 ZIME 0.1.24
 
 - 输入过程中轻按左／右 Shift，在中文与智能英文之间切换，不再直接上屏；保留待输入内容、光标和已明确选定的原文／译文前缀，刷新目标模式候选。
 - 空格／数字继续选词，Enter 继续提交原始输入；按住 Shift 输入大写和 Caps Lock 行为不变。
