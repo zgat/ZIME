@@ -4,6 +4,7 @@ require "json"
 require "digest"
 require "net/http"
 require "open3"
+require "timeout"
 require "uri"
 
 ROOT = File.expand_path("..", __dir__)
@@ -11,6 +12,8 @@ LOCK_PATH = File.join(ROOT, "upstreams.lock.json")
 SHA1 = /\A[0-9a-f]{40}\z/
 SHA256 = /\A[0-9a-f]{64}\z/
 SAFE_COMPONENT = /\A[A-Za-z0-9._-]+\z/
+GITHUB_API_REDIRECT_LIMIT = 3
+GITHUB_API_TIMEOUT = 60
 
 def fail_lock(message)
   warn "upstream-sync: #{message}"
@@ -546,24 +549,85 @@ def mutable_ref_status(source, ref_key)
   [source.fetch("commit")[0, 12], commit[0, 12], commit, status]
 end
 
+def github_release_route(uri, release)
+  # Validate every hop before adding Authorization; repository renames may use
+  # GitHub's numeric repository route, but must retain this exact release tag.
+  return unless uri.is_a?(URI::HTTPS) && uri.host == "api.github.com" &&
+    uri.port == 443 && uri.userinfo.nil? && uri.query.nil? && uri.fragment.nil?
+  suffix = "/releases/tags/#{release}"
+  return unless uri.path.end_with?(suffix)
+  owner = uri.path.delete_suffix(suffix)
+  return owner if owner.match?(%r{\A/repos/[A-Za-z0-9._-]+/[A-Za-z0-9._-]+\z}) ||
+    owner.match?(%r{\A/repositories/[1-9][0-9]*\z})
+end
+
+def github_release_metadata(uri, release)
+  visited = {}
+  redirects = 0
+  Timeout.timeout(GITHUB_API_TIMEOUT) do
+    loop do
+      fail_lock("unsafe GitHub release API URL") unless github_release_route(uri, release)
+      fail_lock("GitHub release API redirect loop") if visited[uri.to_s]
+      visited[uri.to_s] = true
+      request = Net::HTTP::Get.new(uri)
+      request["Accept"] = "application/vnd.github+json"
+      request["X-GitHub-Api-Version"] = "2022-11-28"
+      request["User-Agent"] = "linnet-upstream-sync"
+      token = ENV["GH_TOKEN"]
+      request["Authorization"] = "Bearer #{token}" if token && !token.empty?
+      response = Net::HTTP.start(uri.host, uri.port, use_ssl: true,
+        open_timeout: 10, read_timeout: 20, write_timeout: 20) do |http|
+        http.request(request)
+      end
+      if %w[301 302 303 307 308].include?(response.code)
+        fail_lock("GitHub release API redirect limit exceeded") if
+          redirects >= GITHUB_API_REDIRECT_LIMIT
+        location = response["location"]
+        fail_lock("GitHub release API redirect has no Location") if
+          !location.is_a?(String) || location.empty?
+        uri = URI.join(uri.to_s, location)
+        redirects += 1
+      elsif response.is_a?(Net::HTTPSuccess)
+        return [JSON.parse(response.body), uri, redirects]
+      else
+        fail_lock("GitHub release lookup failed: HTTP #{response.code}")
+      end
+    end
+  end
+rescue URI::InvalidURIError
+  fail_lock("invalid GitHub release API redirect URL")
+rescue Timeout::Error, IOError, SystemCallError, SocketError, OpenSSL::SSL::SSLError => error
+  fail_lock("GitHub release lookup failed: #{error.class}")
+end
+
 def release_asset_status(source)
   repository_path = URI.parse(source.fetch("repository")).path
   repository_slug = repository_path.delete_prefix("/").delete_suffix(".git")
   release = URI.encode_www_form_component(source.fetch("release"))
   uri = URI("https://api.github.com/repos/#{repository_slug}/releases/tags/#{release}")
-  request = Net::HTTP::Get.new(uri)
-  request["Accept"] = "application/vnd.github+json"
-  request["X-GitHub-Api-Version"] = "2022-11-28"
-  request["User-Agent"] = "linnet-upstream-sync"
-  token = ENV["GH_TOKEN"]
-  request["Authorization"] = "Bearer #{token}" if token && !token.empty?
-  response = Net::HTTP.start(uri.host, uri.port, use_ssl: true) do |http|
-    http.request(request)
-  end
-  fail_lock("GitHub release lookup failed for #{repository_slug}: HTTP #{response.code}") unless
-    response.is_a?(Net::HTTPSuccess)
-  release_json = JSON.parse(response.body)
+  release_json, final_uri, redirects = github_release_metadata(uri, release)
+  fail_lock("invalid GitHub release metadata object") unless release_json.is_a?(Hash)
+  release_id = release_json.fetch("id")
+  api_match = %r{\Ahttps://api\.github\.com/repos/([A-Za-z0-9._-]+/[A-Za-z0-9._-]+)/releases/([1-9][0-9]*)\z}
+    .match(release_json.fetch("url").to_s)
+  fail_lock("remote grammar release identity is inconsistent") unless
+    release_id.is_a?(Integer) && release_id.positive? && api_match &&
+      api_match[2].to_i == release_id && release_json.fetch("tag_name") == source.fetch("release")
+  canonical_slug = api_match[1]
+  # A renamed release is authoritative only after a safe API redirect. Bind all
+  # release/asset URLs to one canonical owner, then compare immutable content.
+  canonical_api = "https://api.github.com/repos/#{canonical_slug}/releases/#{release_id}"
+  fail_lock("remote grammar release URLs are inconsistent") unless
+    release_json.fetch("assets_url") == "#{canonical_api}/assets" &&
+      release_json.fetch("html_url") == "https://github.com/#{canonical_slug}/releases/tag/#{source.fetch('release')}"
+  final_route = github_release_route(final_uri, release)
+  fail_lock("remote grammar repository changed without a matching API redirect") unless
+    (redirects.positive? || canonical_slug.casecmp?(repository_slug)) &&
+      (final_route.start_with?("/repositories/") ||
+        final_route.delete_prefix("/repos/").casecmp?(canonical_slug))
   assets = release_json.fetch("assets")
+  fail_lock("invalid GitHub release assets") unless
+    assets.is_a?(Array) && assets.all? { |item| item.is_a?(Hash) }
   matches = assets.select { |asset| asset["name"] == source.fetch("asset") }
   fail_lock("expected one #{source.fetch('asset')} asset in #{source.fetch('release')}") unless
     matches.length == 1
@@ -575,11 +639,12 @@ def release_asset_status(source)
   fail_lock("invalid remote grammar asset identity") unless
     asset["state"] == "uploaded" && asset_id.is_a?(Integer) && asset_id.positive? &&
       bytes.is_a?(Integer) && bytes.positive? && SHA256.match?(sha256)
-  expected_url = "https://api.github.com/repos/#{repository_slug}/releases/assets/#{asset_id}"
+  expected_url = "https://api.github.com/repos/#{canonical_slug}/releases/assets/#{asset_id}"
   fail_lock("remote grammar asset API URL is inconsistent") unless
     asset.fetch("url") == expected_url
   fail_lock("remote grammar download URL is inconsistent") unless
-    asset.fetch("browser_download_url") == source.fetch("asset_download_url")
+    asset.fetch("browser_download_url") ==
+      "https://github.com/#{canonical_slug}/releases/download/#{source.fetch('release')}/#{source.fetch('asset')}"
   current = asset_id == source.fetch("asset_id") &&
     bytes == source.fetch("bytes") && sha256 == source.fetch("sha256")
   status = current ? "current" : "review #{sha256[0, 12]} (asset #{asset_id})"
@@ -635,14 +700,16 @@ def report(lock)
   rows.each { |row| puts "| #{row.join(' | ')} |" }
 end
 
-lock = load_lock
-case ARGV.fetch(0, "verify")
-when "verify"
-  verify_local(lock)
-when "report"
-  verify_local(lock)
-  puts
-  report(lock)
-else
-  fail_lock("usage: scripts/upstream-sync [verify|report]")
+if $PROGRAM_NAME == __FILE__
+  lock = load_lock
+  case ARGV.fetch(0, "verify")
+  when "verify"
+    verify_local(lock)
+  when "report"
+    verify_local(lock)
+    puts
+    report(lock)
+  else
+    fail_lock("usage: scripts/upstream-sync [verify|report]")
+  end
 end

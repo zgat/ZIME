@@ -59,4 +59,6 @@ ruby -e '
     reporter.include?(%q{grammar.fetch("sha256")[0, 12], grammar.fetch("release"), "locked"})
 ' "${reporter}"
 
+ruby "${repo_root}/tests/verify_github_release_redirects.rb"
+
 echo "Chinese upstream workflow: PASS (read-only standard upstream report; no Python composer)"

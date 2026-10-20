@@ -71,7 +71,7 @@ Linnet uses selected, pinned inputs from:
 - [Rime Wanxiang](https://github.com/amzxyz/rime-wanxiang) for the Chinese
   dictionary core and the eight full-/double-pinyin source layouts selected
   from its locked `base` algebra; and
-- [RIME-LMDG](https://github.com/amzxyz/RIME-LMDG) for the offline Wanxiang LTS
+- [RIME-LMDG](https://github.com/amzxyz/rime-wanxiang-data) for the offline Wanxiang LTS
   grammar model.
 
 The generated release notice identifies the exact locked versions and describes

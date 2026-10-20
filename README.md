@@ -3,7 +3,7 @@
 面向 Apple Silicon、macOS 13 及以上版本的本地优先双语输入法。
 输入中文看英文释义，输入英文看中文释义；译文默认只在候选框展示，主动切换并选中后才会上屏。
 
-[下载 0.1.25 开发预览](https://github.com/zgat/ZIME/releases/tag/v0.1.25) ·
+[下载 0.1.26 开发预览](https://github.com/zgat/ZIME/releases/tag/v0.1.26) ·
 [安装说明](docs/ZIME-INSTALL.md) · [更新日志](CHANGELOG.md)
 
 ![中英文候选与逐行释义](resources/readme/bilingual-features.png)
@@ -71,13 +71,14 @@
 - 两种升级方式均保留个人词频、自定义词和设置，并创建回滚备份，不必先卸载。
 
 首次安装或更新内置词库与 LTS 模型，请使用完整 ZIP / PKG。
-已有 0.1.17 或更新完整数据可使用 Core 获取本次候选修复，保留已有语言数据。
+已有 0.1.17 或更新完整数据可使用 Core 更新程序，保留已有语言数据；获取本次新 LTS 模型必须使用完整包。
 下载入口和操作步骤见 [安装说明](docs/ZIME-INSTALL.md)。
 仍为 Ad-hoc 开发预览：PKG 未使用 Developer ID 签名，App 和 PKG 均未经过 Apple 公证，未开启自动更新频道。
 GitHub 自动生成的 Source code ZIP/TAR 是源码，不是安装包。
 
 ## 更新公告
 
+- **0.1.26**：更新万象 LTS 模型至 2026-10-19 快照；使用完整包获取新模型，个人设置与学习记录保留。[详情](docs/releases/ZIME-0.1.26.md)
 - **0.1.25**：修复完整拼音被英文缩写拆开的问题，例如 `liang` 不再出现“俩NG”；保留明确的中英混输，无需清空学习记录。[详情](docs/releases/ZIME-0.1.25.md)
 - **0.1.24**：输入途中轻按 Shift 切换中英文，不再直接上屏；更新万象 Base、LTS 模型和本地释义。[详情](docs/releases/ZIME-0.1.24.md)
 - **0.1.23**：更新万象 Base 词库、LTS 模型和 CC-CEDICT 本地释义；获取全部新数据请使用完整包，个人学习记录保留。[详情](docs/releases/ZIME-0.1.23.md)

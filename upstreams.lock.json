@@ -315,24 +315,24 @@
       }
     },
     "rime_lmdg_grammar": {
-      "repository": "https://github.com/amzxyz/RIME-LMDG.git",
+      "repository": "https://github.com/amzxyz/rime-wanxiang-data.git",
       "release": "LTS",
       "asset": "wanxiang-lts-zh-hans.gram",
-      "asset_id": 616996347,
-      "asset_api_url": "https://api.github.com/repos/amzxyz/RIME-LMDG/releases/assets/616996347",
-      "asset_download_url": "https://github.com/amzxyz/RIME-LMDG/releases/download/LTS/wanxiang-lts-zh-hans.gram",
+      "asset_id": 655157355,
+      "asset_api_url": "https://api.github.com/repos/amzxyz/rime-wanxiang-data/releases/assets/655157355",
+      "asset_download_url": "https://github.com/amzxyz/rime-wanxiang-data/releases/download/LTS/wanxiang-lts-zh-hans.gram",
       "declared_license": "CC-BY-4.0",
       "license_path": "LICENSES/RIME-LMDG-CC-BY-4.0.txt",
-      "license_sha256": "9ba9550ad48438d0836ddab3da480b3b69ffa0aac7b7878b5a0039e7ab429411",
-      "bytes": 398309420,
-      "sha256": "c330bca73a4102b097fd6b239e6d10097a41995864f13004dec06e8cec98f2cc",
+      "license_sha256": "9e5f1b3c610b9c2da5c313bf81d577a7d1acec686bdb0384edefa6df0f90cd94",
+      "bytes": 398497836,
+      "sha256": "9eedac1d836f3fdafb61b162035c8937253aedc106be40b2b957d9ab64e9ed89",
       "mirror": {
         "repository": "https://github.com/zgat/ZIME.git",
-        "release": "v0.1.24",
+        "release": "v0.1.26",
         "asset": "wanxiang-lts-zh-hans.gram",
-        "asset_download_url": "https://github.com/zgat/ZIME/releases/download/v0.1.24/wanxiang-lts-zh-hans.gram",
-        "bytes": 398309420,
-        "sha256": "c330bca73a4102b097fd6b239e6d10097a41995864f13004dec06e8cec98f2cc"
+        "asset_download_url": "https://github.com/zgat/ZIME/releases/download/v0.1.26/wanxiang-lts-zh-hans.gram",
+        "bytes": 398497836,
+        "sha256": "9eedac1d836f3fdafb61b162035c8937253aedc106be40b2b957d9ab64e9ed89"
       }
     }
   }
